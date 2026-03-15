@@ -1,0 +1,17 @@
+node_modules
+dist
+.env
+.env.*
+!.env.example
+*.spec.ts
+__tests__
+.git
+.gitignore
+.vscode
+.kiro
+Dockerfile
+Dockerfile.dev
+docker-compose*.yml
+README.md
+eslint.config.js
+

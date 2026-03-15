@@ -1,0 +1,16 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python3 -c \":*)",
+      "Bash(git -C /Users/martin.listiak/projects/runa log --oneline -20)",
+      "Bash(git -C /Users/martin.listiak/projects/runa show --stat)",
+      "Bash(git -C /Users/martin.listiak/projects/runa log --oneline --all)",
+      "Bash(git -C /Users/martin.listiak/projects/runa show 2850ba4 --stat)",
+      "Bash(wc -l /Users/martin.listiak/projects/runa/src/*.tsx /Users/martin.listiak/projects/runa/src/*.css)",
+      "Bash(bun add react-router-dom @tanstack/react-query axios socket.io-client @dnd-kit/core @dnd-kit/sortable @dnd-kit/utilities react-icons clsx tailwind-merge)",
+      "Bash(bun add -d tailwindcss postcss autoprefixer @tailwindcss/typography @types/node)",
+      "Bash(npx tsc --noEmit)",
+      "Bash(npx tsc -p tsconfig.app.json --noEmit)"
+    ]
+  }
+}

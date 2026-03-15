@@ -1,0 +1,135 @@
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import api from "@/api/client";
+import { useToast } from "@/components/Toast";
+import type { Ticket, TicketStatus } from "@/types";
+
+export function useTickets(spaceId: string | null) {
+  return useQuery<Ticket[]>({
+    queryKey: ["tickets", spaceId],
+    queryFn: async () => {
+      const { data } = await api.get(`/spaces/${spaceId}/tickets`);
+      return data;
+    },
+    enabled: !!spaceId,
+  });
+}
+
+export function useCreateTicket() {
+  const queryClient = useQueryClient();
+  const { success, error: showError } = useToast();
+  return useMutation({
+    mutationFn: async (payload: {
+      spaceId: string;
+      title: string;
+      description: string;
+      priority: string;
+    }) => {
+      const { data } = await api.post(
+        `/spaces/${payload.spaceId}/tickets`,
+        payload,
+      );
+      return data;
+    },
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({
+        queryKey: ["tickets", variables.spaceId],
+      });
+      success("Ticket created");
+    },
+    onError: (err: Error) => {
+      showError(err.message || "Failed to create ticket");
+    },
+  });
+}
+
+export function useMoveTicket() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (payload: {
+      ticketId: string;
+      status: TicketStatus;
+      spaceId: string;
+    }) => {
+      const { data } = await api.patch(`/tickets/${payload.ticketId}/move`, {
+        status: payload.status,
+      });
+      return data;
+    },
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({
+        queryKey: ["tickets", variables.spaceId],
+      });
+    },
+  });
+}
+
+export function useUpdateTicket() {
+  const queryClient = useQueryClient();
+  const { success, error: showError } = useToast();
+  return useMutation({
+    mutationFn: async (payload: {
+      ticketId: string;
+      spaceId: string;
+      title?: string;
+      description?: string;
+      priority?: string;
+    }) => {
+      const { ticketId, spaceId, ...body } = payload;
+      const { data } = await api.patch(`/tickets/${ticketId}`, body);
+      return data;
+    },
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({
+        queryKey: ["tickets", variables.spaceId],
+      });
+      success("Ticket updated");
+    },
+    onError: (err: Error) => {
+      showError(err.message || "Failed to update ticket");
+    },
+  });
+}
+
+export function useDeleteTicket() {
+  const queryClient = useQueryClient();
+  const { success, error: showError } = useToast();
+  return useMutation({
+    mutationFn: async (payload: { ticketId: string; spaceId: string }) => {
+      await api.delete(`/tickets/${payload.ticketId}`);
+    },
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({
+        queryKey: ["tickets", variables.spaceId],
+      });
+      success("Ticket deleted");
+    },
+    onError: (err: Error) => {
+      showError(err.message || "Failed to delete ticket");
+    },
+  });
+}
+
+export function useAddComment() {
+  const queryClient = useQueryClient();
+  const { error: showError } = useToast();
+  return useMutation({
+    mutationFn: async (payload: {
+      ticketId: string;
+      spaceId: string;
+      content: string;
+    }) => {
+      const { data } = await api.post(`/tickets/${payload.ticketId}/comments`, {
+        content: payload.content,
+      });
+      return data;
+    },
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({
+        queryKey: ["tickets", variables.spaceId],
+      });
+    },
+    onError: (err: Error) => {
+      showError(err.message || "Failed to add comment");
+    },
+  });
+}

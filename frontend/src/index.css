@@ -1,0 +1,174 @@
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap");
+@import "tailwindcss";
+@plugin "@tailwindcss/typography";
+@custom-variant dark (&:where(.dark, .dark *));
+
+@property --spin-angle {
+  syntax: "<angle>";
+  initial-value: 0deg;
+  inherits: false;
+}
+
+@theme {
+  --color-primary-50: #ebf4ff;
+  --color-primary-100: #c3dafe;
+  --color-primary-200: #a3bffa;
+  --color-primary-300: #7f9cf5;
+  --color-primary-400: #667eea;
+  --color-primary-500: #2b6cb0;
+  --color-primary-600: #2c5282;
+  --color-primary-700: #2a4365;
+  --color-primary-800: #1a365d;
+  --color-primary-900: #153e75;
+  --font-sans: "Inter", system-ui, -apple-system, sans-serif;
+  --animate-spin-slow: spin 3s linear infinite;
+  --animate-pulse-dot: pulse 2s ease-in-out infinite;
+  --animate-typing-dot: typing-dot 1.2s ease-in-out infinite;
+  --animate-slide-in-right: slide-in-right 0.2s ease-out;
+  --animate-fade-in: fade-in 0.15s ease-out;
+  --animate-spin-border: spin-border 2s linear infinite;
+}
+
+@keyframes slide-in-right {
+  from {
+    transform: translateX(100%);
+  }
+  to {
+    transform: translateX(0);
+  }
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes typing-dot {
+  0%,
+  60%,
+  100% {
+    opacity: 0.3;
+    transform: translateY(0);
+  }
+  30% {
+    opacity: 1;
+    transform: translateY(-3px);
+  }
+}
+
+@keyframes spin-border {
+  from {
+    --spin-angle: 0deg;
+  }
+  to {
+    --spin-angle: 360deg;
+  }
+}
+
+@layer base {
+  body {
+    @apply font-sans text-gray-900 dark:text-gray-100 bg-white dark:bg-gray-900 m-0;
+  }
+}
+
+.pixelated {
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+}
+
+.spinning-border {
+  position: relative;
+}
+
+.spinning-border::before {
+  content: "";
+  position: absolute;
+  inset: -2px;
+  border-radius: inherit;
+  background: conic-gradient(
+    from var(--spin-angle),
+    #667eea,
+    #7f9cf5,
+    #a3bffa,
+    #667eea
+  );
+  z-index: -1;
+  animation: spin-border 2s linear infinite;
+}
+
+/* Monaco diff decorations */
+.monaco-diff-addition {
+  background-color: rgba(34, 197, 94, 0.15);
+}
+.monaco-diff-addition-glyph {
+  background-color: rgb(34, 197, 94);
+  width: 3px !important;
+  margin-left: 3px;
+}
+.monaco-diff-deletion {
+  background-color: rgba(239, 68, 68, 0.15);
+}
+.monaco-diff-deletion-glyph {
+  background-color: rgb(239, 68, 68);
+  width: 3px !important;
+  margin-left: 3px;
+}
+
+.typing-dot {
+  animation: typing-dot 1.2s ease-in-out infinite;
+}
+
+/* ── ticket detail panel ── */
+
+@keyframes ticket-comment-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.ticket-detail-comment {
+  animation: ticket-comment-in 0.32s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.ticket-detail-panel .prose {
+  font-size: 0.875rem;
+  line-height: 1.6;
+}
+
+.ticket-detail-panel .prose :first-child {
+  margin-top: 0;
+}
+
+.ticket-detail-panel .prose :last-child {
+  margin-bottom: 0;
+}
+
+.ticket-detail-panel .prose img {
+  border-radius: 0.5rem;
+  max-height: 320px;
+  object-fit: contain;
+}
+
+.ticket-detail-panel .ProseMirror:focus {
+  outline: none;
+}
+
+.ProseMirror[data-placeholder][data-empty="true"]::before {
+  content: attr(data-placeholder);
+  color: oklch(0.55 0 0);
+  pointer-events: none;
+  position: absolute;
+}
+
+:is(.dark) .ProseMirror[data-placeholder][data-empty="true"]::before {
+  color: oklch(0.45 0 0);
+}
