@@ -5,13 +5,16 @@ import {
   useCallback,
   type ReactNode,
 } from "react";
-import type { AgentType } from "@/types";
 
+/**
+ * selectedAgent can be a built-in type ("pm", "developer", "tester", "reviewer")
+ * or a custom agent identifier in the format "custom:<agentId>".
+ */
 export interface ChatContextValue {
   isOpen: boolean;
-  selectedAgent: AgentType;
+  selectedAgent: string;
   unreadCount: number;
-  openChat: (agentType?: AgentType) => void;
+  openChat: (agentType?: string) => void;
   closeChat: () => void;
   markRead: () => void;
 }
@@ -20,10 +23,10 @@ const ChatContext = createContext<ChatContextValue | null>(null);
 
 export function ChatProvider({ children }: { children: ReactNode }) {
   const [isOpen, setIsOpen] = useState(false);
-  const [selectedAgent, setSelectedAgent] = useState<AgentType>("pm");
+  const [selectedAgent, setSelectedAgent] = useState<string>("pm");
   const [unreadCount, setUnreadCount] = useState(0);
 
-  const openChat = useCallback((agentType?: AgentType) => {
+  const openChat = useCallback((agentType?: string) => {
     setIsOpen(true);
     if (agentType) {
       setSelectedAgent(agentType);

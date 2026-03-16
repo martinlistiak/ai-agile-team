@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, useMemo } from "react";
 import { useParams } from "react-router-dom";
 import {
   FiChevronDown,
@@ -10,21 +10,23 @@ import {
 import { cn } from "@/lib/cn";
 import { getAvatarSrc } from "@/lib/avatars";
 import { TypingIndicator } from "./TypingIndicator";
-import type { ChatAttachment, ChatMessage, Ticket } from "@/types";
+import type { ChatAttachment, ChatMessage, Ticket, Agent } from "@/types";
 import api from "@/api/client";
 import { useTickets } from "@/api/hooks/useTickets";
+import { useAgents } from "@/api/hooks/useAgents";
 import {
   useChatMessages,
   useSendChatMessage,
-  type AgentType,
 } from "@/api/hooks/useChat";
 
-const AGENT_OPTIONS: {
-  value: AgentType;
+interface AgentOption {
+  value: string;
   label: string;
   description: string;
   color: string;
-}[] = [
+}
+
+const BUILT_IN_AGENT_OPTIONS: AgentOption[] = [
   {
     value: "pm",
     label: "PM",
@@ -51,6 +53,19 @@ const AGENT_OPTIONS: {
       "bg-purple-100 text-purple-700 dark:bg-purple-900 dark:text-purple-300",
   },
 ];
+
+function buildAgentOptions(agents: Agent[]): AgentOption[] {
+  const customAgents = agents
+    .filter((a) => a.isCustom)
+    .map((a) => ({
+      value: `custom:${a.id}`,
+      label: a.name || "Custom",
+      description: a.description || "Custom agent",
+      color:
+        "bg-violet-100 text-violet-700 dark:bg-violet-900 dark:text-violet-300",
+    }));
+  return [...BUILT_IN_AGENT_OPTIONS, ...customAgents];
+}
 
 /* ── Persisted attachment viewer ── */
 
@@ -187,6 +202,17 @@ const AGENT_BADGE: Record<string, { label: string; color: string }> = {
   },
 };
 
+function getAgentBadge(agentType: string): { label: string; color: string } | null {
+  if (AGENT_BADGE[agentType]) return AGENT_BADGE[agentType];
+  if (agentType.startsWith("custom:")) {
+    return {
+      label: "Custom",
+      color: "bg-violet-100 text-violet-700 dark:bg-violet-900 dark:text-violet-300",
+    };
+  }
+  return null;
+}
+
 function ChatBubble({
   message,
   createdTickets,
@@ -198,7 +224,7 @@ function ChatBubble({
 }) {
   const isUser = message.role === "user";
   const agentBadge =
-    !isUser && message.agentType ? AGENT_BADGE[message.agentType] : null;
+    !isUser && message.agentType ? getAgentBadge(message.agentType) : null;
 
   return (
     <div className={cn("flex", isUser ? "justify-end" : "justify-start")}>
@@ -259,7 +285,8 @@ import { TicketDetailPanel } from "../board/TicketDetailPanel";
 
 export function ChatPanel() {
   const { spaceId } = useParams();
-  const [selectedAgent, setSelectedAgent] = useState<AgentType>("pm");
+  const { data: agentsList = [] } = useAgents(spaceId || null);
+  const [selectedAgent, setSelectedAgent] = useState<string>("pm");
   const { data: messages = [], isLoading } = useChatMessages(
     spaceId || null,
     selectedAgent,
@@ -267,6 +294,7 @@ export function ChatPanel() {
   const sendMessage = useSendChatMessage(spaceId || null);
   const { data: tickets = [] } = useTickets(spaceId || null);
   const [input, setInput] = useState("");
+  const AGENT_OPTIONS = useMemo(() => buildAgentOptions(agentsList), [agentsList]);
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const [filePreviews, setFilePreviews] = useState<
     Array<{ file: File; url: string | null }>

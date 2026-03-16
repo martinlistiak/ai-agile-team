@@ -6,7 +6,8 @@ export type TicketStatus =
   | "testing"
   | "staged"
   | "done";
-export type AgentType = "pm" | "developer" | "tester" | "reviewer";
+export type BuiltInAgentType = "pm" | "developer" | "tester" | "reviewer";
+export type AgentType = BuiltInAgentType | "custom";
 export type AgentStatus = "idle" | "active" | "error";
 export type Priority = "low" | "medium" | "high" | "critical";
 
@@ -68,6 +69,10 @@ export interface Agent {
   id: string;
   spaceId: string;
   agentType: AgentType;
+  name: string | null;
+  description: string | null;
+  systemPrompt: string | null;
+  isCustom: boolean;
   rules: string | null;
   avatarRef: string;
   status: AgentStatus;
@@ -130,7 +135,7 @@ export interface ChatMessage {
   role: "user" | "assistant";
   content: string;
   timestamp: string;
-  agentType?: AgentType;
+  agentType?: string;
   attachments: ChatAttachment[];
 }
 

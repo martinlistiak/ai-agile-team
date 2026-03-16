@@ -1,13 +1,13 @@
 import { getAvatarSrc } from "@/lib/avatars";
-import type { AgentType } from "@/types";
 
 const AGENT_LABEL: Record<string, string> = {
   pm: "PM",
   developer: "Dev",
+  reviewer: "Review",
   tester: "Test",
 };
 
-export function TypingIndicator({ agentType }: { agentType: AgentType }) {
+export function TypingIndicator({ agentType }: { agentType: string }) {
   return (
     <div className="flex justify-start">
       <img
