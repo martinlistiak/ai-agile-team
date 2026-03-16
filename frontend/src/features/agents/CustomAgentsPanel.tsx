@@ -261,8 +261,11 @@ export function CustomAgentsPanel({ spaceId, onClose }: CustomAgentsPanelProps) 
   };
 
   return (
-    <Drawer onClose={onClose} title="Custom Agents">
+    <Drawer onClose={onClose} aria-label="Custom Agents">
       <div className="p-5">
+        <h2 className="mb-4 text-base font-semibold text-gray-900 dark:text-gray-100">
+          Custom Agents
+        </h2>
         {mode === "list" && (
           <>
             <div className="mb-4 flex items-center justify-between">

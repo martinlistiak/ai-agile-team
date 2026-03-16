@@ -366,13 +366,9 @@ export function AgentInspector({ agent, onClose }: AgentInspectorProps) {
     setPage(1);
   }, [agent.id]);
 
-  const handleClose = useCallback(
-    (e: React.MouseEvent) => {
-      e.stopPropagation();
-      onClose();
-    },
-    [onClose],
-  );
+  const handleClose = useCallback(() => {
+    onClose();
+  }, [onClose]);
 
   const executions = data?.data ?? [];
   const total = data?.total ?? 0;

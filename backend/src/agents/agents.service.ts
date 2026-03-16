@@ -40,16 +40,15 @@ export class AgentsService {
     spaceId: string,
     data: { name: string; description?: string; systemPrompt?: string },
   ): Promise<Agent> {
-    const agent = this.agentRepo.create({
-      spaceId,
-      agentType: "custom",
-      name: data.name,
-      description: data.description ?? null,
-      systemPrompt: data.systemPrompt ?? null,
-      isCustom: true,
-      avatarRef: "custom_default.png",
-      status: "idle",
-    });
+    const agent = new Agent();
+    agent.spaceId = spaceId;
+    agent.agentType = "custom";
+    agent.name = data.name;
+    if (data.description) agent.description = data.description;
+    if (data.systemPrompt) agent.systemPrompt = data.systemPrompt;
+    agent.isCustom = true;
+    agent.avatarRef = "custom_default.png";
+    agent.status = "idle";
     return this.agentRepo.save(agent);
   }
 

@@ -58,6 +58,7 @@ const ticketArb: fc.Arbitrary<Ticket> = fc
     status: ticketStatusArb,
     priority: priorityArb,
     assigneeAgentId: fc.option(fc.uuid(), { nil: null }),
+    assigneeUserId: fc.option(fc.uuid(), { nil: null }),
     prUrl: fc.option(fc.webUrl(), { nil: null }),
     createdAt: fc
       .integer({
