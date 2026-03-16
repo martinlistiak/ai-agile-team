@@ -3,6 +3,8 @@ import { AgentsService } from "../agents.service";
 import { Repository } from "typeorm";
 import { Agent } from "../../entities/agent.entity";
 import { Execution } from "../../entities/execution.entity";
+import { ExecutionRegistry } from "../execution-registry";
+import { EventsGateway } from "../../chat/events.gateway";
 
 /**
  * Feature: spec-gap-implementation
@@ -56,7 +58,12 @@ describe("Feature: spec-gap-implementation, Property 4: Execution history is chr
       findAndCount: findAndCountMock,
     } as unknown as Repository<Execution>;
     const agentRepo = {} as Repository<Agent>;
-    service = new AgentsService(agentRepo, executionRepo);
+    service = new AgentsService(
+      agentRepo,
+      executionRepo,
+      {} as ExecutionRegistry,
+      {} as EventsGateway,
+    );
   });
 
   it("returned executions are ordered by startTime DESC and contain required fields", async () => {
@@ -129,7 +136,12 @@ describe("Feature: spec-gap-implementation, Property 5: Execution pagination ret
       findAndCount: findAndCountMock,
     } as unknown as Repository<Execution>;
     const agentRepo = {} as Repository<Agent>;
-    service = new AgentsService(agentRepo, executionRepo);
+    service = new AgentsService(
+      agentRepo,
+      executionRepo,
+      {} as ExecutionRegistry,
+      {} as EventsGateway,
+    );
   });
 
   it("response contains at most `limit` items, correct total, and correct page", async () => {

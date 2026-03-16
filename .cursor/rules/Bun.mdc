@@ -1,0 +1,5 @@
+---
+alwaysApply: true
+---
+
+Use bun for everything instead of yarn

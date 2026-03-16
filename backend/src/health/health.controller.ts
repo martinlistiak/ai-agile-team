@@ -5,11 +5,13 @@ import {
   HttpStatus,
   Inject,
 } from "@nestjs/common";
+import { ApiTags, ApiOperation, ApiResponse } from "@nestjs/swagger";
 import { SkipThrottle } from "@nestjs/throttler";
 import { InjectDataSource } from "@nestjs/typeorm";
 import { DataSource } from "typeorm";
 import Redis from "ioredis";
 
+@ApiTags("Health")
 @SkipThrottle()
 @Controller("health")
 export class HealthController {
@@ -19,11 +21,13 @@ export class HealthController {
   ) {}
 
   @Get()
+  @ApiOperation({ summary: "Check API, database, and Redis status" })
+  @ApiResponse({ status: 200, description: "All services healthy" })
+  @ApiResponse({ status: 503, description: "One or more services down" })
   async check() {
     let dbStatus: "up" | "down" = "down";
     let redisStatus: "up" | "down" = "down";
 
-    // Check PostgreSQL
     try {
       await this.dataSource.query("SELECT 1");
       dbStatus = "up";
@@ -31,7 +35,6 @@ export class HealthController {
       dbStatus = "down";
     }
 
-    // Check Redis
     try {
       const result = await this.redis.ping();
       redisStatus = result === "PONG" ? "up" : "down";

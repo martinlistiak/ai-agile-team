@@ -2,6 +2,8 @@ import { AgentsService } from "../agents.service";
 import { Repository } from "typeorm";
 import { Agent } from "../../entities/agent.entity";
 import { Execution } from "../../entities/execution.entity";
+import { ExecutionRegistry } from "../execution-registry";
+import { EventsGateway } from "../../chat/events.gateway";
 
 describe("AgentsService.getExecutionsByAgent", () => {
   let service: AgentsService;
@@ -13,7 +15,9 @@ describe("AgentsService.getExecutionsByAgent", () => {
       findAndCount: findAndCountMock,
     } as unknown as Repository<Execution>;
     const agentRepo = {} as Repository<Agent>;
-    service = new AgentsService(agentRepo, executionRepo);
+    const registry = {} as ExecutionRegistry;
+    const gateway = {} as EventsGateway;
+    service = new AgentsService(agentRepo, executionRepo, registry, gateway);
   });
 
   it("should return paginated executions ordered by startTime DESC", async () => {

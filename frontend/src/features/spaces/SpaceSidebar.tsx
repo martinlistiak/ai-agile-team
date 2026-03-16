@@ -27,6 +27,7 @@ import {
   FiPlus,
   FiSun,
   FiUsers,
+  FiLink,
 } from "react-icons/fi";
 import { cn } from "@/lib/cn";
 import { getSpaceColor } from "@/lib/spaceColor";
@@ -218,7 +219,7 @@ export function SpaceSidebar() {
   }, [showUserMenu]);
 
   return (
-    <div className="w-16 bg-gray-50 dark:bg-gray-900/60 flex flex-col shrink-0">
+    <div className="w-16 border-r border-gray-200 bg-gray-50 dark:bg-gray-900/60 flex flex-col shrink-0">
       <div className="flex flex-col items-center gap-3 px-3 py-4">
         <div className="relative" ref={userMenuRef}>
           <RailTooltip label={user?.name || "User menu"}>
@@ -275,6 +276,17 @@ export function SpaceSidebar() {
               >
                 <FiUsers />
                 <span>Team</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowUserMenu(false);
+                  navigate("/integrations");
+                }}
+                className="cursor-pointer flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm text-gray-700 transition-colors hover:bg-gray-100 dark:text-gray-200 dark:hover:bg-gray-700"
+              >
+                <FiLink />
+                <span>Integrations</span>
               </button>
               <button
                 type="button"

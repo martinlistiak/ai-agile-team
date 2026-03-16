@@ -6,6 +6,15 @@ import { randomUUID } from "crypto";
 import { Ticket } from "../entities/ticket.entity";
 import { Execution } from "../entities/execution.entity";
 
+/** Update payload that allows null for assignee fields (to clear assignment). */
+export type TicketUpdateData = Omit<
+  Partial<Ticket>,
+  "assigneeAgentId" | "assigneeUserId"
+> & {
+  assigneeAgentId?: string | null;
+  assigneeUserId?: string | null;
+};
+
 @Injectable()
 export class TicketsService {
   constructor(
@@ -46,8 +55,16 @@ export class TicketsService {
     return saved;
   }
 
-  async update(id: string, data: Partial<Ticket>): Promise<Ticket> {
+  async update(id: string, data: TicketUpdateData): Promise<Ticket> {
     const ticket = await this.findById(id);
+
+    // Assigning to agent clears user assignee and vice versa
+    // Use else-if to avoid the second branch undoing the first when it sets null
+    if (data.assigneeAgentId !== undefined) {
+      (data as Record<string, unknown>).assigneeUserId = null;
+    } else if (data.assigneeUserId !== undefined) {
+      (data as Record<string, unknown>).assigneeAgentId = null;
+    }
 
     // Record status transition if status is changing
     if (data.status && data.status !== ticket.status) {
@@ -60,7 +77,7 @@ export class TicketsService {
       data.statusHistory = [...(ticket.statusHistory || []), entry];
     }
 
-    await this.ticketRepo.update(id, data);
+    await this.ticketRepo.update(id, data as Partial<Ticket>);
     const updated = await this.findById(id);
     this.eventEmitter.emit("ticket.updated", updated);
     return updated;

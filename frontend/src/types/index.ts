@@ -6,7 +6,7 @@ export type TicketStatus =
   | "testing"
   | "staged"
   | "done";
-export type AgentType = "pm" | "developer" | "tester";
+export type AgentType = "pm" | "developer" | "tester" | "reviewer";
 export type AgentStatus = "idle" | "active" | "error";
 export type Priority = "low" | "medium" | "high" | "critical";
 
@@ -91,11 +91,19 @@ export interface Ticket {
   status: TicketStatus;
   priority: Priority;
   assigneeAgentId: string | null;
+  assigneeUserId: string | null;
   comments: TicketComment[];
   statusHistory: StatusTransition[];
   prUrl: string | null;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface AssignableUser {
+  id: string;
+  name: string;
+  email: string;
+  avatarUrl: string | null;
 }
 
 export interface TicketComment {

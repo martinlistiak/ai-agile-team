@@ -11,10 +11,19 @@ import {
   Logger,
   BadRequestException,
 } from "@nestjs/common";
-import { AuthGuard } from "@nestjs/passport";
+import {
+  ApiTags,
+  ApiOperation,
+  ApiResponse,
+  ApiBearerAuth,
+  ApiBody,
+  ApiExcludeEndpoint,
+} from "@nestjs/swagger";
+import { JwtOrApiKeyGuard } from "../auth/jwt-or-apikey.guard";
 import { Request } from "express";
 import { BillingService } from "./billing.service";
 
+@ApiTags("Billing")
 @Controller("billing")
 export class BillingController {
   private readonly logger = new Logger(BillingController.name);
@@ -22,7 +31,20 @@ export class BillingController {
   constructor(private billingService: BillingService) {}
 
   @Post("checkout")
-  @UseGuards(AuthGuard("jwt"))
+  @UseGuards(JwtOrApiKeyGuard)
+  @ApiBearerAuth("bearer")
+  @ApiOperation({ summary: "Create a Stripe checkout session" })
+  @ApiBody({
+    schema: {
+      type: "object",
+      properties: {
+        plan: { type: "string", enum: ["team", "enterprise"] },
+        interval: { type: "string", enum: ["monthly", "annual"] },
+      },
+      required: ["plan", "interval"],
+    },
+  })
+  @ApiResponse({ status: 201, description: "Checkout session URL" })
   async createCheckout(
     @Req() req: Request,
     @Body()
@@ -36,19 +58,26 @@ export class BillingController {
   }
 
   @Post("portal")
-  @UseGuards(AuthGuard("jwt"))
+  @UseGuards(JwtOrApiKeyGuard)
+  @ApiBearerAuth("bearer")
+  @ApiOperation({ summary: "Create a Stripe billing portal session" })
+  @ApiResponse({ status: 201, description: "Portal session URL" })
   async createPortal(@Req() req: Request) {
     return this.billingService.createPortalSession((req.user as any).id);
   }
 
   @Get("subscription")
-  @UseGuards(AuthGuard("jwt"))
+  @UseGuards(JwtOrApiKeyGuard)
+  @ApiBearerAuth("bearer")
+  @ApiOperation({ summary: "Get current subscription info" })
+  @ApiResponse({ status: 200, description: "Subscription details" })
   async getSubscription(@Req() req: Request) {
     return this.billingService.getSubscriptionInfo((req.user as any).id);
   }
 
   @Post("webhook")
   @HttpCode(200)
+  @ApiExcludeEndpoint()
   async handleWebhook(
     @Req() req: RawBodyRequest<Request>,
     @Headers("stripe-signature") signature: string,

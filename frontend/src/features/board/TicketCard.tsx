@@ -13,6 +13,7 @@ import { AgentBadge } from "../agents/AgentPanel";
 const AGENT_BORDER_COLORS: Record<string, string> = {
   pm: "#3b82f6",
   developer: "#8b5cf6",
+  reviewer: "#f59e0b",
   tester: "#22c55e",
 };
 
@@ -160,24 +161,26 @@ export function TicketCard({
               />
             </ElectricBorder>
           )}
-          <button
-            onClick={handlePlay}
-            disabled={isDisabled}
-            title={tooltipText}
-            className={cn(
-              "cursor-pointer p-1 rounded-md transition-colors",
-              isDisabled
-                ? "opacity-40 cursor-not-allowed text-gray-400"
-                : "hover:bg-gray-100 dark:hover:bg-gray-600 text-gray-400 hover:text-primary-500",
-            )}
-          >
-            {isLoading ? (
-              // agent avatar
-              <AgentBadge agent={assignedAgent!} onClick={() => {}} />
-            ) : (
-              <FiPlay className="text-sm" />
-            )}
-          </button>
+          {!isDisabled && (
+            <button
+              onClick={handlePlay}
+              disabled={isDisabled}
+              title={tooltipText}
+              className={cn(
+                "cursor-pointer p-1 rounded-md transition-colors",
+                isDisabled
+                  ? "opacity-40 cursor-not-allowed text-gray-400"
+                  : "hover:bg-gray-100 dark:hover:bg-gray-600 text-gray-400 hover:text-primary-500",
+              )}
+            >
+              {isLoading ? (
+                // agent avatar
+                <AgentBadge agent={assignedAgent!} onClick={() => {}} />
+              ) : (
+                <FiPlay className="text-sm" />
+              )}
+            </button>
+          )}
         </div>
       </div>
 

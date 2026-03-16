@@ -5,6 +5,9 @@ import {
   useGithubRepositories,
   useGitlabRepositories,
 } from "@/api/hooks/useSpaces";
+import { Modal } from "@/components/Modal";
+import { overlaySurfaceClass } from "@/components/overlaySurface";
+import { cn } from "@/lib/cn";
 import type { GithubRepository, GitlabRepository } from "@/types";
 
 export type WizardStep = 1 | 2 | 3;
@@ -85,7 +88,14 @@ export function OnboardingWizard({ onClose }: OnboardingWizardProps = {}) {
   };
 
   const card = (
-    <div className="w-full max-w-xl rounded-2xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 shadow-sm p-8 relative">
+    <div
+      className={cn(
+        "w-full max-w-xl rounded-2xl shadow-sm p-8 relative",
+        onClose
+          ? overlaySurfaceClass
+          : "border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800",
+      )}
+    >
       {onClose && (
         <button
           type="button"
@@ -331,16 +341,10 @@ export function OnboardingWizard({ onClose }: OnboardingWizardProps = {}) {
   );
 
   if (onClose) {
-    // Modal mode: render as an overlay
     return (
-      <div
-        className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
-        onClick={(e) => {
-          if (e.target === e.currentTarget) onClose();
-        }}
-      >
+      <Modal onClose={onClose} className="max-w-lg">
         {card}
-      </div>
+      </Modal>
     );
   }
 

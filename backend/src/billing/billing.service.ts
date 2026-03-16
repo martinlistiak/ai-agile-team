@@ -258,6 +258,39 @@ export class BillingService {
     return map[status] || "none";
   }
 
+  async updateSubscriptionQuantity(
+    ownerId: string,
+    quantity: number,
+  ): Promise<void> {
+    const user = await this.userRepo.findOneBy({ id: ownerId });
+    if (!user?.stripeSubscriptionId) {
+      this.logger.warn(
+        `No Stripe subscription found for user ${ownerId}, skipping quantity update`,
+      );
+      return;
+    }
+
+    const subscription = await this.stripe.subscriptions.retrieve(
+      user.stripeSubscriptionId,
+    );
+    const itemId = subscription.items?.data?.[0]?.id;
+    if (!itemId) {
+      this.logger.warn(
+        `No subscription item found for subscription ${user.stripeSubscriptionId}`,
+      );
+      return;
+    }
+
+    await this.stripe.subscriptions.update(user.stripeSubscriptionId, {
+      items: [{ id: itemId, quantity }],
+      proration_behavior: "always_invoice",
+    });
+
+    this.logger.log(
+      `Updated subscription ${user.stripeSubscriptionId} to quantity ${quantity}`,
+    );
+  }
+
   private extractPlanTier(subscription: Stripe.Subscription): PlanTier {
     const metadata = subscription.metadata;
     if (metadata?.plan === "enterprise") return "enterprise";

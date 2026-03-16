@@ -7,6 +7,7 @@ import type { AgentType } from "@/types";
 const AGENTS: { value: AgentType; label: string }[] = [
   { value: "pm", label: "PM Agent" },
   { value: "developer", label: "Developer Agent" },
+  { value: "reviewer", label: "Reviewer Agent" },
   { value: "tester", label: "Tester Agent" },
 ];
 

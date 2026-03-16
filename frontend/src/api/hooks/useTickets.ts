@@ -21,8 +21,9 @@ export function useCreateTicket() {
     mutationFn: async (payload: {
       spaceId: string;
       title: string;
-      description: string;
-      priority: string;
+      description?: string;
+      priority?: string;
+      status?: string;
     }) => {
       const { data } = await api.post(
         `/spaces/${payload.spaceId}/tickets`,
@@ -73,6 +74,9 @@ export function useUpdateTicket() {
       title?: string;
       description?: string;
       priority?: string;
+      assigneeAgentId?: string | null;
+      assigneeUserId?: string | null;
+      startWorking?: boolean;
     }) => {
       const { ticketId, spaceId, ...body } = payload;
       const { data } = await api.patch(`/tickets/${ticketId}`, body);

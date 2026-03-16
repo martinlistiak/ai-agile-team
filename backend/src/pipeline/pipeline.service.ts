@@ -6,6 +6,7 @@ import { Ticket } from "../entities/ticket.entity";
 import { PmAgentService } from "../agents/pm-agent.service";
 import { DeveloperAgentService } from "../agents/developer-agent.service";
 import { TesterAgentService } from "../agents/tester-agent.service";
+import { ReviewerAgentService } from "../agents/reviewer-agent.service";
 import { SuggestedRulesService } from "../rules/suggested-rules.service";
 import { EventsGateway } from "../chat/events.gateway";
 
@@ -39,10 +40,21 @@ export const PIPELINE_STAGES: PipelineStage[] = [
 ];
 
 export const STAGE_AGENT_MAP: Partial<
-  Record<PipelineStage, "developer" | "tester">
+  Record<PipelineStage, "developer" | "tester" | "reviewer">
 > = {
   development: "developer",
+  review: "reviewer",
   testing: "tester",
+};
+
+/** Default column (status) where each agent type operates. Used when assigning a ticket to an agent and starting work. */
+export const AGENT_DEFAULT_STATUS: Partial<
+  Record<"pm" | "developer" | "tester" | "reviewer", PipelineStage>
+> = {
+  pm: "planning",
+  developer: "development",
+  reviewer: "review",
+  tester: "testing",
 };
 
 @Injectable()
@@ -55,6 +67,7 @@ export class PipelineService {
     @InjectRepository(Ticket) private ticketRepo: Repository<Ticket>,
     private developerAgentService: DeveloperAgentService,
     private testerAgentService: TesterAgentService,
+    private reviewerAgentService: ReviewerAgentService,
     private suggestedRulesService: SuggestedRulesService,
     private eventsGateway: EventsGateway,
   ) {}
@@ -78,6 +91,7 @@ export class PipelineService {
     // Only auto-trigger if the stage is enabled in pipeline config and has a mapped agent
     if (!targetAgent) return;
     if (status === "development" && !pipelineConfig.development) return;
+    if (status === "review" && !pipelineConfig.review) return;
     if (status === "testing" && !pipelineConfig.testing) return;
 
     this.activeRuns.add(ticket.id);
@@ -92,7 +106,7 @@ export class PipelineService {
 
   private async runAgentForStage(
     ticket: Ticket,
-    agentType: "developer" | "tester",
+    agentType: "developer" | "tester" | "reviewer",
     spaceId: string,
   ): Promise<void> {
     this.logger.log(
@@ -110,6 +124,8 @@ export class PipelineService {
       let result: string;
       if (agentType === "developer") {
         result = await this.developerAgentService.run(spaceId, "", ticket.id);
+      } else if (agentType === "reviewer") {
+        result = await this.reviewerAgentService.run(spaceId, "", ticket.id);
       } else {
         result = await this.testerAgentService.run(spaceId, "", ticket.id);
       }
@@ -129,8 +145,10 @@ export class PipelineService {
       }
 
       // Emit pipeline_completed event so frontend can show progression prompts
+      // Use the fresh ticket status from DB — agents may have already advanced the ticket
+      const actualStatus = updatedTicket?.status ?? ticket.status;
       const currentStageIndex = PIPELINE_STAGES.indexOf(
-        ticket.status as PipelineStage,
+        actualStatus as PipelineStage,
       );
       const nextStage =
         currentStageIndex < PIPELINE_STAGES.length - 1
@@ -138,7 +156,7 @@ export class PipelineService {
           : null;
       this.eventsGateway.emitPipelineCompleted(spaceId, {
         ticketId: ticket.id,
-        completedStage: ticket.status,
+        completedStage: actualStatus,
         nextStage,
         agentType,
       });

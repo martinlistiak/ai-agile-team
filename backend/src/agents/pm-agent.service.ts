@@ -8,6 +8,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { Agent } from "../entities/agent.entity";
 import { Ticket } from "../entities/ticket.entity";
 import { Execution } from "../entities/execution.entity";
+import { getModelForAgent } from "./agent-models.config";
 import { Space } from "../entities/space.entity";
 import { TicketsService } from "../tickets/tickets.service";
 import { RulesService } from "../rules/rules.service";
@@ -15,6 +16,7 @@ import { SuggestedRulesService } from "../rules/suggested-rules.service";
 import { GithubService } from "./github.service";
 import { GitlabService } from "./gitlab.service";
 import { EventsGateway } from "../chat/events.gateway";
+import { ExecutionRegistry } from "./execution-registry";
 
 const TOOLS: Anthropic.Tool[] = [
   {
@@ -65,6 +67,21 @@ const TOOLS: Anthropic.Tool[] = [
     },
   },
   {
+    name: "delete_ticket",
+    description:
+      "Delete an existing ticket from the kanban board. Use this when the user asks to remove, delete, or discard a ticket/task.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        ticket_id: {
+          type: "string",
+          description: "The ID of the ticket to delete",
+        },
+      },
+      required: ["ticket_id"],
+    },
+  },
+  {
     name: "list_files",
     description:
       "List files and directories at a given path in the connected repository. Returns names with a trailing / for directories.",
@@ -103,6 +120,8 @@ const SYSTEM_PROMPT = `You are a Product Manager AI agent in an agile software d
 3. Assign appropriate priority levels based on business impact and urgency
 4. Create multiple tickets when a feature requires several work items
 5. Browse the connected codebase to understand existing implementation, suggest next steps, and identify gaps in requirements
+
+You can also delete tickets when the user asks to remove, discard, or clean up tasks that are no longer needed.
 
 When creating tickets:
 - Use clear, concise titles that describe the work item
@@ -172,6 +191,7 @@ export class PmAgentService {
     @InjectRepository(Agent) private agentRepo: Repository<Agent>,
     @InjectRepository(Execution) private executionRepo: Repository<Execution>,
     @InjectRepository(Space) private spaceRepo: Repository<Space>,
+    private executionRegistry: ExecutionRegistry,
   ) {
     this.client = new Anthropic({
       apiKey: this.configService.get("ANTHROPIC_API_KEY", ""),
@@ -187,8 +207,17 @@ export class PmAgentService {
       data: Buffer;
     }> = [],
   ): Promise<string> {
-    const agent = await this.agentRepo.findOneBy({ spaceId, agentType: "pm" });
-    if (!agent) throw new Error("PM agent not found for space");
+    let agent = await this.agentRepo.findOneBy({ spaceId, agentType: "pm" });
+    if (!agent) {
+      this.logger.warn(`PM agent missing for space ${spaceId}, auto-creating`);
+      agent = this.agentRepo.create({
+        spaceId,
+        agentType: "pm",
+        avatarRef: "pm_default.png",
+        status: "idle",
+      });
+      await this.agentRepo.save(agent);
+    }
 
     await this.agentRepo.update(agent.id, { status: "active" });
     this.eventsGateway.emitAgentStatus(spaceId, agent.id, "active");
@@ -200,6 +229,7 @@ export class PmAgentService {
       actionLog: [],
     });
     await this.executionRepo.save(execution);
+    this.executionRegistry.register(execution.id);
 
     try {
       const userContent: any[] = [];
@@ -247,9 +277,9 @@ export class PmAgentService {
       // Agent tool-use loop
       while (true) {
         const response = await this.client.messages.create({
-          model: this.configService.get(
-            "ANTHROPIC_MODEL",
-            "claude-sonnet-4-20250514",
+          model: getModelForAgent(
+            "pm",
+            this.configService.get("ANTHROPIC_MODEL"),
           ),
           max_tokens: 4096,
           system: systemPrompt,
@@ -299,6 +329,7 @@ export class PmAgentService {
       }
 
       // Update execution and agent status
+      this.executionRegistry.remove(execution.id);
       execution.status = "completed";
       execution.endTime = new Date();
       await this.executionRepo.save(execution);
@@ -318,6 +349,7 @@ export class PmAgentService {
       return finalText || "Tickets have been created successfully.";
     } catch (error) {
       this.logger.error("PM Agent error:", error);
+      this.executionRegistry.remove(execution.id);
       execution.status = "failed";
       execution.endTime = new Date();
       await this.executionRepo.save(execution);
@@ -355,6 +387,10 @@ export class PmAgentService {
         const { ticket_id, ...updates } = input;
         const ticket = await this.ticketsService.update(ticket_id, updates);
         return { success: true, ticketId: ticket.id };
+      }
+      case "delete_ticket": {
+        await this.ticketsService.delete(input.ticket_id);
+        return { success: true, ticketId: input.ticket_id };
       }
       case "list_files": {
         try {

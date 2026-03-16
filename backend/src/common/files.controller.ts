@@ -9,17 +9,43 @@ import {
   Body,
   BadRequestException,
 } from "@nestjs/common";
+import {
+  ApiTags,
+  ApiOperation,
+  ApiResponse,
+  ApiConsumes,
+  ApiBody,
+} from "@nestjs/swagger";
 import { FileInterceptor } from "@nestjs/platform-express";
 import { Response } from "express";
 import "multer";
 import { FileStorageService } from "./file-storage.service";
 
+@ApiTags("Files")
 @Controller("files")
 export class FilesController {
   constructor(private readonly fileStorageService: FileStorageService) {}
 
   @Post("upload")
   @UseInterceptors(FileInterceptor("file"))
+  @ApiOperation({ summary: "Upload a file" })
+  @ApiConsumes("multipart/form-data")
+  @ApiBody({
+    schema: {
+      type: "object",
+      properties: {
+        file: { type: "string", format: "binary" },
+        spaceId: { type: "string", format: "uuid" },
+        entityType: { type: "string" },
+        entityId: { type: "string" },
+      },
+      required: ["file", "spaceId", "entityType", "entityId"],
+    },
+  })
+  @ApiResponse({
+    status: 201,
+    description: "File uploaded, returns key and URL",
+  })
   async upload(
     @UploadedFile() file: Express.Multer.File,
     @Body("spaceId") spaceId: string,
@@ -50,6 +76,10 @@ export class FilesController {
   }
 
   @Get("*path")
+  @ApiOperation({
+    summary: "Get a file by storage path (redirects to signed URL)",
+  })
+  @ApiResponse({ status: 302, description: "Redirects to signed URL" })
   async getFile(@Param("path") path: string[], @Res() res: Response) {
     const key = path.join("/");
     const url = await this.fileStorageService.getSignedUrl(key);

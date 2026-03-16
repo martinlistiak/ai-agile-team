@@ -122,13 +122,7 @@ export function TeamPage() {
   };
 
   const handleSeatChange = async (seatCount: number) => {
-    if (!selectedTeam) return;
-    try {
-      await api.patch(`/teams/${selectedTeam.id}/seats`, { seatCount });
-      await loadTeam(selectedTeam.id);
-    } catch (err: any) {
-      showError(friendlyError(err, "Failed to update seats"));
-    }
+    // Seats are now auto-calculated based on member count
   };
 
   const isOwnerOrAdmin =
@@ -141,6 +135,10 @@ export function TeamPage() {
     selectedTeam?.members.some(
       (m) => m.userId === user?.id && m.role === "owner",
     ) ?? false;
+
+  const canInvite =
+    isOwnerOrAdmin &&
+    (user?.planTier === "team" || user?.planTier === "enterprise");
 
   if (loading) {
     return (
@@ -214,29 +212,12 @@ export function TeamPage() {
                     Seats used
                   </p>
                   <p className="text-lg font-semibold text-gray-900 dark:text-gray-100">
-                    {selectedTeam.members.length} / {selectedTeam.seatCount}
+                    {selectedTeam.members.length}
+                  </p>
+                  <p className="text-xs text-gray-400 mt-0.5">
+                    Billed per seat on your subscription
                   </p>
                 </div>
-                {isOwner && (
-                  <div className="flex items-center gap-2">
-                    <label
-                      htmlFor="seat-count"
-                      className="text-sm text-gray-500 dark:text-gray-400"
-                    >
-                      Total seats
-                    </label>
-                    <input
-                      id="seat-count"
-                      type="number"
-                      min={selectedTeam.members.length}
-                      value={selectedTeam.seatCount}
-                      onChange={(e) =>
-                        handleSeatChange(parseInt(e.target.value, 10))
-                      }
-                      className="w-20 px-2 py-1.5 rounded-lg border border-gray-200 dark:border-gray-700 bg-transparent text-sm text-gray-900 dark:text-gray-100 text-center focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                    />
-                  </div>
-                )}
               </div>
 
               {/* Invite form */}
@@ -245,34 +226,48 @@ export function TeamPage() {
                   <p className="text-sm font-medium text-gray-900 dark:text-gray-100 mb-3">
                     Invite a new member
                   </p>
-                  <div className="flex gap-2">
-                    <input
-                      type="email"
-                      value={inviteEmail}
-                      onChange={(e) => setInviteEmail(e.target.value)}
-                      placeholder="colleague@company.com"
-                      className="flex-1 px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-transparent text-sm text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                      onKeyDown={(e) => e.key === "Enter" && handleInvite()}
-                    />
-                    <select
-                      value={inviteRole}
-                      onChange={(e) =>
-                        setInviteRole(e.target.value as "member" | "admin")
-                      }
-                      className="px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-transparent text-sm text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                      aria-label="Role"
-                    >
-                      <option value="member">Member</option>
-                      <option value="admin">Admin</option>
-                    </select>
-                    <button
-                      onClick={handleInvite}
-                      disabled={inviting || !inviteEmail.trim()}
-                      className="px-4 py-2 rounded-lg bg-indigo-500 text-white text-sm font-medium hover:bg-indigo-600 transition-colors disabled:opacity-50"
-                    >
-                      {inviting ? "Sending…" : "Send invite"}
-                    </button>
-                  </div>
+                  {canInvite ? (
+                    <div className="flex gap-2">
+                      <input
+                        type="email"
+                        value={inviteEmail}
+                        onChange={(e) => setInviteEmail(e.target.value)}
+                        placeholder="colleague@company.com"
+                        className="flex-1 px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-transparent text-sm text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                        onKeyDown={(e) => e.key === "Enter" && handleInvite()}
+                      />
+                      <select
+                        value={inviteRole}
+                        onChange={(e) =>
+                          setInviteRole(e.target.value as "member" | "admin")
+                        }
+                        className="px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-transparent text-sm text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                        aria-label="Role"
+                      >
+                        <option value="member">Member</option>
+                        <option value="admin">Admin</option>
+                      </select>
+                      <button
+                        onClick={handleInvite}
+                        disabled={inviting || !inviteEmail.trim()}
+                        className="px-4 py-2 rounded-lg bg-indigo-500 text-white text-sm font-medium hover:bg-indigo-600 transition-colors disabled:opacity-50"
+                      >
+                        {inviting ? "Sending…" : "Send invite"}
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="flex items-center justify-between">
+                      <p className="text-sm text-gray-500 dark:text-gray-400">
+                        Upgrade to a Team or Enterprise plan to invite members.
+                      </p>
+                      <a
+                        href="/billing"
+                        className="text-sm font-medium text-indigo-500 hover:text-indigo-600 transition-colors"
+                      >
+                        Upgrade plan
+                      </a>
+                    </div>
+                  )}
                 </div>
               )}
 

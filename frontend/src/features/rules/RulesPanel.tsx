@@ -1,13 +1,26 @@
 import { useState } from 'react';
-import { FiPlus, FiTrash2, FiX, FiBook } from 'react-icons/fi';
+import { FiPlus, FiTrash2, FiX } from 'react-icons/fi';
 import { useRules, useCreateRule, useUpdateRule, useDeleteRule, type Rule } from '@/api/hooks/useRules';
 import { useAgents } from '@/api/hooks/useAgents';
+import { Modal } from '@/components/Modal';
 import { cn } from '@/lib/cn';
 
-const SCOPE_LABELS: Record<string, { label: string; color: string }> = {
-  space: { label: 'Space', color: 'bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300' },
-  agent: { label: 'Agent', color: 'bg-purple-100 text-purple-700 dark:bg-purple-900 dark:text-purple-300' },
-  'cross-team': { label: 'Cross-Team', color: 'bg-orange-100 text-orange-700 dark:bg-orange-900 dark:text-orange-300' },
+const SCOPE_LABELS: Record<string, { label: string; borderColor: string; textColor: string }> = {
+  space: {
+    label: 'Space',
+    borderColor: 'border-l-primary-500/70 dark:border-l-primary-400/60',
+    textColor: 'text-primary-600 dark:text-primary-400',
+  },
+  agent: {
+    label: 'Agent',
+    borderColor: 'border-l-amber-600/70 dark:border-l-amber-500/50',
+    textColor: 'text-amber-700 dark:text-amber-400',
+  },
+  'cross-team': {
+    label: 'Cross-team',
+    borderColor: 'border-l-emerald-600/70 dark:border-l-emerald-500/50',
+    textColor: 'text-emerald-700 dark:text-emerald-400',
+  },
 };
 
 function RuleItem({ rule, spaceId }: { rule: Rule; spaceId: string }) {
@@ -16,32 +29,48 @@ function RuleItem({ rule, spaceId }: { rule: Rule; spaceId: string }) {
   const scopeInfo = SCOPE_LABELS[rule.scope] || SCOPE_LABELS.space;
 
   return (
-    <div className={cn('rounded-lg border p-3', rule.isActive ? 'border-gray-200 dark:border-gray-700' : 'border-dashed border-gray-300 opacity-60 dark:border-gray-600')}>
-      <div className="mb-2 flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <span className={cn('rounded-full px-2 py-0.5 text-[10px] font-medium', scopeInfo.color)}>
-            {scopeInfo.label}
-          </span>
-          <span className="text-[10px] text-gray-400">v{rule.version}</span>
+    <div
+      className={cn(
+        'group relative border-l-2 py-3 pl-4 pr-2 transition-colors',
+        scopeInfo.borderColor,
+        rule.isActive
+          ? 'opacity-100'
+          : 'opacity-50 dark:opacity-40',
+      )}
+    >
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0 flex-1">
+          <div className="mb-1 flex items-center gap-2">
+            <span className={cn('text-[11px] font-medium uppercase tracking-wider', scopeInfo.textColor)}>
+              {scopeInfo.label}
+            </span>
+            <span className="text-[10px] text-gray-500 dark:text-gray-500">v{rule.version}</span>
+          </div>
+          <p className="text-sm leading-relaxed text-gray-800 dark:text-gray-200">{rule.content}</p>
         </div>
-        <div className="flex items-center gap-1">
+        <div className="flex shrink-0 items-center gap-1">
           <button
             type="button"
             onClick={() => updateRule.mutate({ id: rule.id, spaceId, isActive: !rule.isActive })}
-            className={cn('cursor-pointer rounded px-2 py-0.5 text-[10px]', rule.isActive ? 'bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300' : 'bg-gray-100 text-gray-500 dark:bg-gray-800')}
+            className={cn(
+              'cursor-pointer rounded px-2 py-1 text-[10px] font-medium transition-colors',
+              rule.isActive
+                ? 'text-emerald-600 dark:text-emerald-400'
+                : 'text-gray-500 hover:text-gray-700 dark:text-gray-500 dark:hover:text-gray-300',
+            )}
           >
-            {rule.isActive ? 'Active' : 'Disabled'}
+            {rule.isActive ? 'On' : 'Off'}
           </button>
           <button
             type="button"
             onClick={() => deleteRule.mutate({ id: rule.id, spaceId })}
-            className="cursor-pointer text-gray-400 hover:text-red-500"
+            className="cursor-pointer rounded p-1 text-gray-400 opacity-0 transition-opacity hover:text-red-500 group-hover:opacity-100 dark:text-gray-500 dark:hover:text-red-400"
+            aria-label="Delete rule"
           >
             <FiTrash2 size={12} />
           </button>
         </div>
       </div>
-      <p className="text-sm text-gray-800 dark:text-gray-200">{rule.content}</p>
     </div>
   );
 }
@@ -70,101 +99,112 @@ export function RulesPanel({ spaceId, onClose }: { spaceId: string; onClose: () 
   const crossTeamRules = rules.filter(r => r.scope === 'cross-team');
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-      <div className="flex h-[80vh] w-full max-w-lg flex-col rounded-xl bg-white shadow-xl dark:bg-gray-900">
-        <div className="flex items-center justify-between border-b border-gray-200 px-6 py-4 dark:border-gray-800">
-          <div className="flex items-center gap-2">
-            <FiBook className="text-primary-500" />
-            <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Rules & Documentation</h2>
-          </div>
-          <button type="button" onClick={onClose} className="cursor-pointer text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
-            <FiX size={20} />
+    <Modal onClose={onClose} aria-labelledby="rules-panel-title" className="flex h-[82vh] w-full max-w-xl flex-col">
+      <div className="flex shrink-0 items-center justify-between border-b border-stone-200 px-5 py-3.5 dark:border-stone-800">
+          <h2 id="rules-panel-title" className="text-base font-semibold tracking-tight text-gray-900 dark:text-gray-100">
+            Rules & Documentation
+          </h2>
+          <button
+            type="button"
+            onClick={onClose}
+            className="cursor-pointer rounded p-1.5 text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-700 dark:hover:bg-gray-800 dark:hover:text-gray-200"
+            aria-label="Close"
+          >
+            <FiX size={18} />
           </button>
         </div>
 
-        <div className="flex-1 overflow-y-auto px-6 py-4">
-          {/* Add new rule */}
-          <div className="mb-6 rounded-lg border border-dashed border-primary-300 bg-primary-50/50 p-4 dark:border-primary-700 dark:bg-primary-950/20">
-            <div className="mb-2 flex gap-2">
+        <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+          {/* Add rule — minimal bar, no card */}
+          <div className="shrink-0 border-b border-stone-200 px-5 py-3 dark:border-stone-800">
+            <div className="flex flex-wrap items-center gap-2">
               <select
                 value={newScope}
                 onChange={(e) => setNewScope(e.target.value)}
-                className="rounded border border-gray-200 bg-white px-2 py-1 text-xs dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200"
+                className="h-9 rounded-md border border-gray-200 bg-gray-50 px-3 text-sm text-gray-700 outline-none focus:border-primary-500 focus:ring-1 focus:ring-primary-500 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200 dark:focus:border-primary-400 dark:focus:ring-primary-400"
               >
-                <option value="space">Space Rule</option>
-                <option value="agent">Agent Rule</option>
-                <option value="cross-team">Cross-Team Rule</option>
+                <option value="space">Space</option>
+                <option value="agent">Agent</option>
+                <option value="cross-team">Cross-team</option>
               </select>
               {newScope === 'agent' && (
                 <select
                   value={newAgentId}
                   onChange={(e) => setNewAgentId(e.target.value)}
-                  className="rounded border border-gray-200 bg-white px-2 py-1 text-xs dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200"
+                  className="h-9 rounded-md border border-gray-200 bg-gray-50 px-3 text-sm text-gray-700 outline-none focus:border-primary-500 focus:ring-1 focus:ring-primary-500 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200 dark:focus:border-primary-400 dark:focus:ring-primary-400"
                 >
-                  <option value="">Select agent</option>
+                  <option value="">Agent</option>
                   {agents.map((a) => (
-                    <option key={a.id} value={a.id}>{a.agentType.toUpperCase()}</option>
+                    <option key={a.id} value={a.id}>{a.agentType}</option>
                   ))}
                 </select>
               )}
-            </div>
-            <div className="flex gap-2">
               <input
                 value={newContent}
                 onChange={(e) => setNewContent(e.target.value)}
                 onKeyDown={(e) => e.key === 'Enter' && handleCreate()}
-                placeholder="Type a new rule..."
-                className="flex-1 rounded border border-gray-200 bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary-500 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100"
+                placeholder="New rule..."
+                className="h-9 min-w-48 flex-1 rounded-md border border-gray-200 bg-gray-50 px-3 text-sm text-gray-900 placeholder-gray-500 outline-none focus:border-primary-500 focus:ring-1 focus:ring-primary-500 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100 dark:placeholder-gray-500 dark:focus:border-primary-400 dark:focus:ring-primary-400"
               />
               <button
                 type="button"
                 onClick={handleCreate}
                 disabled={!newContent.trim()}
-                className="cursor-pointer flex items-center gap-1 rounded-lg bg-primary-500 px-3 py-2 text-sm font-medium text-white hover:bg-primary-600 disabled:opacity-50"
+                className="cursor-pointer flex h-9 items-center gap-1.5 rounded-md bg-primary-500 px-3 text-sm font-medium text-white transition-colors hover:bg-primary-600 disabled:opacity-40 dark:bg-primary-600 dark:hover:bg-primary-500"
               >
-                <FiPlus size={14} />
+                <FiPlus size={14} strokeWidth={2.5} />
                 Add
               </button>
             </div>
           </div>
 
-          {/* Space rules */}
-          {spaceRules.length > 0 && (
-            <div className="mb-4">
-              <h3 className="mb-2 text-xs font-semibold uppercase tracking-wider text-gray-500">Space Rules</h3>
-              <div className="space-y-2">
-                {spaceRules.map((r) => <RuleItem key={r.id} rule={r} spaceId={spaceId} />)}
-              </div>
-            </div>
-          )}
+          <div className="flex-1 overflow-y-auto px-5 py-4">
+            {spaceRules.length > 0 && (
+              <section className="mb-6">
+                <h3 className="mb-2 text-[11px] font-medium uppercase tracking-wider text-gray-500 dark:text-gray-500">
+                  Space rules
+                </h3>
+                <div className="space-y-0 divide-y divide-gray-100 dark:divide-gray-800">
+                  {spaceRules.map((r) => (
+                    <RuleItem key={r.id} rule={r} spaceId={spaceId} />
+                  ))}
+                </div>
+              </section>
+            )}
 
-          {/* Agent rules */}
-          {agentRules.length > 0 && (
-            <div className="mb-4">
-              <h3 className="mb-2 text-xs font-semibold uppercase tracking-wider text-gray-500">Agent Rules</h3>
-              <div className="space-y-2">
-                {agentRules.map((r) => <RuleItem key={r.id} rule={r} spaceId={spaceId} />)}
-              </div>
-            </div>
-          )}
+            {agentRules.length > 0 && (
+              <section className="mb-6">
+                <h3 className="mb-2 text-[11px] font-medium uppercase tracking-wider text-gray-500 dark:text-gray-500">
+                  Agent rules
+                </h3>
+                <div className="space-y-0 divide-y divide-gray-100 dark:divide-gray-800">
+                  {agentRules.map((r) => (
+                    <RuleItem key={r.id} rule={r} spaceId={spaceId} />
+                  ))}
+                </div>
+              </section>
+            )}
 
-          {/* Cross-team rules */}
-          {crossTeamRules.length > 0 && (
-            <div className="mb-4">
-              <h3 className="mb-2 text-xs font-semibold uppercase tracking-wider text-gray-500">Cross-Team Rules</h3>
-              <div className="space-y-2">
-                {crossTeamRules.map((r) => <RuleItem key={r.id} rule={r} spaceId={spaceId} />)}
-              </div>
-            </div>
-          )}
+            {crossTeamRules.length > 0 && (
+              <section className="mb-6">
+                <h3 className="mb-2 text-[11px] font-medium uppercase tracking-wider text-gray-500 dark:text-gray-500">
+                  Cross-team rules
+                </h3>
+                <div className="space-y-0 divide-y divide-gray-100 dark:divide-gray-800">
+                  {crossTeamRules.map((r) => (
+                    <RuleItem key={r.id} rule={r} spaceId={spaceId} />
+                  ))}
+                </div>
+              </section>
+            )}
 
-          {rules.length === 0 && (
-            <p className="py-8 text-center text-sm text-gray-400">
-              No rules yet. Rules guide how agents behave in this space.
-            </p>
-          )}
+            {rules.length === 0 && (
+              <p className="pt-6 text-sm text-gray-500 dark:text-gray-500">
+                No rules yet. Add one above to guide how agents behave in this space.
+              </p>
+            )}
+          </div>
         </div>
-      </div>
-    </div>
+    </Modal>
   );
 }

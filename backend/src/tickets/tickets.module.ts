@@ -5,11 +5,13 @@ import { TicketsService } from "./tickets.service";
 import { Ticket } from "../entities/ticket.entity";
 import { Execution } from "../entities/execution.entity";
 import { PipelineModule } from "../pipeline/pipeline.module";
+import { AgentsModule } from "../agents/agents.module";
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([Ticket, Execution]),
     forwardRef(() => PipelineModule),
+    forwardRef(() => AgentsModule),
   ],
   controllers: [TicketsController],
   providers: [TicketsService],

@@ -8,6 +8,7 @@ import { useChatContext } from "@/contexts/ChatContext";
 import { AgentSelectorDropdown } from "./AgentSelectorDropdown";
 import { TypingIndicator } from "./TypingIndicator";
 import { useChatMessages, useSendChatMessage } from "@/api/hooks/useChat";
+import { Modal } from "@/components/Modal";
 import type { ChatAttachment, ChatMessage } from "@/types";
 import api from "@/api/client";
 
@@ -136,13 +137,14 @@ export function ChatModal() {
     useChatContext();
   const { data: messages = [], isLoading } = useChatMessages(
     isOpen ? spaceId || null : null,
+    selectedAgent,
   );
   const sendMessage = useSendChatMessage(spaceId || null);
 
   const [input, setInput] = useState("");
-  const [selectedImages, setSelectedImages] = useState<File[]>([]);
-  const [imagePreviews, setImagePreviews] = useState<
-    Array<{ file: File; url: string }>
+  const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
+  const [filePreviews, setFilePreviews] = useState<
+    Array<{ file: File; url: string | null }>
   >([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -158,186 +160,185 @@ export function ChatModal() {
   }, [messages, sendMessage.isPending]);
 
   useEffect(() => {
-    const previews = selectedImages.map((file) => ({
+    const previews = selectedFiles.map((file) => ({
       file,
-      url: URL.createObjectURL(file),
+      url: file.type.startsWith("image/") ? URL.createObjectURL(file) : null,
     }));
-    setImagePreviews(previews);
+    setFilePreviews(previews);
 
     return () => {
-      previews.forEach((preview) => URL.revokeObjectURL(preview.url));
+      previews.forEach((p) => p.url && URL.revokeObjectURL(p.url));
     };
-  }, [selectedImages]);
+  }, [selectedFiles]);
 
   if (!isOpen || !spaceId) return null;
 
   const handleSend = async () => {
-    if ((!input.trim() && selectedImages.length === 0) || sendMessage.isPending)
+    if ((!input.trim() && selectedFiles.length === 0) || sendMessage.isPending)
       return;
 
     const messageText = input.trim();
-    const images = [...selectedImages];
+    const files = [...selectedFiles];
 
-    // Clear input immediately for snappy UX — optimistic update handles the message display
     setInput("");
-    setSelectedImages([]);
+    setSelectedFiles([]);
     if (fileInputRef.current) {
       fileInputRef.current.value = "";
     }
 
     sendMessage.mutate({
       message: messageText,
-      images,
+      files,
       agentType: selectedAgent,
     });
   };
 
-  const handleImageSelection = (event: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileSelection = (event: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(event.target.files ?? []);
     if (files.length === 0) return;
-    setSelectedImages((current) => [...current, ...files]);
+    setSelectedFiles((current) => [...current, ...files]);
   };
 
-  const removeSelectedImage = (targetFile: File) => {
-    setSelectedImages((current) =>
+  const removeSelectedFile = (targetFile: File) => {
+    setSelectedFiles((current) =>
       current.filter((file) => file !== targetFile),
     );
   };
 
-  const handleBackdropClick = (e: React.MouseEvent) => {
-    if (e.target === e.currentTarget) {
-      closeChat();
-    }
-  };
-
   return createPortal(
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 dark:bg-black/50"
-      onClick={handleBackdropClick}
+    <Modal
+      onClose={closeChat}
+      className="mx-4 flex max-h-[80vh] w-full max-w-[640px] flex-col overflow-hidden"
     >
-      <div className="flex max-h-[80vh] w-full max-w-[640px] flex-col overflow-hidden rounded-2xl bg-white shadow-xl dark:bg-gray-900 mx-4">
-        {/* Header */}
-        <div className="flex items-center justify-between border-b border-gray-200 px-4 py-3 dark:border-gray-800">
-          <AgentSelectorDropdown
-            value={selectedAgent}
-            onChange={(agent) => openChat(agent)}
-          />
-          <button
-            type="button"
-            onClick={closeChat}
-            className="cursor-pointer rounded-lg p-1.5 text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-600 dark:hover:bg-gray-800 dark:hover:text-gray-300"
-            aria-label="Close chat"
-          >
-            <FiX className="h-5 w-5" />
-          </button>
-        </div>
+      {/* Header */}
+      <div className="flex shrink-0 items-center justify-between border-b border-stone-200 px-4 py-3 dark:border-stone-800">
+        <AgentSelectorDropdown
+          value={selectedAgent}
+          onChange={(agent) => openChat(agent)}
+        />
+        <button
+          type="button"
+          onClick={closeChat}
+          className="cursor-pointer rounded-lg p-1.5 text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-600 dark:hover:bg-gray-800 dark:hover:text-gray-300"
+          aria-label="Close chat"
+        >
+          <FiX className="h-5 w-5" />
+        </button>
+      </div>
 
-        {/* Message list */}
-        <div className="flex-1 overflow-y-auto px-4 py-4">
-          {isLoading ? (
-            <div className="flex items-center justify-center py-8">
-              <div className="h-8 w-8 animate-spin rounded-full border-b-2 border-primary-500" />
-            </div>
-          ) : messages.length === 0 ? (
-            <p className="py-8 text-center text-sm text-gray-400">
-              Send a message or attach a screenshot to start chatting.
-            </p>
-          ) : (
-            <div className="space-y-3">
-              {messages.map((message) => (
-                <ChatBubble key={message.id} message={message} />
-              ))}
-              {sendMessage.isPending && (
-                <TypingIndicator agentType={selectedAgent} />
-              )}
-              <div ref={messagesEndRef} />
-            </div>
-          )}
-        </div>
+      {/* Message list */}
+      <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4">
+        {isLoading ? (
+          <div className="flex items-center justify-center py-8">
+            <div className="h-8 w-8 animate-spin rounded-full border-b-2 border-primary-500" />
+          </div>
+        ) : messages.length === 0 ? (
+          <p className="py-8 text-center text-sm text-gray-400">
+            Send a message or attach a screenshot to start chatting.
+          </p>
+        ) : (
+          <div className="space-y-3">
+            {messages.map((message) => (
+              <ChatBubble key={message.id} message={message} />
+            ))}
+            {sendMessage.isPending && (
+              <TypingIndicator agentType={selectedAgent} />
+            )}
+            <div ref={messagesEndRef} />
+          </div>
+        )}
+      </div>
 
-        {/* Input area */}
-        <div className="border-t border-gray-100 px-5 py-4 dark:border-gray-800/60">
-          {imagePreviews.length > 0 && (
-            <div className="mb-3 flex gap-2 overflow-x-auto pb-1">
-              {imagePreviews.map((preview) => (
-                <div
-                  key={`${preview.file.name}-${preview.file.lastModified}`}
-                  className="relative shrink-0"
-                >
+      {/* Input area */}
+      <div className="shrink-0 border-t border-stone-200 px-5 py-4 dark:border-stone-800">
+        {filePreviews.length > 0 && (
+          <div className="mb-3 flex gap-2 overflow-x-auto pb-1">
+            {filePreviews.map((preview) => (
+              <div
+                key={`${preview.file.name}-${preview.file.lastModified}`}
+                className="relative shrink-0"
+              >
+                {preview.url ? (
                   <img
                     src={preview.url}
                     alt={preview.file.name}
                     className="h-16 w-16 rounded-lg object-cover ring-1 ring-gray-200 dark:ring-gray-700"
                   />
-                  <button
-                    type="button"
-                    onClick={() => removeSelectedImage(preview.file)}
-                    className="cursor-pointer absolute -right-1.5 -top-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-gray-800 text-white shadow-sm transition-colors hover:bg-red-500 dark:bg-gray-600"
-                    aria-label={`Remove ${preview.file.name}`}
-                  >
-                    <FiX className="h-3 w-3" />
-                  </button>
-                </div>
-              ))}
-            </div>
-          )}
-
-          <div className="flex items-end gap-2">
-            <button
-              type="button"
-              onClick={() => fileInputRef.current?.click()}
-              className="cursor-pointer flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-gray-400 transition-colors hover:bg-gray-100 hover:text-primary-500 dark:hover:bg-gray-800 dark:text-gray-500"
-              aria-label="Attach images"
-            >
-              <FiImage className="h-[18px] w-[18px]" />
-            </button>
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept="image/*"
-              multiple
-              className="hidden"
-              onChange={handleImageSelection}
-            />
-
-            <div className="relative flex-1">
-              <textarea
-                value={input}
-                onChange={(event) => setInput(event.target.value)}
-                onKeyDown={(event) => {
-                  if (event.key === "Enter" && !event.shiftKey) {
-                    event.preventDefault();
-                    handleSend();
-                  }
-                }}
-                placeholder="Type a message..."
-                rows={1}
-                className="w-full resize-none rounded-xl border border-gray-200 bg-gray-50 px-4 py-2.5 text-sm text-gray-900 outline-none transition-colors placeholder:text-gray-400 focus:border-primary-300 focus:bg-white focus:ring-1 focus:ring-primary-200 dark:border-gray-700 dark:bg-gray-800/50 dark:text-gray-100 dark:placeholder:text-gray-500 dark:focus:border-primary-600 dark:focus:bg-gray-800"
-              />
-            </div>
-
-            <button
-              type="button"
-              onClick={handleSend}
-              disabled={
-                sendMessage.isPending ||
-                (!input.trim() && selectedImages.length === 0)
-              }
-              className={cn(
-                "cursor-pointer flex h-10 w-10 shrink-0 items-center justify-center rounded-xl transition-all",
-                input.trim() || selectedImages.length > 0
-                  ? "bg-primary-500 text-white shadow-sm hover:bg-primary-600 active:scale-95"
-                  : "text-gray-300 dark:text-gray-600",
-                "disabled:opacity-40 disabled:cursor-not-allowed disabled:active:scale-100",
-              )}
-              aria-label="Send message"
-            >
-              <FiSend className="h-[16px] w-[16px]" />
-            </button>
+                ) : (
+                  <div className="flex h-16 w-16 items-center justify-center rounded-lg bg-gray-100 dark:bg-gray-800 ring-1 ring-gray-200 dark:ring-gray-700">
+                    <span className="text-[10px] font-medium text-gray-500 uppercase">
+                      {preview.file.name.split(".").pop()}
+                    </span>
+                  </div>
+                )}
+                <button
+                  type="button"
+                  onClick={() => removeSelectedFile(preview.file)}
+                  className="cursor-pointer absolute -right-1.5 -top-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-gray-800 text-white shadow-sm transition-colors hover:bg-red-500 dark:bg-gray-600"
+                  aria-label={`Remove ${preview.file.name}`}
+                >
+                  <FiX className="h-3 w-3" />
+                </button>
+              </div>
+            ))}
           </div>
+        )}
+
+        <div className="flex items-end gap-2">
+          <button
+            type="button"
+            onClick={() => fileInputRef.current?.click()}
+            className="cursor-pointer flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-gray-400 transition-colors hover:bg-gray-100 hover:text-primary-500 dark:hover:bg-gray-800 dark:text-gray-500"
+            aria-label="Attach files"
+          >
+            <FiImage className="h-[18px] w-[18px]" />
+          </button>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/*,application/pdf"
+            multiple
+            className="hidden"
+            onChange={handleFileSelection}
+          />
+
+          <div className="relative flex-1">
+            <textarea
+              value={input}
+              onChange={(event) => setInput(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter" && !event.shiftKey) {
+                  event.preventDefault();
+                  handleSend();
+                }
+              }}
+              placeholder="Type a message..."
+              rows={1}
+              className="w-full resize-none rounded-xl border border-gray-200 bg-gray-50 px-4 py-2.5 text-sm text-gray-900 outline-none transition-colors placeholder:text-gray-400 focus:border-primary-300 focus:bg-white focus:ring-1 focus:ring-primary-200 dark:border-gray-700 dark:bg-gray-800/50 dark:text-gray-100 dark:placeholder:text-gray-500 dark:focus:border-primary-600 dark:focus:bg-gray-800"
+            />
+          </div>
+
+          <button
+            type="button"
+            onClick={handleSend}
+            disabled={
+              sendMessage.isPending ||
+              (!input.trim() && selectedFiles.length === 0)
+            }
+            className={cn(
+              "cursor-pointer flex h-10 w-10 shrink-0 items-center justify-center rounded-xl transition-all",
+              input.trim() || selectedFiles.length > 0
+                ? "bg-primary-500 text-white shadow-sm hover:bg-primary-600 active:scale-95"
+                : "text-gray-300 dark:text-gray-600",
+              "disabled:opacity-40 disabled:cursor-not-allowed disabled:active:scale-100",
+            )}
+            aria-label="Send message"
+          >
+            <FiSend className="h-[16px] w-[16px]" />
+          </button>
         </div>
       </div>
-    </div>,
+    </Modal>,
     document.body,
   );
 }

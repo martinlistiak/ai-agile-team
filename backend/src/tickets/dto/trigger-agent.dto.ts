@@ -1,3 +1,4 @@
-export class TriggerAgentDto {
-  // Body is empty — ticketId comes from the URL param
-}
+import { ApiSchema } from "@nestjs/swagger";
+
+@ApiSchema({ description: "Empty body — ticketId comes from the URL param" })
+export class TriggerAgentDto {}
