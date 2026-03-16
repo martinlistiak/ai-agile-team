@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { FiZap, FiBook, FiPlus, FiEdit2, FiTrash2 } from "react-icons/fi";
+import { FiZap, FiBook, FiPlus, FiEdit2, FiTrash2, FiCpu } from "react-icons/fi";
 import {
   useSpace,
   useUpdateSpace,
@@ -13,6 +13,7 @@ import { ChatBubble } from "@/features/chat/ChatBubble";
 import { ChatModal } from "@/features/chat/ChatModal";
 import { PipelineSettings } from "@/features/pipeline/PipelineSettings";
 import { RulesPanel } from "@/features/rules/RulesPanel";
+import { CustomAgentsPanel } from "@/features/agents/CustomAgentsPanel";
 import { SuggestedRulesBar } from "@/features/rules/SuggestedRulesBar";
 import { PipelineToast } from "@/components/PipelinePrompt";
 import { TicketDetailPanel } from "./TicketDetailPanel";
@@ -26,6 +27,7 @@ export function BoardPage() {
   const deleteSpace = useDeleteSpace();
   const [showPipeline, setShowPipeline] = useState(false);
   const [showRules, setShowRules] = useState(false);
+  const [showAgents, setShowAgents] = useState(false);
   const [showCreateTicket, setShowCreateTicket] = useState(false);
   const [showEdit, setShowEdit] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -266,6 +268,17 @@ export function BoardPage() {
             </button>
             <button
               type="button"
+              onClick={() => setShowAgents(true)}
+              className="group/btn cursor-pointer flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium text-gray-500 transition-all duration-150 hover:bg-gray-100/80 active:scale-[0.97] dark:text-gray-400 dark:hover:bg-gray-800/60"
+            >
+              <FiCpu
+                size={13}
+                className="transition-transform duration-150 group-hover/btn:scale-110"
+              />
+              Agents
+            </button>
+            <button
+              type="button"
               onClick={() => setShowPipeline(true)}
               className="group/btn cursor-pointer flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium text-gray-500 transition-all duration-150 hover:bg-gray-100/80 active:scale-[0.97] dark:text-gray-400 dark:hover:bg-gray-800/60"
             >
@@ -321,6 +334,12 @@ export function BoardPage() {
       )}
       {showRules && (
         <RulesPanel spaceId={spaceId} onClose={() => setShowRules(false)} />
+      )}
+      {showAgents && (
+        <CustomAgentsPanel
+          spaceId={spaceId}
+          onClose={() => setShowAgents(false)}
+        />
       )}
       <PipelineToast spaceId={spaceId} />
       {showCreateTicket && (
