@@ -1,5 +1,6 @@
 import { useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
+import { Modal } from "./Modal";
 
 interface ConfirmDialogProps {
   open: boolean;
@@ -42,16 +43,8 @@ export function ConfirmDialog({
   const isDanger = variant === "danger";
 
   return createPortal(
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
-      onClick={(e) => {
-        if (e.target === e.currentTarget) onCancel();
-      }}
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="confirm-dialog-title"
-    >
-      <div className="w-full max-w-sm rounded-2xl border border-gray-200 bg-white p-6 shadow-lg dark:border-gray-700 dark:bg-gray-800">
+    <Modal onClose={onCancel} className="w-full max-w-sm" aria-labelledby="confirm-dialog-title">
+      <div className="p-6">
         <h3
           id="confirm-dialog-title"
           className="text-lg font-semibold text-gray-900 dark:text-gray-100"
@@ -65,7 +58,7 @@ export function ConfirmDialog({
           <button
             type="button"
             onClick={onCancel}
-            className="cursor-pointer rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-700"
+            className="cursor-pointer rounded-lg border border-stone-300 px-4 py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-stone-100 dark:border-stone-600 dark:text-gray-300 dark:hover:bg-stone-800"
           >
             {cancelLabel}
           </button>
@@ -83,7 +76,7 @@ export function ConfirmDialog({
           </button>
         </div>
       </div>
-    </div>,
+    </Modal>,
     document.body,
   );
 }

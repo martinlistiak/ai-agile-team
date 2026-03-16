@@ -8,6 +8,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { Agent } from "../entities/agent.entity";
 import { Ticket } from "../entities/ticket.entity";
 import { Execution } from "../entities/execution.entity";
+import { getModelForAgent } from "./agent-models.config";
 import { Space } from "../entities/space.entity";
 import { TicketsService } from "../tickets/tickets.service";
 import { RulesService } from "../rules/rules.service";
@@ -15,6 +16,7 @@ import { SuggestedRulesService } from "../rules/suggested-rules.service";
 import { GithubService } from "./github.service";
 import { GitlabService } from "./gitlab.service";
 import { EventsGateway } from "../chat/events.gateway";
+import { ExecutionRegistry } from "./execution-registry";
 
 const TOOLS: Anthropic.Tool[] = [
   {
@@ -172,6 +174,7 @@ export class PmAgentService {
     @InjectRepository(Agent) private agentRepo: Repository<Agent>,
     @InjectRepository(Execution) private executionRepo: Repository<Execution>,
     @InjectRepository(Space) private spaceRepo: Repository<Space>,
+    private executionRegistry: ExecutionRegistry,
   ) {
     this.client = new Anthropic({
       apiKey: this.configService.get("ANTHROPIC_API_KEY", ""),
@@ -187,8 +190,17 @@ export class PmAgentService {
       data: Buffer;
     }> = [],
   ): Promise<string> {
-    const agent = await this.agentRepo.findOneBy({ spaceId, agentType: "pm" });
-    if (!agent) throw new Error("PM agent not found for space");
+    let agent = await this.agentRepo.findOneBy({ spaceId, agentType: "pm" });
+    if (!agent) {
+      this.logger.warn(`PM agent missing for space ${spaceId}, auto-creating`);
+      agent = this.agentRepo.create({
+        spaceId,
+        agentType: "pm",
+        avatarRef: "pm_default.png",
+        status: "idle",
+      });
+      await this.agentRepo.save(agent);
+    }
 
     await this.agentRepo.update(agent.id, { status: "active" });
     this.eventsGateway.emitAgentStatus(spaceId, agent.id, "active");
@@ -200,6 +212,7 @@ export class PmAgentService {
       actionLog: [],
     });
     await this.executionRepo.save(execution);
+    this.executionRegistry.register(execution.id);
 
     try {
       const userContent: any[] = [];
@@ -247,9 +260,9 @@ export class PmAgentService {
       // Agent tool-use loop
       while (true) {
         const response = await this.client.messages.create({
-          model: this.configService.get(
-            "ANTHROPIC_MODEL",
-            "claude-sonnet-4-20250514",
+          model: getModelForAgent(
+            "pm",
+            this.configService.get("ANTHROPIC_MODEL"),
           ),
           max_tokens: 4096,
           system: systemPrompt,
@@ -299,6 +312,7 @@ export class PmAgentService {
       }
 
       // Update execution and agent status
+      this.executionRegistry.remove(execution.id);
       execution.status = "completed";
       execution.endTime = new Date();
       await this.executionRepo.save(execution);
@@ -318,6 +332,7 @@ export class PmAgentService {
       return finalText || "Tickets have been created successfully.";
     } catch (error) {
       this.logger.error("PM Agent error:", error);
+      this.executionRegistry.remove(execution.id);
       execution.status = "failed";
       execution.endTime = new Date();
       await this.executionRepo.save(execution);

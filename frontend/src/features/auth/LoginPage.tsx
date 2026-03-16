@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, Link } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { FaGithub, FaGitlab } from "react-icons/fa";
 import api from "@/api/client";
@@ -42,88 +42,201 @@ export function LoginPage() {
   };
 
   return (
-    <div className="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-8">
-      <div className="text-center mb-8">
-        <h1 className="text-3xl font-bold text-primary-500">Runa</h1>
-        <p className="text-gray-500 dark:text-gray-400 mt-2">
-          AI Agentic Agile Team
+    <div>
+      {/* Logo + heading */}
+      <div className="mb-10">
+        <Link
+          to="/home"
+          className="font-display text-[2.6rem] leading-none tracking-tight no-underline block mb-3"
+          style={{ color: "var(--text-primary)" }}
+        >
+          Runa
+        </Link>
+        <p
+          className="text-[15px] leading-relaxed"
+          style={{ color: "var(--text-secondary)" }}
+        >
+          {isRegister
+            ? "Create your account to get started."
+            : "Sign in to your workspace."}
         </p>
       </div>
 
-      <div className="flex gap-3 mb-6">
+      {/* OAuth buttons */}
+      <div className="flex gap-3 mb-8">
         <button
+          type="button"
           onClick={handleGithubLogin}
-          className="cursor-pointer flex-1 flex items-center justify-center gap-2 bg-gray-900 dark:bg-gray-700 text-white rounded-lg px-4 py-3 font-medium hover:bg-gray-800 dark:hover:bg-gray-600 transition-colors"
+          className="cursor-pointer flex-1 flex items-center justify-center gap-2.5 rounded-lg px-4 py-3 text-[13px] font-medium transition-all"
+          style={{
+            border: "1px solid var(--border)",
+            color: "var(--text-primary)",
+            background: "var(--surface-raised)",
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.borderColor = "var(--text-tertiary)";
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.borderColor = "var(--border)";
+          }}
         >
-          <FaGithub className="text-xl" />
+          <FaGithub size={18} />
           GitHub
         </button>
         <button
+          type="button"
           onClick={handleGitlabLogin}
-          className="cursor-pointer flex-1 flex items-center justify-center gap-2 bg-[#fc6d26] text-white rounded-lg px-4 py-3 font-medium hover:bg-[#e24329] transition-colors"
+          className="cursor-pointer flex-1 flex items-center justify-center gap-2.5 rounded-lg px-4 py-3 text-[13px] font-medium transition-all"
+          style={{
+            border: "1px solid var(--border)",
+            color: "var(--text-primary)",
+            background: "var(--surface-raised)",
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.borderColor = "var(--text-tertiary)";
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.borderColor = "var(--border)";
+          }}
         >
-          <FaGitlab className="text-xl" />
+          <FaGitlab size={18} style={{ color: "#fc6d26" }} />
           GitLab
         </button>
       </div>
 
-      <div className="relative mb-6">
-        <div className="absolute inset-0 flex items-center">
-          <div className="w-full border-t border-gray-200 dark:border-gray-600" />
-        </div>
-        <div className="relative flex justify-center text-sm">
-          <span className="px-2 bg-white dark:bg-gray-800 text-gray-500">
-            or
-          </span>
-        </div>
+      {/* Divider */}
+      <div className="flex items-center gap-4 mb-8">
+        <div className="flex-1 h-px" style={{ background: "var(--border)" }} />
+        <span
+          className="text-[11px] font-medium tracking-wide uppercase"
+          style={{ color: "var(--text-tertiary)" }}
+        >
+          or continue with email
+        </span>
+        <div className="flex-1 h-px" style={{ background: "var(--border)" }} />
       </div>
 
-      <form onSubmit={handleSubmit} className="space-y-4">
+      {/* Form */}
+      <form onSubmit={handleSubmit} className="space-y-3">
         {isRegister && (
+          <div>
+            <label
+              htmlFor="auth-name"
+              className="block text-[12px] font-medium mb-1.5"
+              style={{ color: "var(--text-secondary)" }}
+            >
+              Name
+            </label>
+            <input
+              id="auth-name"
+              type="text"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              className="auth-input"
+              required
+            />
+          </div>
+        )}
+        <div>
+          <label
+            htmlFor="auth-email"
+            className="block text-[12px] font-medium mb-1.5"
+            style={{ color: "var(--text-secondary)" }}
+          >
+            Email
+          </label>
           <input
-            type="text"
-            placeholder="Name"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            className="w-full px-4 py-3 rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-primary-500 focus:border-transparent outline-none"
+            id="auth-email"
+            type="email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            className="auth-input"
             required
           />
+        </div>
+        <div>
+          <label
+            htmlFor="auth-password"
+            className="block text-[12px] font-medium mb-1.5"
+            style={{ color: "var(--text-secondary)" }}
+          >
+            Password
+          </label>
+          <input
+            id="auth-password"
+            type="password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            className="auth-input"
+            required
+          />
+        </div>
+
+        {error && (
+          <p className="text-[13px] font-medium" style={{ color: "#dc2626" }}>
+            {error}
+          </p>
         )}
-        <input
-          type="email"
-          placeholder="Email"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          className="w-full px-4 py-3 rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-primary-500 focus:border-transparent outline-none"
-          required
-        />
-        <input
-          type="password"
-          placeholder="Password"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          className="w-full px-4 py-3 rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-primary-500 focus:border-transparent outline-none"
-          required
-        />
-        {error && <p className="text-red-500 text-sm">{error}</p>}
+
         <button
           type="submit"
           disabled={loading}
-          className="cursor-pointer w-full bg-primary-500 text-white rounded-lg px-4 py-3 font-medium hover:bg-primary-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          className="cursor-pointer w-full text-[13px] font-medium py-3 rounded-lg text-white transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+          style={{
+            backgroundColor: "var(--accent)",
+            marginTop: "1.25rem",
+          }}
+          onMouseEnter={(e) => {
+            if (!loading) e.currentTarget.style.opacity = "0.88";
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.opacity = "1";
+          }}
         >
-          {loading ? "Loading..." : isRegister ? "Create Account" : "Sign In"}
+          {loading ? "One moment…" : isRegister ? "Create account" : "Sign in"}
         </button>
       </form>
 
-      <p className="text-center text-sm text-gray-500 dark:text-gray-400 mt-4">
+      {/* Toggle */}
+      <p
+        className="text-[13px] mt-6 text-center"
+        style={{ color: "var(--text-tertiary)" }}
+      >
         {isRegister ? "Already have an account?" : "Don't have an account?"}{" "}
         <button
-          onClick={() => setIsRegister(!isRegister)}
-          className="cursor-pointer text-primary-500 hover:underline"
+          type="button"
+          onClick={() => {
+            setIsRegister(!isRegister);
+            setError("");
+          }}
+          className="cursor-pointer font-medium transition-opacity hover:opacity-70"
+          style={{ color: "var(--accent)" }}
         >
           {isRegister ? "Sign in" : "Create one"}
         </button>
       </p>
+
+      <style>{`
+        .auth-input {
+          width: 100%;
+          padding: 0.7rem 0.875rem;
+          border-radius: 0.5rem;
+          border: 1px solid var(--border);
+          background: var(--surface-raised);
+          color: var(--text-primary);
+          font-size: 14px;
+          font-family: inherit;
+          outline: none;
+          transition: border-color 0.15s ease;
+        }
+        .auth-input:focus {
+          border-color: var(--accent);
+          box-shadow: 0 0 0 3px var(--accent-soft);
+        }
+        .auth-input::placeholder {
+          color: var(--text-tertiary);
+        }
+      `}</style>
     </div>
   );
 }

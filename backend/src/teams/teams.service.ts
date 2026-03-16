@@ -7,7 +7,7 @@ import {
   Logger,
 } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
-import { Repository } from "typeorm";
+import { Repository, In } from "typeorm";
 import { randomBytes } from "crypto";
 import { Team } from "../entities/team.entity";
 import { TeamMember, TeamRole } from "../entities/team-member.entity";
@@ -17,6 +17,7 @@ import {
 } from "../entities/team-invitation.entity";
 import { User } from "../entities/user.entity";
 import { MailService } from "./mail.service";
+import { BillingService } from "../billing/billing.service";
 
 @Injectable()
 export class TeamsService {
@@ -29,6 +30,7 @@ export class TeamsService {
     private invitationRepo: Repository<TeamInvitation>,
     @InjectRepository(User) private userRepo: Repository<User>,
     private mailService: MailService,
+    private billingService: BillingService,
   ) {}
 
   async createTeam(userId: string, name: string): Promise<Team> {
@@ -52,6 +54,44 @@ export class TeamsService {
       relations: ["team"],
     });
     return memberships.map((m) => m.team);
+  }
+
+  /**
+   * Returns users that can be assigned to tickets in a space: the given user (space owner) plus all members of every team they belong to.
+   */
+  async getAssignableUsersForUser(userId: string): Promise<
+    { id: string; name: string; email: string; avatarUrl: string | null }[]
+  > {
+    const teams = await this.getTeamsForUser(userId);
+    const teamIds = teams.map((t) => t.id);
+    if (teamIds.length === 0) {
+      const user = await this.userRepo.findOneBy({ id: userId });
+      return user
+        ? [{ id: user.id, name: user.name, email: user.email, avatarUrl: user.avatarUrl }]
+        : [];
+    }
+    const members = await this.memberRepo.find({
+      where: { teamId: In(teamIds) },
+      relations: ["user"],
+    });
+    const byId = new Map<string, { id: string; name: string; email: string; avatarUrl: string | null }>();
+    for (const m of members) {
+      if (m.user && !byId.has(m.user.id)) {
+        byId.set(m.user.id, {
+          id: m.user.id,
+          name: m.user.name,
+          email: m.user.email,
+          avatarUrl: m.user.avatarUrl ?? null,
+        });
+      }
+    }
+    if (!byId.has(userId)) {
+      const user = await this.userRepo.findOneBy({ id: userId });
+      if (user) {
+        byId.set(user.id, { id: user.id, name: user.name, email: user.email, avatarUrl: user.avatarUrl ?? null });
+      }
+    }
+    return Array.from(byId.values());
   }
 
   async getTeamWithMembers(teamId: string, userId: string) {
@@ -105,6 +145,23 @@ export class TeamsService {
     const team = await this.teamRepo.findOneBy({ id: teamId });
     if (!team) throw new NotFoundException("Team not found");
 
+    // Only team and enterprise plans can invite members
+    const owner = await this.userRepo.findOneBy({ id: team.ownerId });
+    if (!owner) throw new NotFoundException("Team owner not found");
+    if (owner.planTier === "starter") {
+      throw new ForbiddenException(
+        "Team invitations require a Team or Enterprise plan. Please upgrade.",
+      );
+    }
+    const isActive =
+      owner.subscriptionStatus === "active" ||
+      owner.subscriptionStatus === "trialing";
+    if (!isActive) {
+      throw new ForbiddenException(
+        "Your subscription is not active. Please update your billing to invite members.",
+      );
+    }
+
     // Check if already a member
     const existingUser = await this.userRepo.findOneBy({ email });
     if (existingUser) {
@@ -125,17 +182,6 @@ export class TeamsService {
     });
     if (existingInvite) {
       throw new ConflictException("Invitation already sent to this email");
-    }
-
-    // Check seat limit
-    const memberCount = await this.memberRepo.count({ where: { teamId } });
-    const pendingCount = await this.invitationRepo.count({
-      where: { teamId, status: "pending" as InvitationStatus },
-    });
-    if (memberCount + pendingCount >= team.seatCount) {
-      throw new BadRequestException(
-        `Seat limit reached (${team.seatCount}). Increase seats in billing to invite more members.`,
-      );
     }
 
     const token = randomBytes(32).toString("hex");
@@ -212,6 +258,31 @@ export class TeamsService {
     invitation.status = "accepted";
     await this.invitationRepo.save(invitation);
 
+    // Update seat count to match actual members and bill via Stripe
+    const newMemberCount = await this.memberRepo.count({
+      where: { teamId: invitation.teamId },
+    });
+    const team = await this.teamRepo.findOneBy({ id: invitation.teamId });
+    if (team) {
+      team.seatCount = newMemberCount;
+      await this.teamRepo.save(team);
+
+      // Update Stripe subscription quantity for the team owner
+      try {
+        await this.billingService.updateSubscriptionQuantity(
+          team.ownerId,
+          newMemberCount,
+        );
+        this.logger.log(
+          `Stripe subscription updated to ${newMemberCount} seats for team ${team.name}`,
+        );
+      } catch (err) {
+        this.logger.error(
+          `Failed to update Stripe subscription for team ${team.name}: ${err.message}`,
+        );
+      }
+    }
+
     this.logger.log(
       `User ${user.email} accepted invitation to team ${invitation.team.name}`,
     );
@@ -241,6 +312,28 @@ export class TeamsService {
     }
 
     await this.memberRepo.remove(member);
+
+    // Update seat count and Stripe subscription
+    const newMemberCount = await this.memberRepo.count({ where: { teamId } });
+    const team = await this.teamRepo.findOneBy({ id: teamId });
+    if (team) {
+      team.seatCount = newMemberCount;
+      await this.teamRepo.save(team);
+
+      try {
+        await this.billingService.updateSubscriptionQuantity(
+          team.ownerId,
+          newMemberCount,
+        );
+        this.logger.log(
+          `Stripe subscription updated to ${newMemberCount} seats after member removal`,
+        );
+      } catch (err) {
+        this.logger.error(
+          `Failed to update Stripe subscription after member removal: ${err.message}`,
+        );
+      }
+    }
   }
 
   async updateMemberRole(
@@ -265,21 +358,10 @@ export class TeamsService {
     return member;
   }
 
-  async updateSeatCount(teamId: string, seatCount: number, userId: string) {
-    await this.assertOwner(teamId, userId);
-    const team = await this.teamRepo.findOneBy({ id: teamId });
-    if (!team) throw new NotFoundException("Team not found");
-
-    const currentMembers = await this.memberRepo.count({ where: { teamId } });
-    if (seatCount < currentMembers) {
-      throw new BadRequestException(
-        `Cannot reduce seats below current member count (${currentMembers})`,
-      );
-    }
-
-    team.seatCount = seatCount;
-    await this.teamRepo.save(team);
-    return team;
+  async getSeatCount(teamId: string, userId: string) {
+    await this.assertMember(teamId, userId);
+    const memberCount = await this.memberRepo.count({ where: { teamId } });
+    return { seatCount: memberCount };
   }
 
   async getInvitationByToken(token: string) {

@@ -4,28 +4,54 @@ import {
   Get,
   Param,
   Post,
+  Query,
   Res,
   UploadedFiles,
   UseGuards,
   UseInterceptors,
 } from "@nestjs/common";
-import { AuthGuard } from "@nestjs/passport";
+import {
+  ApiTags,
+  ApiOperation,
+  ApiResponse,
+  ApiBearerAuth,
+  ApiParam,
+  ApiConsumes,
+} from "@nestjs/swagger";
+import { JwtOrApiKeyGuard } from "../auth/jwt-or-apikey.guard";
 import { FilesInterceptor } from "@nestjs/platform-express";
 import { ChatService } from "./chat.service";
 import { SendChatMessageDto } from "./dto/send-chat-message.dto";
+import { AgentsService } from "../agents/agents.service";
 import { Response } from "express";
 
+@ApiTags("Chat")
+@ApiBearerAuth("bearer")
 @Controller("chat")
-@UseGuards(AuthGuard("jwt"))
+@UseGuards(JwtOrApiKeyGuard)
 export class ChatController {
-  constructor(private chatService: ChatService) {}
+  constructor(
+    private chatService: ChatService,
+    private agentsService: AgentsService,
+  ) {}
 
   @Get(":spaceId/messages")
-  async listMessages(@Param("spaceId") spaceId: string) {
-    return this.chatService.listMessages(spaceId);
+  @ApiOperation({
+    summary: "List chat messages in a space, optionally filtered by agent",
+  })
+  @ApiParam({ name: "spaceId", format: "uuid" })
+  @ApiResponse({ status: 200, description: "Array of chat messages" })
+  async listMessages(
+    @Param("spaceId") spaceId: string,
+    @Query("agentType") agentType?: string,
+  ) {
+    return this.chatService.listMessages(spaceId, agentType);
   }
 
   @Get("attachments/:attachmentId/content")
+  @ApiOperation({ summary: "Download a chat attachment" })
+  @ApiParam({ name: "attachmentId", format: "uuid" })
+  @ApiResponse({ status: 200, description: "File content" })
   async attachmentContent(
     @Param("attachmentId") attachmentId: string,
     @Res() res: Response,
@@ -42,7 +68,13 @@ export class ChatController {
   }
 
   @Post(":spaceId/send")
-  @UseInterceptors(FilesInterceptor("images", 6))
+  @UseInterceptors(FilesInterceptor("files", 6))
+  @ApiOperation({
+    summary: "Send a message to an agent (supports image and PDF attachments)",
+  })
+  @ApiParam({ name: "spaceId", format: "uuid" })
+  @ApiConsumes("multipart/form-data")
+  @ApiResponse({ status: 201, description: "Assistant response message" })
   async send(
     @Param("spaceId") spaceId: string,
     @Body() body: SendChatMessageDto,
@@ -61,8 +93,36 @@ export class ChatController {
       (body.agentType as any) ?? "pm",
       body.ticketId,
     );
+
+    // Extract created ticket IDs from the latest execution's action log
+    let createdTickets: Array<{ ticketId: string; title: string }> = [];
+    if (body.agentType === "pm" || !body.agentType) {
+      const agents = await this.agentsService.findBySpace(spaceId);
+      const pmAgent = agents.find((a) => a.agentType === "pm");
+      if (pmAgent) {
+        const executions = await this.agentsService.getExecutionsByAgent(
+          pmAgent.id,
+          1,
+          1,
+        );
+        const latest = executions.data[0];
+        if (latest?.actionLog) {
+          createdTickets = latest.actionLog
+            .filter(
+              (entry: any) =>
+                entry.tool === "create_ticket" && entry.result?.success,
+            )
+            .map((entry: any) => ({
+              ticketId: entry.result.ticketId,
+              title: entry.result.title,
+            }));
+        }
+      }
+    }
+
     return {
       response: assistantMessage.content,
+      createdTickets,
       assistantMessage: {
         id: assistantMessage.id,
         role: assistantMessage.role,

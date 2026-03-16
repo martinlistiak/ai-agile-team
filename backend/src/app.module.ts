@@ -18,6 +18,7 @@ import { WebhooksModule } from "./webhooks/webhooks.module";
 import { HealthModule } from "./health/health.module";
 import { BillingModule } from "./billing/billing.module";
 import { TeamsModule } from "./teams/teams.module";
+import { IntegrationsModule } from "./integrations/integrations.module";
 import { User } from "./entities/user.entity";
 import { Space } from "./entities/space.entity";
 import { Agent } from "./entities/agent.entity";
@@ -30,6 +31,7 @@ import { SuggestedRule } from "./entities/suggested-rule.entity";
 import { Team } from "./entities/team.entity";
 import { TeamMember } from "./entities/team-member.entity";
 import { TeamInvitation } from "./entities/team-invitation.entity";
+import { ApiKey } from "./entities/api-key.entity";
 
 @Module({
   imports: [
@@ -61,6 +63,7 @@ import { TeamInvitation } from "./entities/team-invitation.entity";
           Team,
           TeamMember,
           TeamInvitation,
+          ApiKey,
         ],
         synchronize: config.get("NODE_ENV") !== "production",
         migrations: [__dirname + "/migrations/*{.ts,.js}"],
@@ -85,6 +88,7 @@ import { TeamInvitation } from "./entities/team-invitation.entity";
     HealthModule,
     BillingModule,
     TeamsModule,
+    IntegrationsModule,
   ],
   providers: [
     {

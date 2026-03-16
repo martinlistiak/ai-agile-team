@@ -37,6 +37,9 @@ export function PublicNav() {
             >
               How it works
             </Link>
+            <Link to="/docs" className="hover:opacity-70 transition-opacity">
+              Docs
+            </Link>
           </div>
         </div>
         <div className="flex items-center gap-3">

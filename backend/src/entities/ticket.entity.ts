@@ -9,6 +9,7 @@ import {
 } from "typeorm";
 import { Space } from "./space.entity";
 import { Agent } from "./agent.entity";
+import { User } from "./user.entity";
 
 @Entity("tickets")
 export class Ticket {
@@ -32,6 +33,9 @@ export class Ticket {
 
   @Column({ nullable: true })
   assigneeAgentId: string;
+
+  @Column({ nullable: true })
+  assigneeUserId: string;
 
   @Column({ type: "jsonb", default: [] })
   comments: any[];
@@ -60,4 +64,8 @@ export class Ticket {
   @ManyToOne(() => Agent, { nullable: true })
   @JoinColumn({ name: "assigneeAgentId" })
   assigneeAgent: Agent;
+
+  @ManyToOne(() => User, { nullable: true })
+  @JoinColumn({ name: "assigneeUserId" })
+  assigneeUser: User;
 }

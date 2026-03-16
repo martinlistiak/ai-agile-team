@@ -236,6 +236,63 @@ export class GithubService {
     return { url: data.html_url };
   }
 
+  /**
+   * Post a review comment on a GitHub pull request.
+   */
+  async createPrReviewComment(
+    spaceId: string,
+    prUrl: string,
+    reviewBody: string,
+  ): Promise<void> {
+    const space = await this.spaceRepo.findOneBy({ id: spaceId });
+    if (!space || !space.githubRepoUrl) {
+      throw new Error("Space has no connected GitHub repository");
+    }
+
+    const token = await this.getToken(spaceId);
+    if (!token) {
+      throw new Error("No GitHub token available for this space");
+    }
+
+    const { owner, repo } = this.getOwnerRepo(space.githubRepoUrl);
+    const prNumber = this.extractPrNumber(prUrl);
+    if (!prNumber) {
+      throw new Error(`Could not extract PR number from URL: ${prUrl}`);
+    }
+
+    // Post as a PR review (not just a comment) so it shows in the review tab
+    const response = await fetch(
+      `https://api.github.com/repos/${owner}/${repo}/pulls/${prNumber}/reviews`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          Accept: "application/vnd.github+json",
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          body: reviewBody,
+          event: "COMMENT",
+        }),
+      },
+    );
+
+    if (!response.ok) {
+      const errorBody = await response.text();
+      throw new Error(
+        `GitHub PR review failed (${response.status}): ${errorBody}`,
+      );
+    }
+  }
+
+  /**
+   * Extract the PR number from a GitHub PR URL.
+   */
+  private extractPrNumber(prUrl: string): string | null {
+    const match = prUrl.match(/\/pull\/(\d+)/);
+    return match ? match[1] : null;
+  }
+
   private buildAuthenticatedUrl(repoUrl: string, token?: string): string {
     if (!token) return repoUrl;
     try {

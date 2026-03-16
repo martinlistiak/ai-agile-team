@@ -6,7 +6,7 @@ export function PublicFooter() {
   const links = [
     { to: "/privacy", label: "Privacy" },
     { to: "/terms", label: "Terms" },
-    { to: "#", label: "Docs", external: true },
+    { to: "/docs", label: "Docs" },
   ];
 
   return (
@@ -43,15 +43,6 @@ export function PublicFooter() {
                 >
                   {link.label}
                 </span>
-              ) : link.external ? (
-                <a
-                  key={link.label}
-                  href={link.to}
-                  className="hover:opacity-70 transition-opacity no-underline"
-                  style={{ color: "var(--text-tertiary)" }}
-                >
-                  {link.label}
-                </a>
               ) : (
                 <Link
                   key={link.label}

@@ -12,6 +12,8 @@ import { RulesService } from "../rules/rules.service";
 import { SuggestedRulesService } from "../rules/suggested-rules.service";
 import { EventsGateway } from "../chat/events.gateway";
 import { formatAgentExecutionLog } from "../common/structured-logger";
+import { getModelForAgent } from "./agent-models.config";
+import { ExecutionRegistry } from "./execution-registry";
 
 const DEVELOPER_SYSTEM_PROMPT = `You are a Senior Developer AI agent in an agile software development team.
 Your role is to implement code changes for assigned tickets.
@@ -49,8 +51,8 @@ export class DeveloperAgentService {
     @InjectRepository(Agent) private agentRepo: Repository<Agent>,
     @InjectRepository(Execution) private executionRepo: Repository<Execution>,
     @InjectRepository(Space) private spaceRepo: Repository<Space>,
+    private executionRegistry: ExecutionRegistry,
   ) {}
-
   /**
    * Run the developer agent on a ticket via a chat message.
    * Can be invoked with either:
@@ -62,14 +64,31 @@ export class DeveloperAgentService {
     userMessage: string,
     ticketId?: string,
   ): Promise<string> {
-    const agent = await this.agentRepo.findOneBy({
+    let agent = await this.agentRepo.findOneBy({
       spaceId,
       agentType: "developer",
     });
-    if (!agent) throw new Error("Developer agent not found for space");
+    if (!agent) {
+      this.logger.warn(
+        `Developer agent missing for space ${spaceId}, auto-creating`,
+      );
+      agent = this.agentRepo.create({
+        spaceId,
+        agentType: "developer",
+        avatarRef: "dev_default.png",
+        status: "idle",
+      });
+      await this.agentRepo.save(agent);
+    }
 
     await this.agentRepo.update(agent.id, { status: "active" });
     this.eventsGateway.emitAgentStatus(spaceId, agent.id, "active");
+
+    if (ticketId) {
+      await this.ticketsService.update(ticketId, {
+        assigneeAgentId: agent.id,
+      } as any);
+    }
 
     const execution = this.executionRepo.create({
       agentId: agent.id,
@@ -78,6 +97,7 @@ export class DeveloperAgentService {
       actionLog: [],
     });
     await this.executionRepo.save(execution);
+    const abortController = this.executionRegistry.register(execution.id);
 
     const startTime = Date.now();
     this.logger.log(
@@ -136,12 +156,14 @@ ${userMessage ? `**Additional instructions from the user:** ${userMessage}` : "I
       for await (const message of query({
         prompt: fullPrompt,
         options: {
+          model: getModelForAgent("developer"),
           allowedTools: ["Read", "Write", "Edit", "Bash", "Glob", "Grep"],
           cwd: repoPath,
           permissionMode: "bypassPermissions",
           allowDangerouslySkipPermissions: true,
           maxTurns: 50,
           executable: "bun",
+          abortController,
           stderr: (data: string) => {
             this.logger.debug(`Claude SDK stderr: ${data}`);
           },
@@ -268,6 +290,7 @@ ${userMessage ? `**Additional instructions from the user:** ${userMessage}` : "I
       }
 
       // Update execution
+      this.executionRegistry.remove(execution.id);
       execution.status = prFailed ? "completed_with_warnings" : "completed";
       execution.endTime = new Date();
       execution.actionLog = actionLog;
@@ -314,6 +337,7 @@ ${userMessage ? `**Additional instructions from the user:** ${userMessage}` : "I
           error: error instanceof Error ? error.message : String(error),
         }),
       );
+      this.executionRegistry.remove(execution.id);
       execution.status = "failed";
       execution.endTime = new Date();
       await this.executionRepo.save(execution);

@@ -7,6 +7,7 @@ import {
   Logger,
   UnauthorizedException,
 } from "@nestjs/common";
+import { ApiTags, ApiOperation, ApiResponse, ApiHeader } from "@nestjs/swagger";
 import { Request } from "express";
 import * as crypto from "crypto";
 import { ConfigService } from "@nestjs/config";
@@ -14,6 +15,7 @@ import { SpacesService } from "../spaces/spaces.service";
 import { TicketsService } from "../tickets/tickets.service";
 import { EventsGateway } from "../chat/events.gateway";
 
+@ApiTags("Webhooks")
 @Controller("webhooks")
 export class WebhooksController {
   private readonly logger = new Logger(WebhooksController.name);
@@ -27,6 +29,11 @@ export class WebhooksController {
 
   @Post("github")
   @HttpCode(200)
+  @ApiOperation({ summary: "GitHub webhook receiver (validates HMAC-SHA256)" })
+  @ApiHeader({ name: "x-hub-signature-256", required: true })
+  @ApiHeader({ name: "x-github-event", required: true })
+  @ApiResponse({ status: 200, description: "Webhook processed or ignored" })
+  @ApiResponse({ status: 401, description: "Invalid signature" })
   async handleGithubWebhook(
     @Req() req: Request,
     @Headers("x-hub-signature-256") signature: string,

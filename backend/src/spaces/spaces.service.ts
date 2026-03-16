@@ -1,6 +1,6 @@
 import { Injectable, NotFoundException } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
-import { Repository } from "typeorm";
+import { DataSource, Repository } from "typeorm";
 import { Space } from "../entities/space.entity";
 import { Agent } from "../entities/agent.entity";
 
@@ -9,6 +9,7 @@ export class SpacesService {
   constructor(
     @InjectRepository(Space) private spaceRepo: Repository<Space>,
     @InjectRepository(Agent) private agentRepo: Repository<Agent>,
+    private dataSource: DataSource,
   ) {}
 
   async findAll(): Promise<Space[]> {
@@ -48,29 +49,34 @@ export class SpacesService {
       .getRawOne();
     const nextOrder = (maxResult?.maxOrder ?? -1) + 1;
 
-    const space = this.spaceRepo.create({
-      userId,
-      name: derivedName,
-      githubRepoUrl: data.githubRepoUrl,
-      gitlabRepoUrl: data.gitlabRepoUrl,
-      order: nextOrder,
-    });
-    await this.spaceRepo.save(space);
+    const space = await this.dataSource.transaction(async (manager) => {
+      const spaceEntity = manager.create(Space, {
+        userId,
+        name: derivedName,
+        githubRepoUrl: data.githubRepoUrl,
+        gitlabRepoUrl: data.gitlabRepoUrl,
+        order: nextOrder,
+      });
+      await manager.save(spaceEntity);
 
-    // Auto-create all three agents for the space
-    const agents = [
-      { agentType: "pm", avatarRef: "pm_default.png" },
-      { agentType: "developer", avatarRef: "dev_default.png" },
-      { agentType: "tester", avatarRef: "tester_default.png" },
-    ].map((def) =>
-      this.agentRepo.create({
-        spaceId: space.id,
-        agentType: def.agentType,
-        avatarRef: def.avatarRef,
-        status: "idle",
-      }),
-    );
-    await this.agentRepo.save(agents);
+      // Auto-create all four agents for the space
+      const agents = [
+        { agentType: "pm", avatarRef: "pm_default.png" },
+        { agentType: "developer", avatarRef: "dev_default.png" },
+        { agentType: "reviewer", avatarRef: "reviewer_default.png" },
+        { agentType: "tester", avatarRef: "tester_default.png" },
+      ].map((def) =>
+        manager.create(Agent, {
+          spaceId: spaceEntity.id,
+          agentType: def.agentType,
+          avatarRef: def.avatarRef,
+          status: "idle",
+        }),
+      );
+      await manager.save(agents);
+
+      return spaceEntity;
+    });
 
     return space;
   }

@@ -13,7 +13,9 @@ import { PrivacyPolicyPage } from "@/pages/PrivacyPolicyPage";
 import { TermsPage } from "@/pages/TermsPage";
 import { BillingPage } from "@/pages/BillingPage";
 import { TeamPage } from "@/pages/TeamPage";
+import { IntegrationsPage } from "@/pages/IntegrationsPage";
 import { AcceptInvitationPage } from "@/pages/AcceptInvitationPage";
+import { ApiDocsPage } from "@/pages/ApiDocsPage";
 
 function RootLayout() {
   return (
@@ -41,6 +43,10 @@ export const router = createBrowserRouter([
         element: <TermsPage />,
       },
       {
+        path: "/docs",
+        element: <ApiDocsPage />,
+      },
+      {
         path: "/login",
         element: <AuthLayout />,
         children: [
@@ -62,6 +68,7 @@ export const router = createBrowserRouter([
           { path: "spaces/:spaceId", element: <BoardPage /> },
           { path: "billing", element: <BillingPage /> },
           { path: "team", element: <TeamPage /> },
+          { path: "integrations", element: <IntegrationsPage /> },
         ],
       },
       {

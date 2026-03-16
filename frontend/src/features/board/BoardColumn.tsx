@@ -1,7 +1,10 @@
+import { useState } from "react";
 import { useDroppable } from "@dnd-kit/core";
+import { FiPlus } from "react-icons/fi";
 import { TicketCard } from "./TicketCard";
+import { useCreateTicket } from "@/api/hooks/useTickets";
 import { cn } from "@/lib/cn";
-import type { Agent, Ticket } from "@/types";
+import type { Agent, Ticket, TicketStatus } from "@/types";
 
 interface BoardColumnProps {
   id: string;
@@ -27,6 +30,26 @@ export function BoardColumn({
   onDelete,
 }: BoardColumnProps) {
   const { setNodeRef, isOver } = useDroppable({ id });
+  const [quickAddOpen, setQuickAddOpen] = useState(false);
+  const [quickTitle, setQuickTitle] = useState("");
+  const createTicket = useCreateTicket();
+
+  const handleQuickAdd = () => {
+    if (!quickTitle.trim() || !spaceId) return;
+    createTicket.mutate(
+      {
+        spaceId,
+        title: quickTitle.trim(),
+        status: id as TicketStatus,
+      },
+      {
+        onSuccess: () => {
+          setQuickTitle("");
+          setQuickAddOpen(false);
+        },
+      },
+    );
+  };
 
   return (
     <div
@@ -56,6 +79,60 @@ export function BoardColumn({
             onDelete={onDelete}
           />
         ))}
+        {/* Quick-add inline input */}
+        {quickAddOpen ? (
+          <div className="rounded-lg border border-stone-300 dark:border-stone-600 bg-white dark:bg-stone-900 p-2 shadow-sm">
+            <input
+              type="text"
+              value={quickTitle}
+              onChange={(e) => setQuickTitle(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") handleQuickAdd();
+                if (e.key === "Escape") {
+                  setQuickAddOpen(false);
+                  setQuickTitle("");
+                }
+              }}
+              placeholder="Task title…"
+              autoFocus
+              className="w-full bg-transparent border-none outline-none text-sm text-stone-800 dark:text-stone-200 placeholder:text-stone-400"
+            />
+            <div className="flex items-center justify-end gap-1.5 mt-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setQuickAddOpen(false);
+                  setQuickTitle("");
+                }}
+                className="cursor-pointer rounded px-2 py-1 text-xs text-stone-500 hover:bg-stone-100 dark:hover:bg-stone-800 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleQuickAdd}
+                disabled={!quickTitle.trim() || createTicket.isPending}
+                className={cn(
+                  "cursor-pointer rounded px-2.5 py-1 text-xs font-medium transition-colors",
+                  quickTitle.trim()
+                    ? "bg-stone-800 text-white hover:bg-stone-900 dark:bg-stone-200 dark:text-stone-900 dark:hover:bg-stone-100"
+                    : "bg-stone-200 text-stone-400 dark:bg-stone-700 dark:text-stone-500 cursor-not-allowed",
+                )}
+              >
+                {createTicket.isPending ? "Adding…" : "Add"}
+              </button>
+            </div>
+          </div>
+        ) : (
+          <button
+            type="button"
+            onClick={() => setQuickAddOpen(true)}
+            className="cursor-pointer flex items-center gap-1.5 w-full rounded-lg px-3 py-2 text-xs text-stone-400 hover:text-stone-600 dark:hover:text-stone-300 hover:bg-stone-200/60 dark:hover:bg-stone-700/40 transition-colors"
+          >
+            <FiPlus size={12} />
+            Add task
+          </button>
+        )}
       </div>
     </div>
   );

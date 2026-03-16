@@ -15,7 +15,7 @@ import { PipelineSettings } from "@/features/pipeline/PipelineSettings";
 import { RulesPanel } from "@/features/rules/RulesPanel";
 import { SuggestedRulesBar } from "@/features/rules/SuggestedRulesBar";
 import { PipelineToast } from "@/components/PipelinePrompt";
-import { CreateTicketModal } from "./CreateTicketModal";
+import { TicketDetailPanel } from "./TicketDetailPanel";
 import { getSpaceColor, COLOR_PALETTE } from "@/lib/spaceColor";
 
 export function BoardPage() {
@@ -324,9 +324,10 @@ export function BoardPage() {
       )}
       <PipelineToast spaceId={spaceId} />
       {showCreateTicket && (
-        <CreateTicketModal
+        <TicketDetailPanel
           spaceId={spaceId}
           onClose={() => setShowCreateTicket(false)}
+          onCreate={() => setShowCreateTicket(false)}
         />
       )}
       <ChatBubble />

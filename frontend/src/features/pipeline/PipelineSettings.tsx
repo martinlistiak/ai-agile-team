@@ -55,7 +55,7 @@ const STAGES = [
     key: "review",
     label: "Code Review",
     shortLabel: "Review",
-    description: "Manual code review stage",
+    description: "Reviewer agent auto-reviews PRs",
     icon: (
       <svg
         viewBox="0 0 24 24"
@@ -393,13 +393,13 @@ export function PipelineSettings({
     <div
       className={cn(
         "fixed inset-0 z-50 flex items-center justify-center transition-all duration-250",
-        isClosing ? "bg-black/0" : "bg-black/30 dark:bg-black/50",
+        isClosing ? "bg-transparent" : "bg-stone-900/20 dark:bg-stone-950/40",
       )}
     >
       <div
         ref={panelRef}
         className={cn(
-          "w-full max-w-3xl max-h-[95vh] overflow-y-auto rounded-2xl bg-white dark:bg-gray-900 transition-all duration-250",
+          "w-full max-w-3xl max-h-[95vh] overflow-y-auto rounded-2xl bg-stone-50 dark:bg-stone-900 border border-stone-200 dark:border-stone-800 transition-all duration-250",
           isClosing
             ? "opacity-0 scale-[0.97]"
             : isVisible

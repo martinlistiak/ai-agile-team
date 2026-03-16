@@ -13,6 +13,7 @@ const AGENT_CONFIG: Record<
 > = {
   pm: { name: "Product Manager", color: "bg-blue-500", shortLabel: "PM" },
   developer: { name: "Developer", color: "bg-purple-500", shortLabel: "DE" },
+  reviewer: { name: "Reviewer", color: "bg-amber-500", shortLabel: "CR" },
   tester: { name: "Tester", color: "bg-green-500", shortLabel: "QA" },
 };
 
@@ -115,7 +116,7 @@ export function AgentPanel() {
 
   return (
     <>
-      <div className="w-14 border-r border-l border-gray-200 bg-white px-1 py-4 dark:border-gray-800 dark:bg-gray-950/60 shrink-0">
+      <div className="w-14 border-r border-gray-200 bg-white px-1 py-4 dark:border-gray-800 dark:bg-gray-950/60 shrink-0">
         <div className="flex h-full flex-col items-center gap-3 overflow-y-auto py-1">
           {agents?.map((agent) => (
             <AgentBadge

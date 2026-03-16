@@ -5,6 +5,7 @@ import { AgentsService } from "./agents.service";
 import { PmAgentService } from "./pm-agent.service";
 import { DeveloperAgentService } from "./developer-agent.service";
 import { TesterAgentService } from "./tester-agent.service";
+import { ReviewerAgentService } from "./reviewer-agent.service";
 import { GithubService } from "./github.service";
 import { GitlabService } from "./gitlab.service";
 import { Agent } from "../entities/agent.entity";
@@ -15,6 +16,8 @@ import { User } from "../entities/user.entity";
 import { TicketsModule } from "../tickets/tickets.module";
 import { RulesModule } from "../rules/rules.module";
 import { ChatModule } from "../chat/chat.module";
+
+import { ExecutionRegistry } from "./execution-registry";
 
 @Module({
   imports: [
@@ -29,16 +32,20 @@ import { ChatModule } from "../chat/chat.module";
     PmAgentService,
     DeveloperAgentService,
     TesterAgentService,
+    ReviewerAgentService,
     GithubService,
     GitlabService,
+    ExecutionRegistry,
   ],
   exports: [
     AgentsService,
     PmAgentService,
     DeveloperAgentService,
     TesterAgentService,
+    ReviewerAgentService,
     GithubService,
     GitlabService,
+    ExecutionRegistry,
   ],
 })
 export class AgentsModule {}

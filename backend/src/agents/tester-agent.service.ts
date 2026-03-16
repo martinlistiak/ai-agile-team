@@ -13,7 +13,8 @@ import { RulesService } from "../rules/rules.service";
 import { SuggestedRulesService } from "../rules/suggested-rules.service";
 import { EventsGateway } from "../chat/events.gateway";
 import { formatAgentExecutionLog } from "../common/structured-logger";
-
+import { getModelForAgent } from "./agent-models.config";
+import { ExecutionRegistry } from "./execution-registry";
 const TESTER_SYSTEM_PROMPT = `You are a Tester AI agent in an agile software development team.
 Your role is to write and execute tests for the project, ensuring code quality and correctness.
 
@@ -59,8 +60,8 @@ export class TesterAgentService {
     @InjectRepository(Agent) private agentRepo: Repository<Agent>,
     @InjectRepository(Execution) private executionRepo: Repository<Execution>,
     @InjectRepository(Space) private spaceRepo: Repository<Space>,
+    private executionRegistry: ExecutionRegistry,
   ) {}
-
   /**
    * Run the tester agent — either on a specific ticket or a freeform testing instruction.
    */
@@ -69,14 +70,31 @@ export class TesterAgentService {
     userMessage: string,
     ticketId?: string,
   ): Promise<string> {
-    const agent = await this.agentRepo.findOneBy({
+    let agent = await this.agentRepo.findOneBy({
       spaceId,
       agentType: "tester",
     });
-    if (!agent) throw new Error("Tester agent not found for space");
+    if (!agent) {
+      this.logger.warn(
+        `Tester agent missing for space ${spaceId}, auto-creating`,
+      );
+      agent = this.agentRepo.create({
+        spaceId,
+        agentType: "tester",
+        avatarRef: "tester_default.png",
+        status: "idle",
+      });
+      await this.agentRepo.save(agent);
+    }
 
     await this.agentRepo.update(agent.id, { status: "active" });
     this.eventsGateway.emitAgentStatus(spaceId, agent.id, "active");
+
+    if (ticketId) {
+      await this.ticketsService.update(ticketId, {
+        assigneeAgentId: agent.id,
+      } as any);
+    }
 
     const execution = this.executionRepo.create({
       agentId: agent.id,
@@ -85,6 +103,7 @@ export class TesterAgentService {
       actionLog: [],
     });
     await this.executionRepo.save(execution);
+    const abortController = this.executionRegistry.register(execution.id);
 
     let browserSessionActive = false;
     const startTime = Date.now();
@@ -145,12 +164,14 @@ ${userMessage ? `**Additional instructions from the user:** ${userMessage}` : "W
       for await (const message of query({
         prompt: fullPrompt,
         options: {
+          model: getModelForAgent("tester"),
           allowedTools: ["Read", "Write", "Edit", "Bash", "Glob", "Grep"],
           cwd: repoPath,
           permissionMode: "bypassPermissions",
           allowDangerouslySkipPermissions: true,
           maxTurns: 50,
           executable: "node",
+          abortController,
           stderr: (data: string) => {
             this.logger.debug(`Claude SDK stderr: ${data}`);
           },
@@ -248,6 +269,7 @@ ${userMessage ? `**Additional instructions from the user:** ${userMessage}` : "W
         await this.ticketsService.moveTicket(ticketId, "staged", "agent");
       }
 
+      this.executionRegistry.remove(execution.id);
       execution.status = "completed";
       execution.endTime = new Date();
       execution.actionLog = actionLog;
@@ -299,6 +321,7 @@ ${userMessage ? `**Additional instructions from the user:** ${userMessage}` : "W
         });
       }
 
+      this.executionRegistry.remove(execution.id);
       execution.status = "failed";
       execution.endTime = new Date();
       await this.executionRepo.save(execution);

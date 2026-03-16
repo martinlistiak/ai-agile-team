@@ -3,13 +3,14 @@ import api from "@/api/client";
 import { useToast } from "@/components/Toast";
 import type { ChatMessage } from "@/types";
 
-export type AgentType = "pm" | "developer" | "tester";
+export type AgentType = "pm" | "developer" | "tester" | "reviewer";
 
-export function useChatMessages(spaceId: string | null) {
+export function useChatMessages(spaceId: string | null, agentType?: AgentType) {
   return useQuery<ChatMessage[]>({
-    queryKey: ["chatMessages", spaceId],
+    queryKey: ["chatMessages", spaceId, agentType],
     queryFn: async () => {
-      const { data } = await api.get(`/chat/${spaceId}/messages`);
+      const params = agentType ? `?agentType=${agentType}` : "";
+      const { data } = await api.get(`/chat/${spaceId}/messages${params}`);
       return data;
     },
     enabled: !!spaceId,
@@ -23,7 +24,7 @@ export function useSendChatMessage(spaceId: string | null) {
   return useMutation({
     mutationFn: async (payload: {
       message: string;
-      images: File[];
+      files: File[];
       agentType?: AgentType;
       ticketId?: string;
     }) => {
@@ -39,12 +40,16 @@ export function useSendChatMessage(spaceId: string | null) {
       if (payload.ticketId) {
         formData.append("ticketId", payload.ticketId);
       }
-      payload.images.forEach((image) => formData.append("images", image));
+      payload.files.forEach((file) => formData.append("files", file));
 
       const { data } = await api.post(`/chat/${spaceId}/send`, formData, {
         headers: { "Content-Type": "multipart/form-data" },
       });
-      return data;
+      return data as {
+        response: string;
+        createdTickets?: Array<{ ticketId: string; title: string }>;
+        assistantMessage: ChatMessage;
+      };
     },
     onMutate: async (payload) => {
       if (!spaceId) return;
@@ -55,6 +60,7 @@ export function useSendChatMessage(spaceId: string | null) {
       const previous = queryClient.getQueryData<ChatMessage[]>([
         "chatMessages",
         spaceId,
+        payload.agentType,
       ]);
 
       // Build optimistic user message
@@ -63,7 +69,8 @@ export function useSendChatMessage(spaceId: string | null) {
         role: "user",
         content: payload.message,
         timestamp: new Date().toISOString(),
-        attachments: payload.images.map((file, i) => ({
+        agentType: payload.agentType,
+        attachments: payload.files.map((file, i) => ({
           id: `optimistic-att-${i}`,
           fileName: file.name,
           mimeType: file.type,
@@ -74,21 +81,26 @@ export function useSendChatMessage(spaceId: string | null) {
       };
 
       queryClient.setQueryData<ChatMessage[]>(
-        ["chatMessages", spaceId],
+        ["chatMessages", spaceId, payload.agentType],
         (old = []) => [...old, optimisticMessage],
       );
 
       return { previous };
     },
-    onError: (_err, _payload, context) => {
+    onError: (_err, payload, context) => {
       // Roll back to previous messages on error
       if (context?.previous && spaceId) {
-        queryClient.setQueryData(["chatMessages", spaceId], context.previous);
+        queryClient.setQueryData(
+          ["chatMessages", spaceId, payload.agentType],
+          context.previous,
+        );
       }
       showError("Failed to send message");
     },
-    onSettled: () => {
-      queryClient.invalidateQueries({ queryKey: ["chatMessages", spaceId] });
+    onSettled: (_data, _err, payload) => {
+      queryClient.invalidateQueries({
+        queryKey: ["chatMessages", spaceId, payload.agentType],
+      });
       queryClient.invalidateQueries({ queryKey: ["tickets", spaceId] });
     },
   });
