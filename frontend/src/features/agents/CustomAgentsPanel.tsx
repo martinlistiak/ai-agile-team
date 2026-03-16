@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { FiPlus, FiTrash2, FiEdit2, FiX } from "react-icons/fi";
+import { FiPlus, FiTrash2, FiEdit2 } from "react-icons/fi";
 import { Drawer } from "@/components/Drawer";
 import {
   useAgents,
