@@ -10,10 +10,11 @@ import { PmAgentService } from "../agents/pm-agent.service";
 import { DeveloperAgentService } from "../agents/developer-agent.service";
 import { TesterAgentService } from "../agents/tester-agent.service";
 import { ReviewerAgentService } from "../agents/reviewer-agent.service";
+import { CustomAgentService } from "../agents/custom-agent.service";
 import { ChatMessage } from "../entities/chat-message.entity";
 import { ChatAttachment } from "../entities/chat-attachment.entity";
 
-type AgentType = "pm" | "developer" | "tester" | "reviewer";
+type AgentType = "pm" | "developer" | "tester" | "reviewer" | "custom";
 
 @Injectable()
 export class ChatService {
@@ -24,6 +25,7 @@ export class ChatService {
     private developerAgentService: DeveloperAgentService,
     private testerAgentService: TesterAgentService,
     private reviewerAgentService: ReviewerAgentService,
+    private customAgentService: CustomAgentService,
     @InjectRepository(ChatMessage) private messageRepo: Repository<ChatMessage>,
     @InjectRepository(ChatAttachment)
     private attachmentRepo: Repository<ChatAttachment>,
@@ -63,7 +65,7 @@ export class ChatService {
       size: number;
       buffer: Buffer;
     }>,
-    agentType: AgentType = "pm",
+    agentType: string = "pm",
     ticketId?: string,
   ): Promise<ChatMessage> {
     const trimmedMessage = message.trim();
@@ -82,6 +84,10 @@ export class ChatService {
         "Only image and PDF attachments are supported",
       );
     }
+
+    // Detect custom agents: agentType will be "custom:<agentId>"
+    const isCustomAgent = agentType.startsWith("custom:");
+    const customAgentId = isCustomAgent ? agentType.slice(7) : null;
 
     try {
       this.logger.log(
@@ -112,46 +118,50 @@ export class ChatService {
         userMessage.attachments = [];
       }
 
-      // Route to the correct agent — only pass image files to PM agent
-      const imageFiles = supportedFiles.filter((f) =>
-        f.mimetype.startsWith("image/"),
-      );
       let response: string;
 
-      switch (agentType) {
-        case "developer":
-          response = await this.developerAgentService.run(
-            spaceId,
-            trimmedMessage,
-            ticketId,
-          );
-          break;
-        case "tester":
-          response = await this.testerAgentService.run(
-            spaceId,
-            trimmedMessage,
-            ticketId,
-          );
-          break;
-        case "reviewer":
-          response = await this.reviewerAgentService.run(
-            spaceId,
-            trimmedMessage,
-            ticketId,
-          );
-          break;
-        case "pm":
-        default:
-          response = await this.pmAgentService.run(
-            spaceId,
-            trimmedMessage,
-            userMessage.attachments.map((attachment) => ({
-              fileName: attachment.fileName,
-              mimeType: attachment.mimeType,
-              data: attachment.data,
-            })),
-          );
-          break;
+      if (isCustomAgent && customAgentId) {
+        response = await this.customAgentService.run(
+          spaceId,
+          customAgentId,
+          trimmedMessage,
+        );
+      } else {
+        switch (agentType) {
+          case "developer":
+            response = await this.developerAgentService.run(
+              spaceId,
+              trimmedMessage,
+              ticketId,
+            );
+            break;
+          case "tester":
+            response = await this.testerAgentService.run(
+              spaceId,
+              trimmedMessage,
+              ticketId,
+            );
+            break;
+          case "reviewer":
+            response = await this.reviewerAgentService.run(
+              spaceId,
+              trimmedMessage,
+              ticketId,
+            );
+            break;
+          case "pm":
+          default:
+            response = await this.pmAgentService.run(
+              spaceId,
+              trimmedMessage,
+              userMessage.attachments.map((attachment) => ({
+                fileName: attachment.fileName,
+                mimeType: attachment.mimeType,
+                data: attachment.data,
+              })),
+            );
+            break;
+        }
       }
 
       const assistantMessage = this.messageRepo.create({

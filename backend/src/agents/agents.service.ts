@@ -36,6 +36,44 @@ export class AgentsService {
     return this.agentRepo.findOneBy({ id });
   }
 
+  async createCustomAgent(
+    spaceId: string,
+    data: { name: string; description?: string; systemPrompt?: string },
+  ): Promise<Agent> {
+    const agent = this.agentRepo.create({
+      spaceId,
+      agentType: "custom",
+      name: data.name,
+      description: data.description ?? null,
+      systemPrompt: data.systemPrompt ?? null,
+      isCustom: true,
+      avatarRef: "custom_default.png",
+      status: "idle",
+    });
+    return this.agentRepo.save(agent);
+  }
+
+  async updateCustomAgent(
+    id: string,
+    data: { name?: string; description?: string; systemPrompt?: string },
+  ): Promise<Agent | null> {
+    const agent = await this.agentRepo.findOneBy({ id });
+    if (!agent || !agent.isCustom) return null;
+
+    if (data.name !== undefined) agent.name = data.name;
+    if (data.description !== undefined) agent.description = data.description;
+    if (data.systemPrompt !== undefined) agent.systemPrompt = data.systemPrompt;
+
+    return this.agentRepo.save(agent);
+  }
+
+  async deleteCustomAgent(id: string): Promise<boolean> {
+    const agent = await this.agentRepo.findOneBy({ id });
+    if (!agent || !agent.isCustom) return false;
+    await this.agentRepo.remove(agent);
+    return true;
+  }
+
   async getExecutionsByAgent(
     agentId: string,
     page: number,

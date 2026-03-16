@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   Param,
   Patch,
@@ -141,5 +142,57 @@ export class AgentsController {
       body.ticketId,
     );
     return { result };
+  }
+
+  @Post("spaces/:spaceId/agents/custom")
+  @ApiOperation({ summary: "Create a custom agent in a space" })
+  @ApiParam({ name: "spaceId", format: "uuid" })
+  @ApiBody({
+    schema: {
+      type: "object",
+      properties: {
+        name: { type: "string" },
+        description: { type: "string" },
+        systemPrompt: { type: "string" },
+      },
+      required: ["name"],
+    },
+  })
+  @ApiResponse({ status: 201, description: "Created custom agent" })
+  async createCustomAgent(
+    @Param("spaceId") spaceId: string,
+    @Body() body: { name: string; description?: string; systemPrompt?: string },
+  ) {
+    return this.agentsService.createCustomAgent(spaceId, body);
+  }
+
+  @Patch("agents/:id/custom")
+  @ApiOperation({ summary: "Update a custom agent" })
+  @ApiParam({ name: "id", format: "uuid" })
+  @ApiBody({
+    schema: {
+      type: "object",
+      properties: {
+        name: { type: "string" },
+        description: { type: "string" },
+        systemPrompt: { type: "string" },
+      },
+    },
+  })
+  @ApiResponse({ status: 200, description: "Updated custom agent" })
+  async updateCustomAgent(
+    @Param("id") id: string,
+    @Body() body: { name?: string; description?: string; systemPrompt?: string },
+  ) {
+    return this.agentsService.updateCustomAgent(id, body);
+  }
+
+  @Delete("agents/:id/custom")
+  @ApiOperation({ summary: "Delete a custom agent" })
+  @ApiParam({ name: "id", format: "uuid" })
+  @ApiResponse({ status: 200, description: "Deletion result" })
+  async deleteCustomAgent(@Param("id") id: string) {
+    const deleted = await this.agentsService.deleteCustomAgent(id);
+    return { deleted };
   }
 }

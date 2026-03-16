@@ -6,6 +6,7 @@ import { PmAgentService } from "./pm-agent.service";
 import { DeveloperAgentService } from "./developer-agent.service";
 import { TesterAgentService } from "./tester-agent.service";
 import { ReviewerAgentService } from "./reviewer-agent.service";
+import { CustomAgentService } from "./custom-agent.service";
 import { GithubService } from "./github.service";
 import { GitlabService } from "./gitlab.service";
 import { Agent } from "../entities/agent.entity";
@@ -33,6 +34,7 @@ import { ExecutionRegistry } from "./execution-registry";
     DeveloperAgentService,
     TesterAgentService,
     ReviewerAgentService,
+    CustomAgentService,
     GithubService,
     GitlabService,
     ExecutionRegistry,
@@ -43,6 +45,7 @@ import { ExecutionRegistry } from "./execution-registry";
     DeveloperAgentService,
     TesterAgentService,
     ReviewerAgentService,
+    CustomAgentService,
     GithubService,
     GitlabService,
     ExecutionRegistry,
