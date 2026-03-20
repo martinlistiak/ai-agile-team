@@ -15,13 +15,14 @@ import {
   ApiParam,
 } from "@nestjs/swagger";
 import { JwtOrApiKeyGuard } from "../auth/jwt-or-apikey.guard";
+import { SubscriptionActiveGuard } from "../common/subscription-active.guard";
 import { Throttle } from "@nestjs/throttler";
 import { PipelineService } from "./pipeline.service";
 
 @ApiTags("Pipeline")
 @ApiBearerAuth("bearer")
 @Controller()
-@UseGuards(JwtOrApiKeyGuard)
+@UseGuards(JwtOrApiKeyGuard, SubscriptionActiveGuard)
 export class PipelineController {
   constructor(private pipelineService: PipelineService) {}
 

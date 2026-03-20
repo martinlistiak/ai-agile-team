@@ -1,6 +1,7 @@
 import { Injectable, Logger, Inject, forwardRef } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
 import { Repository } from "typeorm";
+import { EventEmitter2 } from "@nestjs/event-emitter";
 import { query } from "@anthropic-ai/claude-agent-sdk";
 import { Agent } from "../entities/agent.entity";
 import { Execution } from "../entities/execution.entity";
@@ -14,6 +15,7 @@ import { EventsGateway } from "../chat/events.gateway";
 import { formatAgentExecutionLog } from "../common/structured-logger";
 import { getModelForAgent } from "./agent-models.config";
 import { ExecutionRegistry } from "./execution-registry";
+import { AgentRunQuotaService } from "../common/agent-run-quota.service";
 
 const DEVELOPER_SYSTEM_PROMPT = `You are a Senior Developer AI agent in an agile software development team.
 Your role is to implement code changes for assigned tickets.
@@ -52,6 +54,8 @@ export class DeveloperAgentService {
     @InjectRepository(Execution) private executionRepo: Repository<Execution>,
     @InjectRepository(Space) private spaceRepo: Repository<Space>,
     private executionRegistry: ExecutionRegistry,
+    private agentRunQuota: AgentRunQuotaService,
+    private eventEmitter: EventEmitter2,
   ) {}
   /**
    * Run the developer agent on a ticket via a chat message.
@@ -64,6 +68,8 @@ export class DeveloperAgentService {
     userMessage: string,
     ticketId?: string,
   ): Promise<string> {
+    await this.agentRunQuota.assertCanStartRunForSpace(spaceId);
+
     let agent = await this.agentRepo.findOneBy({
       spaceId,
       agentType: "developer",
@@ -273,6 +279,15 @@ ${userMessage ? `**Additional instructions from the user:** ${userMessage}` : "I
             prUrl: prResult.url,
           } as any);
           this.logger.log(`PR created for ticket ${ticketId}: ${prResult.url}`);
+
+          // Emit PR created notification event
+          this.eventEmitter.emit("pr.created", {
+            spaceId,
+            ticketId,
+            ticketTitle: ticket.title,
+            prUrl: prResult.url,
+            prNumber: (prResult as any).number ?? 0,
+          });
         } catch (prError) {
           prFailed = true;
           this.logger.error(

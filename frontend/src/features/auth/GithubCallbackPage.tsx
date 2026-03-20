@@ -3,6 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import type { AxiosError } from 'axios';
 import { useAuth } from '@/contexts/AuthContext';
 import api from '@/api/client';
+import { consumeAuthRedirect } from '@/lib/auth-redirect';
 
 const getProcessedCodeKey = (code: string) => `github-oauth-code:${code}`;
 
@@ -29,7 +30,8 @@ export function GithubCallbackPage() {
     api.post('/auth/github/callback', { code })
       .then(({ data }) => {
         login(data.accessToken, data.user);
-        navigate('/', { replace: true });
+        const dest = consumeAuthRedirect() ?? '/';
+        navigate(dest, { replace: true });
       })
       .catch((err: AxiosError<{ message?: string }>) => {
         sessionStorage.removeItem(processedCodeKey);

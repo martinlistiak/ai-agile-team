@@ -285,7 +285,10 @@ export function TermsPage() {
               </h2>
               <p className="text-[14px] leading-relaxed">
                 For questions about these terms, please contact us at{" "}
-                <span style={{ color: "var(--accent)" }}>legal@runa.io</span>.
+                <span style={{ color: "var(--accent)" }}>
+                  legal@runa-app.com
+                </span>
+                .
               </p>
             </section>
           </div>

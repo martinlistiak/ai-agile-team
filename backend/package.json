@@ -20,8 +20,6 @@
   "dependencies": {
     "@anthropic-ai/claude-agent-sdk": "^0.2.74",
     "@anthropic-ai/sdk": "^0.78.0",
-    "@aws-sdk/client-s3": "^3.1008.0",
-    "@aws-sdk/s3-request-presigner": "^3.1008.0",
     "@nestjs/bull": "^11.0.4",
     "@nestjs/common": "^11.1.16",
     "@nestjs/config": "^4.0.3",

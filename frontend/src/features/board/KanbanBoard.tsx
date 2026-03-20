@@ -1,11 +1,10 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useCallback } from "react";
 import {
   DndContext,
   DragOverlay,
   closestCorners,
   type DragStartEvent,
   type DragEndEvent,
-  type DragOverEvent,
   PointerSensor,
   useSensor,
   useSensors,
@@ -16,11 +15,14 @@ import {
   useMoveTicket,
   useDeleteTicket,
   useReorderTickets,
+  useBulkDeleteTickets,
 } from "@/api/hooks/useTickets";
 import { useAgents } from "@/api/hooks/useAgents";
 import { BoardColumn } from "./BoardColumn";
 import { TicketCard } from "./TicketCard";
 import { TicketDetailPanel } from "./TicketDetailPanel";
+import { BulkActionsBar } from "./BulkActionsBar";
+import { KanbanBoardSkeleton } from "@/components/Skeleton";
 import type { Ticket, TicketStatus } from "@/types";
 
 const COLUMNS: { id: TicketStatus; label: string; color: string }[] = [
@@ -34,13 +36,17 @@ const COLUMNS: { id: TicketStatus; label: string; color: string }[] = [
 ];
 
 export function KanbanBoard({ spaceId }: { spaceId: string }) {
-  const { data: tickets = [] } = useTickets(spaceId);
+  const { data: tickets = [], isLoading: ticketsLoading } = useTickets(spaceId);
   const { data: agents = [] } = useAgents(spaceId);
   const moveTicket = useMoveTicket();
   const deleteTicket = useDeleteTicket();
   const reorderTickets = useReorderTickets();
+  const bulkDelete = useBulkDeleteTickets();
   const [activeTicket, setActiveTicket] = useState<Ticket | null>(null);
   const [selectedTicketId, setSelectedTicketId] = useState<string | null>(null);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+
+  const selectionMode = selectedIds.size > 0;
 
   const selectedTicket = selectedTicketId
     ? (tickets.find((t) => t.id === selectedTicketId) ?? null)
@@ -78,12 +84,9 @@ export function KanbanBoard({ spaceId }: { spaceId: string }) {
     if (!ticket) return;
 
     const overId = over.id as string;
-
-    // Check if we dropped on a column (status) or on another ticket
     const isColumn = COLUMNS.some((c) => c.id === overId);
 
     if (isColumn) {
-      // Dropped on a column header / empty area
       const newStatus = overId as TicketStatus;
       if (ticket.status !== newStatus) {
         moveTicket.mutate({ ticketId, status: newStatus, spaceId });
@@ -91,12 +94,10 @@ export function KanbanBoard({ spaceId }: { spaceId: string }) {
       return;
     }
 
-    // Dropped on another ticket — could be same column reorder or cross-column
     const overTicket = tickets.find((t) => t.id === overId);
     if (!overTicket) return;
 
     if (ticket.status === overTicket.status) {
-      // Same column reorder
       const columnTickets = ticketsByStatus[ticket.status as TicketStatus];
       const oldIndex = columnTickets.findIndex((t) => t.id === ticketId);
       const newIndex = columnTickets.findIndex((t) => t.id === overId);
@@ -110,7 +111,6 @@ export function KanbanBoard({ spaceId }: { spaceId: string }) {
         });
       }
     } else {
-      // Cross-column: move to the other ticket's column
       moveTicket.mutate({
         ticketId,
         status: overTicket.status,
@@ -124,6 +124,39 @@ export function KanbanBoard({ spaceId }: { spaceId: string }) {
     deleteTicket.mutate({ ticketId, spaceId });
   };
 
+  const toggleSelect = useCallback((ticketId: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(ticketId)) next.delete(ticketId);
+      else next.add(ticketId);
+      return next;
+    });
+  }, []);
+
+  const handleSelectAll = useCallback(() => {
+    if (selectedIds.size === tickets.length) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(tickets.map((t) => t.id)));
+    }
+  }, [tickets, selectedIds.size]);
+
+  const handleClearSelection = useCallback(() => {
+    setSelectedIds(new Set());
+  }, []);
+
+  const handleBulkDelete = useCallback(() => {
+    const ids = Array.from(selectedIds);
+    bulkDelete.mutate(
+      { spaceId, ticketIds: ids },
+      { onSuccess: () => setSelectedIds(new Set()) },
+    );
+  }, [selectedIds, spaceId, bulkDelete]);
+
+  if (ticketsLoading) {
+    return <KanbanBoardSkeleton />;
+  }
+
   return (
     <>
       <DndContext
@@ -132,7 +165,7 @@ export function KanbanBoard({ spaceId }: { spaceId: string }) {
         onDragStart={handleDragStart}
         onDragEnd={handleDragEnd}
       >
-        <div className="flex gap-4 p-6 h-full overflow-x-auto">
+        <div className="flex gap-3 p-3 md:gap-4 md:p-6 h-full overflow-x-auto">
           {COLUMNS.map((col) => (
             <BoardColumn
               key={col.id}
@@ -141,10 +174,19 @@ export function KanbanBoard({ spaceId }: { spaceId: string }) {
               color={col.color}
               tickets={ticketsByStatus[col.id] || []}
               spaceId={spaceId}
-              onTicketClick={(t) => setSelectedTicketId(t.id)}
+              onTicketClick={(t) => {
+                if (selectionMode) {
+                  toggleSelect(t.id);
+                } else {
+                  setSelectedTicketId(t.id);
+                }
+              }}
               activeTicketId={activeTicket?.id ?? null}
               agents={agents}
               onDelete={handleDelete}
+              selectionMode={selectionMode}
+              selectedIds={selectedIds}
+              onToggleSelect={toggleSelect}
             />
           ))}
         </div>
@@ -155,7 +197,16 @@ export function KanbanBoard({ spaceId }: { spaceId: string }) {
         </DragOverlay>
       </DndContext>
 
-      {selectedTicket && (
+      <BulkActionsBar
+        selectedCount={selectedIds.size}
+        totalCount={tickets.length}
+        onSelectAll={handleSelectAll}
+        onClearSelection={handleClearSelection}
+        onBulkDelete={handleBulkDelete}
+        isDeleting={bulkDelete.isPending}
+      />
+
+      {selectedTicket && !selectionMode && (
         <TicketDetailPanel
           ticket={selectedTicket}
           spaceId={spaceId}

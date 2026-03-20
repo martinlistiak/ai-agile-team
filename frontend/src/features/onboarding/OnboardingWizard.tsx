@@ -90,7 +90,7 @@ export function OnboardingWizard({ onClose }: OnboardingWizardProps = {}) {
   const card = (
     <div
       className={cn(
-        "w-full max-w-xl rounded-2xl shadow-sm p-8 relative",
+        "w-full max-w-xl rounded-2xl shadow-sm p-5 md:p-8 relative",
         onClose
           ? overlaySurfaceClass
           : "border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800",

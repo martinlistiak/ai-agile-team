@@ -9,6 +9,11 @@ import { Repository } from "typeorm";
 import { ConfigService } from "@nestjs/config";
 import Stripe from "stripe";
 import { User, PlanTier, SubscriptionStatus } from "../entities/user.entity";
+import { Space } from "../entities/space.entity";
+import { Execution } from "../entities/execution.entity";
+import { CountlyService } from "../common/countly.service";
+
+const TRIAL_PERIOD_DAYS = 7;
 
 @Injectable()
 export class BillingService {
@@ -17,7 +22,10 @@ export class BillingService {
 
   constructor(
     @InjectRepository(User) private userRepo: Repository<User>,
+    @InjectRepository(Space) private spaceRepo: Repository<Space>,
+    @InjectRepository(Execution) private executionRepo: Repository<Execution>,
     private configService: ConfigService,
+    private countly: CountlyService,
   ) {
     this.stripe = new Stripe(
       this.configService.get<string>("STRIPE_SECRET_KEY", ""),
@@ -40,7 +48,7 @@ export class BillingService {
 
   async createCheckoutSession(
     userId: string,
-    plan: "team" | "enterprise",
+    plan: "starter" | "team" | "enterprise",
     interval: "monthly" | "annual",
   ): Promise<{ url: string }> {
     const user = await this.userRepo.findOneBy({ id: userId });
@@ -49,13 +57,20 @@ export class BillingService {
     const customerId = await this.getOrCreateCustomer(user);
     const priceId = this.getPriceId(plan, interval);
 
+    // Set initial quantity to the user's current space count
+    const spaceCount = await this.spaceRepo.count({
+      where: { userId },
+    });
+    const quantity = Math.max(spaceCount, 1);
+
     const session = await this.stripe.checkout.sessions.create({
       customer: customerId,
       mode: "subscription",
-      line_items: [{ price: priceId, quantity: 1 }],
+      line_items: [{ price: priceId, quantity }],
       success_url: `${this.getAppUrl()}/billing?session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: `${this.getAppUrl()}/billing`,
       subscription_data: {
+        trial_period_days: TRIAL_PERIOD_DAYS,
         metadata: { userId: user.id, plan },
       },
       allow_promotion_codes: true,
@@ -93,11 +108,15 @@ export class BillingService {
 
   async handleWebhookEvent(event: Stripe.Event): Promise<void> {
     switch (event.type) {
-      case "checkout.session.completed":
-        await this.handleCheckoutCompleted(
-          event.data.object as Stripe.Checkout.Session,
-        );
+      case "checkout.session.completed": {
+        const session = event.data.object as Stripe.Checkout.Session;
+        if (session.metadata?.type === "credit_topup") {
+          await this.handleTopUpCompleted(session);
+        } else {
+          await this.handleCheckoutCompleted(session);
+        }
         break;
+      }
       case "customer.subscription.updated":
       case "customer.subscription.created":
         await this.handleSubscriptionUpdated(
@@ -146,6 +165,19 @@ export class BillingService {
       user.stripeSubscriptionId = subscriptionId;
       await this.userRepo.save(user);
     }
+
+    let plan = "unknown";
+    if (subscriptionId) {
+      try {
+        const sub = await this.stripe.subscriptions.retrieve(subscriptionId);
+        plan = sub.metadata?.plan ?? "unknown";
+      } catch {
+        this.logger.warn(
+          `Could not retrieve subscription ${subscriptionId} for analytics`,
+        );
+      }
+    }
+    this.countly.record(user.id, "subscription_checkout_completed", { plan });
 
     this.logger.log(`Checkout completed for user ${user.id}`);
   }
@@ -228,7 +260,7 @@ export class BillingService {
   }
 
   private getPriceId(
-    plan: "team" | "enterprise",
+    plan: "starter" | "team" | "enterprise",
     interval: "monthly" | "annual",
   ): string {
     const key = `STRIPE_PRICE_${plan.toUpperCase()}_${interval.toUpperCase()}`;
@@ -241,7 +273,7 @@ export class BillingService {
   }
 
   private getAppUrl(): string {
-    return this.configService.get<string>("APP_URL", "http://localhost:3000");
+    return this.configService.get<string>("APP_URL", "https://runa-app.com");
   }
 
   private mapStatus(status: Stripe.Subscription.Status): SubscriptionStatus {
@@ -259,13 +291,13 @@ export class BillingService {
   }
 
   async updateSubscriptionQuantity(
-    ownerId: string,
-    quantity: number,
+    userId: string,
+    spaceCount: number,
   ): Promise<void> {
-    const user = await this.userRepo.findOneBy({ id: ownerId });
+    const user = await this.userRepo.findOneBy({ id: userId });
     if (!user?.stripeSubscriptionId) {
       this.logger.warn(
-        `No Stripe subscription found for user ${ownerId}, skipping quantity update`,
+        `No Stripe subscription found for user ${userId}, skipping quantity update`,
       );
       return;
     }
@@ -282,12 +314,12 @@ export class BillingService {
     }
 
     await this.stripe.subscriptions.update(user.stripeSubscriptionId, {
-      items: [{ id: itemId, quantity }],
+      items: [{ id: itemId, quantity: spaceCount }],
       proration_behavior: "always_invoice",
     });
 
     this.logger.log(
-      `Updated subscription ${user.stripeSubscriptionId} to quantity ${quantity}`,
+      `Updated subscription ${user.stripeSubscriptionId} to ${spaceCount} spaces`,
     );
   }
 
@@ -295,9 +327,14 @@ export class BillingService {
     const metadata = subscription.metadata;
     if (metadata?.plan === "enterprise") return "enterprise";
     if (metadata?.plan === "team") return "team";
+    if (metadata?.plan === "starter") return "starter";
 
     // Fallback: check price IDs
     const priceId = subscription.items?.data?.[0]?.price?.id;
+    const starterMonthly = this.configService.get(
+      "STRIPE_PRICE_STARTER_MONTHLY",
+    );
+    const starterAnnual = this.configService.get("STRIPE_PRICE_STARTER_ANNUAL");
     const teamMonthly = this.configService.get("STRIPE_PRICE_TEAM_MONTHLY");
     const teamAnnual = this.configService.get("STRIPE_PRICE_TEAM_ANNUAL");
     const entMonthly = this.configService.get(
@@ -307,7 +344,183 @@ export class BillingService {
 
     if (priceId === entMonthly || priceId === entAnnual) return "enterprise";
     if (priceId === teamMonthly || priceId === teamAnnual) return "team";
+    if (priceId === starterMonthly || priceId === starterAnnual)
+      return "starter";
 
-    return "team"; // default paid tier
+    return "starter";
+  }
+
+  // ── Credit Top-Up ──
+
+  async createTopUpSession(
+    userId: string,
+    amountDollars: number,
+  ): Promise<{ url: string }> {
+    if (
+      !Number.isInteger(amountDollars) ||
+      amountDollars < 5 ||
+      amountDollars % 5 !== 0
+    ) {
+      throw new BadRequestException(
+        "Amount must be a multiple of $5 (minimum $5)",
+      );
+    }
+
+    const user = await this.userRepo.findOneBy({ id: userId });
+    if (!user) throw new NotFoundException("User not found");
+
+    const customerId = await this.getOrCreateCustomer(user);
+    const amountCents = amountDollars * 100;
+
+    const session = await this.stripe.checkout.sessions.create({
+      customer: customerId,
+      mode: "payment",
+      line_items: [
+        {
+          price_data: {
+            currency: "usd",
+            unit_amount: amountCents,
+            product_data: {
+              name: `Usage credits top-up — $${amountDollars}`,
+            },
+          },
+          quantity: 1,
+        },
+      ],
+      metadata: {
+        userId: user.id,
+        type: "credit_topup",
+        amountCents: String(amountCents),
+      },
+      success_url: `${this.getAppUrl()}/billing?topup=success`,
+      cancel_url: `${this.getAppUrl()}/billing`,
+    });
+
+    return { url: session.url! };
+  }
+
+  private async handleTopUpCompleted(
+    session: Stripe.Checkout.Session,
+  ): Promise<void> {
+    if (session.metadata?.type !== "credit_topup") return;
+
+    const userId = session.metadata.userId;
+    const amountCents = parseInt(session.metadata.amountCents, 10);
+    if (!userId || isNaN(amountCents)) {
+      this.logger.warn("Top-up session missing metadata");
+      return;
+    }
+
+    await this.userRepo.increment(
+      { id: userId },
+      "creditsBalance",
+      amountCents,
+    );
+    this.logger.log(`Credited ${amountCents} cents to user ${userId}`);
+    this.countly.record(userId, "credits_topup_completed", {
+      amountCents: String(amountCents),
+    });
+  }
+
+  async getCreditsBalance(userId: string): Promise<{ creditsBalance: number }> {
+    const user = await this.userRepo.findOneBy({ id: userId });
+    if (!user) throw new NotFoundException("User not found");
+    return { creditsBalance: user.creditsBalance };
+  }
+
+  /**
+   * Removes the Stripe customer and cancels subscriptions. Non-fatal on Stripe errors
+   * so local account data can still be deleted (e.g. GDPR).
+   */
+  async deleteStripeCustomerIfPresent(
+    stripeCustomerId: string | null | undefined,
+  ): Promise<void> {
+    if (!stripeCustomerId) return;
+    try {
+      await this.stripe.customers.del(stripeCustomerId);
+      this.logger.log(`Deleted Stripe customer ${stripeCustomerId}`);
+    } catch (err) {
+      this.logger.warn(
+        `Failed to delete Stripe customer ${stripeCustomerId}; continuing with local account removal`,
+        err,
+      );
+    }
+  }
+
+  async getUsageStats(userId: string) {
+    const user = await this.userRepo.findOneBy({ id: userId });
+    if (!user) throw new NotFoundException("User not found");
+
+    const now = new Date();
+    let periodStart: Date;
+    let periodEnd: Date;
+
+    if (user.currentPeriodEnd) {
+      periodEnd = new Date(user.currentPeriodEnd);
+      periodStart = new Date(periodEnd);
+      periodStart.setDate(periodStart.getDate() - 30);
+    } else {
+      periodStart = new Date(
+        Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1),
+      );
+      periodEnd = now;
+    }
+
+    const stats = await this.executionRepo
+      .createQueryBuilder("e")
+      .innerJoin("e.agent", "agent")
+      .innerJoin("agent.space", "space")
+      .where("space.userId = :userId", { userId })
+      .andWhere("e.startTime >= :periodStart", { periodStart })
+      .andWhere("e.startTime <= :periodEnd", { periodEnd })
+      .select([
+        'COUNT(*)::int AS "totalRuns"',
+        "COUNT(*) FILTER (WHERE e.status = 'completed')::int AS \"completedRuns\"",
+        "COUNT(*) FILTER (WHERE e.status = 'failed')::int AS \"failedRuns\"",
+        'COALESCE(SUM(e."tokensUsed"), 0)::int AS "totalTokens"',
+      ])
+      .getRawOne();
+
+    return {
+      periodStart: periodStart.toISOString(),
+      periodEnd: periodEnd.toISOString(),
+      totalRuns: stats?.totalRuns ?? 0,
+      completedRuns: stats?.completedRuns ?? 0,
+      failedRuns: stats?.failedRuns ?? 0,
+      totalTokens: stats?.totalTokens ?? 0,
+    };
+  }
+
+  async listInvoices(userId: string): Promise<{
+    invoices: Array<{
+      id: string;
+      number: string | null;
+      status: string | null;
+      amountPaid: number;
+      currency: string;
+      created: string;
+      pdfUrl: string | null;
+    }>;
+  }> {
+    const user = await this.userRepo.findOneBy({ id: userId });
+    if (!user) throw new NotFoundException("User not found");
+    if (!user.stripeCustomerId) return { invoices: [] };
+
+    const { data } = await this.stripe.invoices.list({
+      customer: user.stripeCustomerId,
+      limit: 24,
+    });
+
+    return {
+      invoices: data.map((inv) => ({
+        id: inv.id,
+        number: inv.number,
+        status: inv.status,
+        amountPaid: inv.amount_paid,
+        currency: inv.currency,
+        created: new Date(inv.created * 1000).toISOString(),
+        pdfUrl: inv.invoice_pdf ?? null,
+      })),
+    };
   }
 }

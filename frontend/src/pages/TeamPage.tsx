@@ -1,128 +1,52 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect } from "react";
 import { useAuth } from "@/contexts/AuthContext";
-import api from "@/api/client";
-import { useToast } from "@/components/Toast";
-import type { Team, TeamDetail } from "@/types";
+import {
+  useTeams,
+  useTeamDetail,
+  useCreateTeam,
+  useInviteMember,
+  useRevokeInvitation,
+  useRemoveMember,
+  useChangeMemberRole,
+} from "@/api/hooks/useTeams";
 
 export function TeamPage() {
   const { user } = useAuth();
-  const [teams, setTeams] = useState<Team[]>([]);
-  const [selectedTeam, setSelectedTeam] = useState<TeamDetail | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [creating, setCreating] = useState(false);
+  const { data: teams = [], isLoading: loading } = useTeams();
+  const [selectedTeamId, setSelectedTeamId] = useState<string | null>(null);
+  const { data: selectedTeam } = useTeamDetail(selectedTeamId);
   const [newTeamName, setNewTeamName] = useState("");
   const [inviteEmail, setInviteEmail] = useState("");
   const [inviteRole, setInviteRole] = useState<"member" | "admin">("member");
-  const [inviting, setInviting] = useState(false);
-  const { error: showError } = useToast();
 
-  /** Turn raw HTTP errors like "Cannot POST /api/teams" into friendly messages */
-  const friendlyError = (err: any, fallback: string): string => {
-    const msg: string | undefined = err.response?.data?.message;
-    if (!msg || /^Cannot (GET|POST|PUT|PATCH|DELETE) \//.test(msg)) {
-      return fallback;
-    }
-    return msg;
-  };
+  const createTeamMutation = useCreateTeam();
+  const inviteMutation = useInviteMember();
+  const revokeInvitationMutation = useRevokeInvitation();
+  const removeMemberMutation = useRemoveMember();
+  const changeRoleMutation = useChangeMemberRole();
 
-  const fetchTeams = useCallback(async () => {
-    try {
-      const { data } = await api.get("/teams");
-      setTeams(data);
-      if (data.length > 0 && !selectedTeam) {
-        const { data: detail } = await api.get(`/teams/${data[0].id}`);
-        setSelectedTeam(detail);
-      }
-    } catch {
-      /* ignore */
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
+  // Auto-select first team
   useEffect(() => {
-    fetchTeams();
-  }, [fetchTeams]);
-
-  const loadTeam = async (teamId: string) => {
-    const { data } = await api.get(`/teams/${teamId}`);
-    setSelectedTeam(data);
-  };
+    if (teams.length > 0 && !selectedTeamId) {
+      setSelectedTeamId(teams[0].id);
+    }
+  }, [teams, selectedTeamId]);
 
   const handleCreateTeam = async () => {
     if (!newTeamName.trim()) return;
-    setCreating(true);
-    try {
-      const { data } = await api.post("/teams", { name: newTeamName.trim() });
-      setNewTeamName("");
-      await fetchTeams();
-      await loadTeam(data.id);
-    } catch (err: any) {
-      showError(
-        friendlyError(
-          err,
-          "Failed to create team. Please check your connection and try again.",
-        ),
-      );
-    } finally {
-      setCreating(false);
-    }
+    const team = await createTeamMutation.mutateAsync(newTeamName.trim());
+    setNewTeamName("");
+    setSelectedTeamId(team.id);
   };
 
   const handleInvite = async () => {
-    if (!selectedTeam || !inviteEmail.trim()) return;
-    setInviting(true);
-    try {
-      await api.post(`/teams/${selectedTeam.id}/invitations`, {
-        email: inviteEmail.trim(),
-        role: inviteRole,
-      });
-      setInviteEmail("");
-      await loadTeam(selectedTeam.id);
-    } catch (err: any) {
-      showError(friendlyError(err, "Failed to send invitation"));
-    } finally {
-      setInviting(false);
-    }
-  };
-
-  const handleRevokeInvitation = async (invitationId: string) => {
-    if (!selectedTeam) return;
-    try {
-      await api.delete(`/teams/${selectedTeam.id}/invitations/${invitationId}`);
-      await loadTeam(selectedTeam.id);
-    } catch {
-      /* ignore */
-    }
-  };
-
-  const handleRemoveMember = async (memberId: string) => {
-    if (!selectedTeam) return;
-    try {
-      await api.delete(`/teams/${selectedTeam.id}/members/${memberId}`);
-      await loadTeam(selectedTeam.id);
-    } catch (err: any) {
-      showError(friendlyError(err, "Failed to remove member"));
-    }
-  };
-
-  const handleRoleChange = async (
-    memberId: string,
-    role: "admin" | "member",
-  ) => {
-    if (!selectedTeam) return;
-    try {
-      await api.patch(`/teams/${selectedTeam.id}/members/${memberId}/role`, {
-        role,
-      });
-      await loadTeam(selectedTeam.id);
-    } catch (err: any) {
-      showError(friendlyError(err, "Failed to update role"));
-    }
-  };
-
-  const handleSeatChange = async (seatCount: number) => {
-    // Seats are now auto-calculated based on member count
+    if (!selectedTeamId || !inviteEmail.trim()) return;
+    await inviteMutation.mutateAsync({
+      teamId: selectedTeamId,
+      email: inviteEmail.trim(),
+      role: inviteRole,
+    });
+    setInviteEmail("");
   };
 
   const isOwnerOrAdmin =
@@ -131,14 +55,11 @@ export function TeamPage() {
         m.userId === user?.id && (m.role === "owner" || m.role === "admin"),
     ) ?? false;
 
-  const isOwner =
-    selectedTeam?.members.some(
-      (m) => m.userId === user?.id && m.role === "owner",
-    ) ?? false;
-
   const canInvite =
     isOwnerOrAdmin &&
     (user?.planTier === "team" || user?.planTier === "enterprise");
+
+  const needsEmailVerification = user?.emailVerified === false;
 
   if (loading) {
     return (
@@ -149,7 +70,7 @@ export function TeamPage() {
   }
 
   return (
-    <div className="p-8 max-w-4xl mx-auto">
+    <div className="p-4 md:p-8 max-w-4xl mx-auto">
       <div className="mb-8">
         <h1 className="text-2xl font-semibold text-gray-900 dark:text-gray-100">
           Team
@@ -175,22 +96,21 @@ export function TeamPage() {
             />
             <button
               onClick={handleCreateTeam}
-              disabled={creating || !newTeamName.trim()}
+              disabled={createTeamMutation.isPending || !newTeamName.trim()}
               className="px-4 py-2 rounded-lg bg-indigo-500 text-white text-sm font-medium hover:bg-indigo-600 transition-colors disabled:opacity-50"
             >
-              {creating ? "Creating…" : "Create team"}
+              {createTeamMutation.isPending ? "Creating…" : "Create team"}
             </button>
           </div>
         </div>
       ) : (
         <>
-          {/* Team selector (if multiple) */}
           {teams.length > 1 && (
             <div className="flex gap-2 mb-6">
               {teams.map((t) => (
                 <button
                   key={t.id}
-                  onClick={() => loadTeam(t.id)}
+                  onClick={() => setSelectedTeamId(t.id)}
                   className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
                     selectedTeam?.id === t.id
                       ? "bg-indigo-500 text-white"
@@ -205,29 +125,33 @@ export function TeamPage() {
 
           {selectedTeam && (
             <>
-              {/* Seat info */}
               <div className="rounded-xl border border-gray-200 dark:border-gray-800 p-5 mb-6 flex items-center justify-between">
                 <div>
                   <p className="text-sm text-gray-500 dark:text-gray-400">
-                    Seats used
+                    Team members
                   </p>
                   <p className="text-lg font-semibold text-gray-900 dark:text-gray-100">
                     {selectedTeam.members.length}
                   </p>
                   <p className="text-xs text-gray-400 mt-0.5">
-                    Billed per seat on your subscription
+                    Unlimited members — billed per space
                   </p>
                 </div>
               </div>
 
-              {/* Invite form */}
               {isOwnerOrAdmin && (
                 <div className="rounded-xl border border-gray-200 dark:border-gray-800 p-5 mb-6">
                   <p className="text-sm font-medium text-gray-900 dark:text-gray-100 mb-3">
                     Invite a new member
                   </p>
-                  {canInvite ? (
-                    <div className="flex gap-2">
+                  {canInvite && needsEmailVerification ? (
+                    <p className="text-sm text-gray-500 dark:text-gray-400">
+                      Verify your email address before inviting teammates. Check
+                      your inbox for the confirmation link, or use &quot;Resend
+                      email&quot; in the banner at the top of the app.
+                    </p>
+                  ) : canInvite ? (
+                    <div className="flex flex-col gap-2 sm:flex-row">
                       <input
                         type="email"
                         value={inviteEmail}
@@ -249,10 +173,12 @@ export function TeamPage() {
                       </select>
                       <button
                         onClick={handleInvite}
-                        disabled={inviting || !inviteEmail.trim()}
+                        disabled={
+                          inviteMutation.isPending || !inviteEmail.trim()
+                        }
                         className="px-4 py-2 rounded-lg bg-indigo-500 text-white text-sm font-medium hover:bg-indigo-600 transition-colors disabled:opacity-50"
                       >
-                        {inviting ? "Sending…" : "Send invite"}
+                        {inviteMutation.isPending ? "Sending…" : "Send invite"}
                       </button>
                     </div>
                   ) : (
@@ -271,7 +197,6 @@ export function TeamPage() {
                 </div>
               )}
 
-              {/* Members list */}
               <div className="rounded-xl border border-gray-200 dark:border-gray-800 overflow-hidden mb-6">
                 <div className="px-5 py-3 border-b border-gray-100 dark:border-gray-800">
                   <p className="text-sm font-medium text-gray-900 dark:text-gray-100">
@@ -282,7 +207,7 @@ export function TeamPage() {
                   {selectedTeam.members.map((m) => (
                     <li
                       key={m.id}
-                      className="flex items-center justify-between px-5 py-3 border-b border-gray-50 dark:border-gray-800/50 last:border-0"
+                      className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between px-4 py-3 md:px-5 border-b border-gray-50 dark:border-gray-800/50 last:border-0"
                     >
                       <div className="flex items-center gap-3">
                         {m.user.avatarUrl ? (
@@ -318,10 +243,11 @@ export function TeamPage() {
                             <select
                               value={m.role}
                               onChange={(e) =>
-                                handleRoleChange(
-                                  m.id,
-                                  e.target.value as "admin" | "member",
-                                )
+                                changeRoleMutation.mutate({
+                                  teamId: selectedTeam.id,
+                                  memberId: m.id,
+                                  role: e.target.value as "admin" | "member",
+                                })
                               }
                               className="text-xs px-2 py-1 rounded border border-gray-200 dark:border-gray-700 bg-transparent text-gray-600 dark:text-gray-400"
                               aria-label={`Role for ${m.user.name}`}
@@ -330,7 +256,12 @@ export function TeamPage() {
                               <option value="admin">Admin</option>
                             </select>
                             <button
-                              onClick={() => handleRemoveMember(m.id)}
+                              onClick={() =>
+                                removeMemberMutation.mutate({
+                                  teamId: selectedTeam.id,
+                                  memberId: m.id,
+                                })
+                              }
                               className="text-xs text-red-500 hover:text-red-600 px-2 py-1"
                             >
                               Remove
@@ -347,7 +278,6 @@ export function TeamPage() {
                 </ul>
               </div>
 
-              {/* Pending invitations */}
               {selectedTeam.pendingInvitations.length > 0 && (
                 <div className="rounded-xl border border-gray-200 dark:border-gray-800 overflow-hidden">
                   <div className="px-5 py-3 border-b border-gray-100 dark:border-gray-800">
@@ -374,7 +304,12 @@ export function TeamPage() {
                         </div>
                         {isOwnerOrAdmin && (
                           <button
-                            onClick={() => handleRevokeInvitation(inv.id)}
+                            onClick={() =>
+                              revokeInvitationMutation.mutate({
+                                teamId: selectedTeam.id,
+                                invitationId: inv.id,
+                              })
+                            }
                             className="text-xs text-red-500 hover:text-red-600 px-2 py-1"
                           >
                             Revoke

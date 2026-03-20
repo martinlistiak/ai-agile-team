@@ -11,6 +11,14 @@ import { SuggestedRule } from "./entities/suggested-rule.entity";
 import { Team } from "./entities/team.entity";
 import { TeamMember } from "./entities/team-member.entity";
 import { TeamInvitation } from "./entities/team-invitation.entity";
+import { PasswordResetToken } from "./entities/password-reset-token.entity";
+import { EmailVerificationToken } from "./entities/email-verification-token.entity";
+import { SsoConfig } from "./entities/sso-config.entity";
+import { AgentTraining } from "./entities/agent-training.entity";
+import { SlaConfig } from "./entities/sla-config.entity";
+import { AnalyticsEvent } from "./entities/analytics-event.entity";
+import { Notification } from "./entities/notification.entity";
+import { NotificationPreference } from "./entities/notification-preference.entity";
 
 export default new DataSource({
   type: "postgres",
@@ -32,6 +40,14 @@ export default new DataSource({
     Team,
     TeamMember,
     TeamInvitation,
+    PasswordResetToken,
+    EmailVerificationToken,
+    SsoConfig,
+    AgentTraining,
+    SlaConfig,
+    AnalyticsEvent,
+    Notification,
+    NotificationPreference,
   ],
   migrations: ["src/migrations/*.ts"],
   synchronize: false,

@@ -7,10 +7,22 @@ import {
 } from "@nestjs/websockets";
 import { Server, Socket } from "socket.io";
 import { Logger } from "@nestjs/common";
+import { getCorsOrigins } from "../common/cors-origins";
 
 @WebSocketGateway({
   cors: {
-    origin: "http://localhost:3000",
+    origin: (
+      origin: string | undefined,
+      callback: (err: Error | null, allow?: boolean) => void,
+    ) => {
+      const allowed = getCorsOrigins();
+      // Allow requests with no origin (e.g. server-to-server, mobile clients)
+      if (!origin || allowed.includes(origin)) {
+        callback(null, true);
+      } else {
+        callback(new Error(`Origin ${origin} not allowed by CORS`));
+      }
+    },
     credentials: true,
   },
 })
@@ -19,8 +31,17 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
   server: Server;
 
   private readonly logger = new Logger(EventsGateway.name);
+  private readonly allowedOrigins = getCorsOrigins();
 
   handleConnection(client: Socket) {
+    const origin = client.handshake.headers.origin;
+    if (origin && !this.allowedOrigins.includes(origin)) {
+      this.logger.warn(
+        `Rejected WebSocket connection from disallowed origin: ${origin} (client ${client.id})`,
+      );
+      client.disconnect(true);
+      return;
+    }
     this.logger.log(`Client connected: ${client.id}`);
   }
 
@@ -38,6 +59,17 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
   handleLeaveSpace(client: Socket, data: { space_id: string }) {
     client.leave(data.space_id);
     this.logger.log(`Client ${client.id} left space ${data.space_id}`);
+  }
+
+  @SubscribeMessage("join_user")
+  handleJoinUser(client: Socket, data: { user_id: string }) {
+    client.join(`user:${data.user_id}`);
+    this.logger.log(`Client ${client.id} joined user channel ${data.user_id}`);
+  }
+
+  @SubscribeMessage("leave_user")
+  handleLeaveUser(client: Socket, data: { user_id: string }) {
+    client.leave(`user:${data.user_id}`);
   }
 
   // Helper methods for emitting events from other services
@@ -133,5 +165,9 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
     },
   ) {
     this.server?.to(spaceId).emit("github_push", payload);
+  }
+
+  emitNotification(userId: string, notification: unknown) {
+    this.server?.to(`user:${userId}`).emit("notification", { notification });
   }
 }

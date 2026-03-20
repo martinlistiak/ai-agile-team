@@ -20,6 +20,9 @@ interface BoardColumnProps {
   activeTicketId?: string | null;
   agents?: Agent[];
   onDelete?: (ticketId: string) => void;
+  selectionMode?: boolean;
+  selectedIds?: Set<string>;
+  onToggleSelect?: (ticketId: string) => void;
 }
 
 export function BoardColumn({
@@ -32,6 +35,9 @@ export function BoardColumn({
   activeTicketId,
   agents,
   onDelete,
+  selectionMode,
+  selectedIds,
+  onToggleSelect,
 }: BoardColumnProps) {
   const { setNodeRef, isOver } = useDroppable({ id });
   const [quickAddOpen, setQuickAddOpen] = useState(false);
@@ -61,7 +67,7 @@ export function BoardColumn({
     <div
       ref={setNodeRef}
       className={cn(
-        "flex flex-col w-72 min-w-[288px] bg-gray-100 dark:bg-gray-800 rounded-xl shrink-0 transition-colors",
+        "flex flex-col w-64 min-w-[256px] md:w-72 md:min-w-[288px] bg-gray-100 dark:bg-gray-800 rounded-xl shrink-0 transition-colors",
         isOver &&
           "bg-primary-50 dark:bg-primary-900/20 ring-2 ring-primary-500/30",
       )}
@@ -87,6 +93,9 @@ export function BoardColumn({
               activeTicketId={activeTicketId}
               agents={agents}
               onDelete={onDelete}
+              selectionMode={selectionMode}
+              selected={selectedIds?.has(ticket.id)}
+              onToggleSelect={onToggleSelect}
             />
           ))}
         </SortableContext>

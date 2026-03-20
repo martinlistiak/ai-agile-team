@@ -8,6 +8,7 @@ import {
   UseInterceptors,
   Body,
   BadRequestException,
+  NotFoundException,
 } from "@nestjs/common";
 import {
   ApiTags,
@@ -76,13 +77,20 @@ export class FilesController {
   }
 
   @Get("*path")
-  @ApiOperation({
-    summary: "Get a file by storage path (redirects to signed URL)",
-  })
-  @ApiResponse({ status: 302, description: "Redirects to signed URL" })
+  @ApiOperation({ summary: "Get a file by storage path" })
+  @ApiResponse({ status: 200, description: "File content" })
+  @ApiResponse({ status: 404, description: "File not found" })
   async getFile(@Param("path") path: string[], @Res() res: Response) {
     const key = path.join("/");
-    const url = await this.fileStorageService.getSignedUrl(key);
-    res.redirect(url);
+    const filePath = this.fileStorageService.getFilePath(key);
+
+    if (!filePath) {
+      throw new NotFoundException("File not found");
+    }
+
+    const mimeType = this.fileStorageService.getMimeType(key);
+    res.setHeader("Content-Type", mimeType);
+    res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
+    res.sendFile(filePath);
   }
 }

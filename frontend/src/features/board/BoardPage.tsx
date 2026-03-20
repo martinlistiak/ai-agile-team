@@ -92,25 +92,25 @@ export function BoardPage() {
 
   return (
     <div className="flex h-full flex-col">
-      <div className="border-b border-gray-200 px-6 py-4 dark:border-gray-800">
-        <div className="flex items-center justify-between">
-          <div className="relative flex items-center gap-3">
+      <div className="border-b border-gray-200 px-4 py-3 md:px-6 md:py-4 dark:border-gray-800">
+        <div className="flex items-center justify-between gap-2">
+          <div className="relative flex items-center gap-2 md:gap-3 min-w-0">
             {/* Space color marker — a small vertical accent */}
             {spaceColor && (
               <span
-                className="inline-block h-5 w-1 rounded-full"
+                className="inline-block h-5 w-1 rounded-full shrink-0"
                 style={{ backgroundColor: spaceColor }}
                 aria-hidden="true"
               />
             )}
-            <h1 className="text-lg font-semibold tracking-tight text-gray-900 dark:text-gray-100">
+            <h1 className="text-base md:text-lg font-semibold tracking-tight text-gray-900 dark:text-gray-100 truncate">
               {space?.name || "Loading..."}
             </h1>
             {space && (
               <button
                 type="button"
                 onClick={openEdit}
-                className="cursor-pointer flex h-6 w-6 items-center justify-center rounded-md text-gray-350 transition-all duration-150 hover:text-gray-600 active:scale-90 dark:text-gray-500 dark:hover:text-gray-300"
+                className="cursor-pointer flex h-6 w-6 items-center justify-center rounded-md text-gray-350 transition-all duration-150 hover:text-gray-600 active:scale-90 dark:text-gray-500 dark:hover:text-gray-300 shrink-0"
                 aria-label="Edit space"
                 title="Edit space"
               >
@@ -118,12 +118,12 @@ export function BoardPage() {
               </button>
             )}
             {space?.githubRepoUrl && (
-              <span className="ml-1 text-xs font-medium text-gray-400 dark:text-gray-500">
+              <span className="ml-1 text-xs font-medium text-gray-400 dark:text-gray-500 hidden md:inline">
                 {space.githubRepoUrl}
               </span>
             )}
             {space?.gitlabRepoUrl && (
-              <span className="ml-1 text-xs font-medium text-gray-400 dark:text-gray-500">
+              <span className="ml-1 text-xs font-medium text-gray-400 dark:text-gray-500 hidden md:inline">
                 {space.gitlabRepoUrl}
               </span>
             )}
@@ -132,7 +132,7 @@ export function BoardPage() {
               <div
                 ref={editRef}
                 className={cn(
-                  "absolute left-0 top-full z-40 mt-2 w-80 overflow-hidden rounded-lg border shadow-lg dark:shadow-none animate-fade-in",
+                  "absolute left-0 top-full z-40 mt-2 w-[calc(100vw-2rem)] max-w-80 overflow-hidden rounded-lg border shadow-lg dark:shadow-none animate-fade-in",
                   overlaySurfaceClass,
                   overlayBorderClass,
                 )}
@@ -262,34 +262,36 @@ export function BoardPage() {
               </div>
             )}
           </div>
-          <div className="flex items-center gap-1.5">
-            {/* Secondary actions — quiet, tinted to space color on hover */}
+          <div className="flex items-center gap-1 md:gap-1.5 shrink-0">
+            {/* Secondary actions — hidden labels on mobile */}
             <button
               type="button"
               onClick={() => setShowRules(true)}
-              className="group/btn cursor-pointer flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium text-gray-500 transition-all duration-150 hover:bg-gray-100/80 active:scale-[0.97] dark:text-gray-400 dark:hover:bg-gray-800/60"
+              className="group/btn cursor-pointer flex items-center gap-1.5 rounded-lg px-2 py-1.5 md:px-3 text-xs font-medium text-gray-500 transition-all duration-150 hover:bg-gray-100/80 active:scale-[0.97] dark:text-gray-400 dark:hover:bg-gray-800/60"
+              aria-label="Rules"
             >
               <FiBook
                 size={13}
                 className="transition-transform duration-150 group-hover/btn:rotate-[-4deg]"
               />
-              Rules
+              <span className="hidden md:inline">Rules</span>
             </button>
             <button
               type="button"
               onClick={() => setShowPipeline(true)}
-              className="group/btn cursor-pointer flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium text-gray-500 transition-all duration-150 hover:bg-gray-100/80 active:scale-[0.97] dark:text-gray-400 dark:hover:bg-gray-800/60"
+              className="group/btn cursor-pointer flex items-center gap-1.5 rounded-lg px-2 py-1.5 md:px-3 text-xs font-medium text-gray-500 transition-all duration-150 hover:bg-gray-100/80 active:scale-[0.97] dark:text-gray-400 dark:hover:bg-gray-800/60"
+              aria-label="Pipeline"
             >
               <FiZap
                 size={13}
                 className="transition-transform duration-150 group-hover/btn:-translate-y-px"
               />
-              Pipeline
+              <span className="hidden md:inline">Pipeline</span>
             </button>
 
             {/* Divider */}
             <span
-              className="mx-1 h-4 w-px bg-gray-200 dark:bg-gray-700"
+              className="mx-0.5 md:mx-1 h-4 w-px bg-gray-200 dark:bg-gray-700"
               aria-hidden="true"
             />
 
@@ -297,7 +299,7 @@ export function BoardPage() {
             <button
               type="button"
               onClick={() => setShowCreateTicket(true)}
-              className="cursor-pointer flex items-center gap-1.5 rounded-lg px-3.5 py-1.5 text-xs font-semibold text-white shadow-sm transition-all duration-150 hover:shadow-md active:scale-[0.96]"
+              className="cursor-pointer flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 md:px-3.5 text-xs font-semibold text-white shadow-sm transition-all duration-150 hover:shadow-md active:scale-[0.96]"
               style={{
                 backgroundColor: spaceColor || "#2c5282",
               }}
@@ -307,9 +309,10 @@ export function BoardPage() {
               onMouseLeave={(e) => {
                 e.currentTarget.style.filter = "brightness(1)";
               }}
+              aria-label="New ticket"
             >
               <FiPlus size={13} strokeWidth={2.5} />
-              New ticket
+              <span className="hidden sm:inline">New ticket</span>
             </button>
           </div>
         </div>

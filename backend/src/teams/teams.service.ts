@@ -9,6 +9,7 @@ import {
 import { InjectRepository } from "@nestjs/typeorm";
 import { Repository, In } from "typeorm";
 import { randomBytes } from "crypto";
+import { EventEmitter2 } from "@nestjs/event-emitter";
 import { Team } from "../entities/team.entity";
 import { TeamMember, TeamRole } from "../entities/team-member.entity";
 import {
@@ -17,7 +18,6 @@ import {
 } from "../entities/team-invitation.entity";
 import { User } from "../entities/user.entity";
 import { MailService } from "./mail.service";
-import { BillingService } from "../billing/billing.service";
 
 @Injectable()
 export class TeamsService {
@@ -30,7 +30,7 @@ export class TeamsService {
     private invitationRepo: Repository<TeamInvitation>,
     @InjectRepository(User) private userRepo: Repository<User>,
     private mailService: MailService,
-    private billingService: BillingService,
+    private eventEmitter: EventEmitter2,
   ) {}
 
   async createTeam(userId: string, name: string): Promise<Team> {
@@ -56,10 +56,17 @@ export class TeamsService {
     return memberships.map((m) => m.team);
   }
 
+  async hasTeamMembership(userId: string): Promise<boolean> {
+    const n = await this.memberRepo.count({ where: { userId } });
+    return n > 0;
+  }
+
   /**
    * Returns users that can be assigned to tickets in a space: the given user (space owner) plus all members of every team they belong to.
    */
-  async getAssignableUsersForUser(userId: string): Promise<
+  async getAssignableUsersForUser(
+    userId: string,
+  ): Promise<
     { id: string; name: string; email: string; avatarUrl: string | null }[]
   > {
     const teams = await this.getTeamsForUser(userId);
@@ -67,14 +74,24 @@ export class TeamsService {
     if (teamIds.length === 0) {
       const user = await this.userRepo.findOneBy({ id: userId });
       return user
-        ? [{ id: user.id, name: user.name, email: user.email, avatarUrl: user.avatarUrl }]
+        ? [
+            {
+              id: user.id,
+              name: user.name,
+              email: user.email,
+              avatarUrl: user.avatarUrl,
+            },
+          ]
         : [];
     }
     const members = await this.memberRepo.find({
       where: { teamId: In(teamIds) },
       relations: ["user"],
     });
-    const byId = new Map<string, { id: string; name: string; email: string; avatarUrl: string | null }>();
+    const byId = new Map<
+      string,
+      { id: string; name: string; email: string; avatarUrl: string | null }
+    >();
     for (const m of members) {
       if (m.user && !byId.has(m.user.id)) {
         byId.set(m.user.id, {
@@ -88,7 +105,12 @@ export class TeamsService {
     if (!byId.has(userId)) {
       const user = await this.userRepo.findOneBy({ id: userId });
       if (user) {
-        byId.set(user.id, { id: user.id, name: user.name, email: user.email, avatarUrl: user.avatarUrl ?? null });
+        byId.set(user.id, {
+          id: user.id,
+          name: user.name,
+          email: user.email,
+          avatarUrl: user.avatarUrl ?? null,
+        });
       }
     }
     return Array.from(byId.values());
@@ -162,6 +184,14 @@ export class TeamsService {
       );
     }
 
+    const inviter = await this.userRepo.findOneBy({ id: inviterId });
+    if (!inviter) throw new NotFoundException("User not found");
+    if (inviter.hashedPassword && !inviter.emailVerifiedAt) {
+      throw new ForbiddenException(
+        "Verify your email address before inviting teammates.",
+      );
+    }
+
     // Check if already a member
     const existingUser = await this.userRepo.findOneBy({ email });
     if (existingUser) {
@@ -200,15 +230,23 @@ export class TeamsService {
     await this.invitationRepo.save(invitation);
 
     // Send email
-    const inviter = await this.userRepo.findOneBy({ id: inviterId });
     await this.mailService.sendInvitation({
       to: email,
       teamName: team.name,
-      inviterName: inviter?.name ?? "A teammate",
+      inviterName: inviter.name ?? "A teammate",
       token,
     });
 
     this.logger.log(`Invitation sent to ${email} for team ${team.name}`);
+
+    // Emit notification event
+    this.eventEmitter.emit("team.invitation.sent", {
+      inviteeEmail: email,
+      inviteeUserId: existingUser?.id,
+      teamName: team.name,
+      inviterName: inviter.name ?? "A teammate",
+    });
+
     return invitation;
   }
 
@@ -258,7 +296,7 @@ export class TeamsService {
     invitation.status = "accepted";
     await this.invitationRepo.save(invitation);
 
-    // Update seat count to match actual members and bill via Stripe
+    // Update seat count to match actual members
     const newMemberCount = await this.memberRepo.count({
       where: { teamId: invitation.teamId },
     });
@@ -266,26 +304,19 @@ export class TeamsService {
     if (team) {
       team.seatCount = newMemberCount;
       await this.teamRepo.save(team);
-
-      // Update Stripe subscription quantity for the team owner
-      try {
-        await this.billingService.updateSubscriptionQuantity(
-          team.ownerId,
-          newMemberCount,
-        );
-        this.logger.log(
-          `Stripe subscription updated to ${newMemberCount} seats for team ${team.name}`,
-        );
-      } catch (err) {
-        this.logger.error(
-          `Failed to update Stripe subscription for team ${team.name}: ${err.message}`,
-        );
-      }
     }
 
     this.logger.log(
       `User ${user.email} accepted invitation to team ${invitation.team.name}`,
     );
+
+    // Emit notification event for team member joined
+    this.eventEmitter.emit("team.member.joined", {
+      teamId: invitation.teamId,
+      newMemberName: user.name,
+      newMemberId: userId,
+    });
+
     return { team: invitation.team, alreadyMember: false };
   }
 
@@ -313,26 +344,12 @@ export class TeamsService {
 
     await this.memberRepo.remove(member);
 
-    // Update seat count and Stripe subscription
+    // Update seat count
     const newMemberCount = await this.memberRepo.count({ where: { teamId } });
     const team = await this.teamRepo.findOneBy({ id: teamId });
     if (team) {
       team.seatCount = newMemberCount;
       await this.teamRepo.save(team);
-
-      try {
-        await this.billingService.updateSubscriptionQuantity(
-          team.ownerId,
-          newMemberCount,
-        );
-        this.logger.log(
-          `Stripe subscription updated to ${newMemberCount} seats after member removal`,
-        );
-      } catch (err) {
-        this.logger.error(
-          `Failed to update Stripe subscription after member removal: ${err.message}`,
-        );
-      }
     }
   }
 

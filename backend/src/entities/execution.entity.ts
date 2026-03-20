@@ -1,10 +1,17 @@
-import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, ManyToOne, JoinColumn } from 'typeorm';
-import { Agent } from './agent.entity';
-import { Ticket } from './ticket.entity';
+import {
+  Entity,
+  PrimaryGeneratedColumn,
+  Column,
+  CreateDateColumn,
+  ManyToOne,
+  JoinColumn,
+} from "typeorm";
+import { Agent } from "./agent.entity";
+import { Ticket } from "./ticket.entity";
 
-@Entity('executions')
+@Entity("executions")
 export class Execution {
-  @PrimaryGeneratedColumn('uuid')
+  @PrimaryGeneratedColumn("uuid")
   id: string;
 
   @Column()
@@ -13,26 +20,29 @@ export class Execution {
   @Column({ nullable: true })
   ticketId: string;
 
-  @Column({ type: 'timestamp', default: () => 'CURRENT_TIMESTAMP' })
+  @Column({ type: "timestamp", default: () => "CURRENT_TIMESTAMP" })
   startTime: Date;
 
-  @Column({ type: 'timestamp', nullable: true })
+  @Column({ type: "timestamp", nullable: true })
   endTime: Date;
 
-  @Column({ default: 'running' })
+  @Column({ default: "running" })
   status: string;
 
-  @Column({ type: 'jsonb', default: [] })
+  @Column({ type: "jsonb", default: [] })
   actionLog: any[];
+
+  @Column({ type: "int", default: 0 })
+  tokensUsed: number;
 
   @CreateDateColumn()
   createdAt: Date;
 
   @ManyToOne(() => Agent, (agent) => agent.executions)
-  @JoinColumn({ name: 'agentId' })
+  @JoinColumn({ name: "agentId" })
   agent: Agent;
 
   @ManyToOne(() => Ticket, { nullable: true })
-  @JoinColumn({ name: 'ticketId' })
+  @JoinColumn({ name: "ticketId" })
   ticket: Ticket;
 }

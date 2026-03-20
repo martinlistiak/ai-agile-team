@@ -190,7 +190,10 @@ export function PrivacyPolicyPage() {
                 also have the right to object to or restrict certain processing
                 activities. To exercise any of these rights, please contact us
                 at{" "}
-                <span style={{ color: "var(--accent)" }}>privacy@runa.io</span>.
+                <span style={{ color: "var(--accent)" }}>
+                  privacy@runa-app.com
+                </span>
+                .
               </p>
             </section>
 
@@ -235,7 +238,10 @@ export function PrivacyPolicyPage() {
               <p className="text-[14px] leading-relaxed">
                 If you have questions about this privacy policy or our data
                 practices, please contact us at{" "}
-                <span style={{ color: "var(--accent)" }}>privacy@runa.io</span>.
+                <span style={{ color: "var(--accent)" }}>
+                  privacy@runa-app.com
+                </span>
+                .
               </p>
             </section>
           </div>

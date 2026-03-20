@@ -3,6 +3,7 @@ import { useNavigate, useSearchParams } from "react-router-dom";
 import type { AxiosError } from "axios";
 import { useAuth } from "@/contexts/AuthContext";
 import api from "@/api/client";
+import { consumeAuthRedirect } from "@/lib/auth-redirect";
 
 const getProcessedCodeKey = (code: string) => `gitlab-oauth-code:${code}`;
 
@@ -30,7 +31,8 @@ export function GitlabCallbackPage() {
       .post("/auth/gitlab/callback", { code })
       .then(({ data }) => {
         login(data.accessToken, data.user);
-        navigate("/", { replace: true });
+        const dest = consumeAuthRedirect() ?? "/";
+        navigate(dest, { replace: true });
       })
       .catch((err: AxiosError<{ message?: string }>) => {
         sessionStorage.removeItem(processedCodeKey);

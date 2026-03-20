@@ -10,7 +10,7 @@ export function ChatBubble() {
     <button
       type="button"
       onClick={() => openChat()}
-      className="fixed bottom-6 right-6 z-40 flex h-14 w-14 cursor-pointer items-center justify-center rounded-full bg-primary-500 text-white shadow-lg transition-colors hover:bg-primary-600"
+      className="fixed bottom-20 right-4 z-40 flex h-14 w-14 cursor-pointer items-center justify-center rounded-full bg-primary-500 text-white shadow-lg transition-colors hover:bg-primary-600 md:bottom-6 md:right-6"
       aria-label="Open chat"
     >
       <FiMessageCircle className="h-6 w-6" />

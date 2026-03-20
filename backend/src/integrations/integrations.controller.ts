@@ -17,13 +17,14 @@ import {
   ApiBody,
 } from "@nestjs/swagger";
 import { JwtOrApiKeyGuard } from "../auth/jwt-or-apikey.guard";
+import { SubscriptionActiveGuard } from "../common/subscription-active.guard";
 import { IntegrationsService } from "./integrations.service";
 import { Request } from "express";
 
 @ApiTags("Integrations")
 @ApiBearerAuth("bearer")
 @Controller("integrations")
-@UseGuards(JwtOrApiKeyGuard)
+@UseGuards(JwtOrApiKeyGuard, SubscriptionActiveGuard)
 export class IntegrationsController {
   constructor(private integrationsService: IntegrationsService) {}
 

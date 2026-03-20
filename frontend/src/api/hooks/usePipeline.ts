@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import api from "@/api/client";
 import { useToast } from "@/components/Toast";
+import { getApiErrorPayload, isAgentRunQuotaError } from "@/lib/api-errors";
 
 export function usePipelineConfig(spaceId: string | null) {
   return useQuery<Record<string, boolean>>({
@@ -33,15 +34,17 @@ export function useUpdatePipelineConfig() {
       });
       success("Pipeline config updated");
     },
-    onError: (err: Error) => {
-      showError(err.message || "Failed to update pipeline config");
+    onError: (err: unknown) => {
+      showError(
+        getApiErrorPayload(err).message || "Failed to update pipeline config",
+      );
     },
   });
 }
 
 export function useAdvanceTicket() {
   const queryClient = useQueryClient();
-  const { success, error: showError } = useToast();
+  const { success, error: showError, agentRunLimit } = useToast();
   return useMutation({
     mutationFn: async (payload: { ticketId: string; spaceId: string }) => {
       const { data } = await api.post(`/tickets/${payload.ticketId}/advance`);
@@ -56,15 +59,19 @@ export function useAdvanceTicket() {
       });
       success("Ticket advanced to next stage");
     },
-    onError: (err: Error) => {
-      showError(err.message || "Failed to advance ticket");
+    onError: (err: unknown) => {
+      if (isAgentRunQuotaError(err)) {
+        agentRunLimit(getApiErrorPayload(err).message);
+        return;
+      }
+      showError(getApiErrorPayload(err).message || "Failed to advance ticket");
     },
   });
 }
 
 export function useRunPipeline() {
   const queryClient = useQueryClient();
-  const { success, error: showError } = useToast();
+  const { success, error: showError, agentRunLimit } = useToast();
   return useMutation({
     mutationFn: async (payload: { ticketId: string; spaceId: string }) => {
       const { data } = await api.post(
@@ -81,8 +88,12 @@ export function useRunPipeline() {
       });
       success("Pipeline started");
     },
-    onError: (err: Error) => {
-      showError(err.message || "Failed to run pipeline");
+    onError: (err: unknown) => {
+      if (isAgentRunQuotaError(err)) {
+        agentRunLimit(getApiErrorPayload(err).message);
+        return;
+      }
+      showError(getApiErrorPayload(err).message || "Failed to run pipeline");
     },
   });
 }

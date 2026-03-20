@@ -17,20 +17,20 @@ import {
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { useAuth } from "@/contexts/AuthContext";
-import { useTheme } from "@/contexts/ThemeContext";
 import { useSpaces, useReorderSpaces } from "@/api/hooks/useSpaces";
 import { OnboardingWizard } from "@/features/onboarding/OnboardingWizard";
 import {
   FiCreditCard,
   FiLogOut,
-  FiMoon,
   FiPlus,
-  FiSun,
   FiUsers,
   FiLink,
+  FiShield,
+  FiSettings,
 } from "react-icons/fi";
 import { cn } from "@/lib/cn";
 import { getSpaceColor } from "@/lib/spaceColor";
+import { SpaceSidebarSkeleton } from "@/components/Skeleton";
 import type { Space } from "@/types";
 
 function RailTooltip({
@@ -81,46 +81,6 @@ function RailTooltip({
           document.body,
         )}
     </>
-  );
-}
-
-function ThemeModeSwitch() {
-  const { mode, setMode } = useTheme();
-
-  const options = [
-    { value: "light" as const, icon: FiSun, label: "Light mode" },
-
-    { value: "dark" as const, icon: FiMoon, label: "Dark mode" },
-  ];
-
-  return (
-    <div className="flex justify-center">
-      <RailTooltip label="Theme">
-        <div className="inline-flex rounded-full bg-gray-100 p-1 dark:bg-gray-800">
-          {options.map((option) => {
-            const Icon = option.icon;
-            const isActive = option.value === mode;
-            return (
-              <button
-                key={option.value}
-                type="button"
-                onClick={() => setMode(mode !== "dark" ? "dark" : "light")}
-                className={cn(
-                  "cursor-pointer flex h-5 w-5 items-center justify-center rounded-full text-sm transition-colors",
-                  isActive
-                    ? "bg-primary-500 text-white shadow-sm"
-                    : "text-gray-500 hover:bg-white hover:text-gray-900 dark:text-gray-400 dark:hover:bg-gray-700 dark:hover:text-gray-100",
-                )}
-                aria-label={option.label}
-                title={option.label}
-              >
-                <Icon />
-              </button>
-            );
-          })}
-        </div>
-      </RailTooltip>
-    </div>
   );
 }
 
@@ -182,7 +142,7 @@ export function SpaceSidebar() {
   const { spaceId } = useParams();
   const navigate = useNavigate();
   const { user, logout } = useAuth();
-  const { data: spaces } = useSpaces();
+  const { data: spaces, isLoading: spacesLoading } = useSpaces();
   const reorderSpaces = useReorderSpaces();
   const [showCreate, setShowCreate] = useState(false);
   const [showUserMenu, setShowUserMenu] = useState(false);
@@ -256,6 +216,17 @@ export function SpaceSidebar() {
                 type="button"
                 onClick={() => {
                   setShowUserMenu(false);
+                  navigate("/settings");
+                }}
+                className="cursor-pointer flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm text-gray-700 transition-colors hover:bg-gray-100 dark:text-gray-200 dark:hover:bg-gray-700"
+              >
+                <FiSettings />
+                <span>Settings</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowUserMenu(false);
                   navigate("/billing");
                 }}
                 className="cursor-pointer flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm text-gray-700 transition-colors hover:bg-gray-100 dark:text-gray-200 dark:hover:bg-gray-700"
@@ -288,6 +259,19 @@ export function SpaceSidebar() {
                 <FiLink />
                 <span>Integrations</span>
               </button>
+              {user?.planTier === "enterprise" && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowUserMenu(false);
+                    navigate("/enterprise");
+                  }}
+                  className="cursor-pointer flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm text-gray-700 transition-colors hover:bg-gray-100 dark:text-gray-200 dark:hover:bg-gray-700"
+                >
+                  <FiShield />
+                  <span>Enterprise</span>
+                </button>
+              )}
               <button
                 type="button"
                 onClick={logout}
@@ -303,25 +287,29 @@ export function SpaceSidebar() {
 
       <div className="flex-1 overflow-y-auto px-3 pb-3">
         <div className="flex flex-col items-center gap-3">
-          <DndContext
-            sensors={sensors}
-            collisionDetection={closestCenter}
-            onDragEnd={handleDragEnd}
-          >
-            <SortableContext
-              items={spaces?.map((s) => s.id) ?? []}
-              strategy={verticalListSortingStrategy}
+          {spacesLoading ? (
+            <SpaceSidebarSkeleton />
+          ) : (
+            <DndContext
+              sensors={sensors}
+              collisionDetection={closestCenter}
+              onDragEnd={handleDragEnd}
             >
-              {spaces?.map((space) => (
-                <SortableSpaceButton
-                  key={space.id}
-                  space={space}
-                  isActive={spaceId === space.id}
-                  onClick={() => navigate(`/spaces/${space.id}`)}
-                />
-              ))}
-            </SortableContext>
-          </DndContext>
+              <SortableContext
+                items={spaces?.map((s) => s.id) ?? []}
+                strategy={verticalListSortingStrategy}
+              >
+                {spaces?.map((space) => (
+                  <SortableSpaceButton
+                    key={space.id}
+                    space={space}
+                    isActive={spaceId === space.id}
+                    onClick={() => navigate(`/spaces/${space.id}`)}
+                  />
+                ))}
+              </SortableContext>
+            </DndContext>
+          )}
 
           <div className="relative">
             <RailTooltip label="New space">
@@ -342,10 +330,6 @@ export function SpaceSidebar() {
               )}
           </div>
         </div>
-      </div>
-
-      <div className="border-t border-gray-200 px-2 py-3 dark:border-gray-800">
-        <ThemeModeSwitch />
       </div>
     </div>
   );

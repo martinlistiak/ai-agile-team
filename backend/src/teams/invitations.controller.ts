@@ -7,6 +7,8 @@ import {
   ApiParam,
 } from "@nestjs/swagger";
 import { JwtOrApiKeyGuard } from "../auth/jwt-or-apikey.guard";
+import { SubscriptionActiveGuard } from "../common/subscription-active.guard";
+import { SkipSubscriptionCheck } from "../common/skip-subscription.decorator";
 import { Request } from "express";
 import { TeamsService } from "./teams.service";
 
@@ -24,7 +26,8 @@ export class InvitationsController {
   }
 
   @Post(":token/accept")
-  @UseGuards(JwtOrApiKeyGuard)
+  @SkipSubscriptionCheck()
+  @UseGuards(JwtOrApiKeyGuard, SubscriptionActiveGuard)
   @ApiBearerAuth("bearer")
   @ApiOperation({ summary: "Accept a team invitation" })
   @ApiParam({ name: "token" })

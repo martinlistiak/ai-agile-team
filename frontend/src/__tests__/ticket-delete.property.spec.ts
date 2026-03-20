@@ -77,6 +77,7 @@ const ticketArb: fc.Arbitrary<Ticket> = fc
     ...fields,
     comments: [],
     statusHistory: [],
+    order: 0,
   }));
 
 /**

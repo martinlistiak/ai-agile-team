@@ -1,38 +1,32 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
-import api from "@/api/client";
-import type { InvitationInfo } from "@/types";
+import {
+  useInvitationInfo,
+  useAcceptInvitation,
+} from "@/api/hooks/useInvitation";
 
 export function AcceptInvitationPage() {
   const { token } = useParams<{ token: string }>();
   const { user, isAuthenticated, isLoading: authLoading } = useAuth();
   const navigate = useNavigate();
-  const [invitation, setInvitation] = useState<InvitationInfo | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [accepting, setAccepting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (!token) return;
-    api
-      .get(`/invitations/${token}`)
-      .then(({ data }) => setInvitation(data))
-      .catch(() => setError("Invitation not found or has expired"))
-      .finally(() => setLoading(false));
-  }, [token]);
+  const {
+    data: invitation,
+    isLoading: loading,
+    error: fetchError,
+  } = useInvitationInfo(token);
+  const acceptMutation = useAcceptInvitation();
 
   const handleAccept = async () => {
     if (!token) return;
-    setAccepting(true);
     setError(null);
     try {
-      await api.post(`/invitations/${token}/accept`);
+      await acceptMutation.mutateAsync(token);
       navigate("/team");
     } catch (err: any) {
       setError(err.response?.data?.message ?? "Failed to accept invitation");
-    } finally {
-      setAccepting(false);
     }
   };
 
@@ -44,11 +38,13 @@ export function AcceptInvitationPage() {
     );
   }
 
-  if (error && !invitation) {
+  if ((fetchError || error) && !invitation) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="text-center">
-          <p className="text-red-500 mb-4">{error}</p>
+          <p className="text-red-500 mb-4">
+            {error || "Invitation not found or has expired"}
+          </p>
           <button
             onClick={() => navigate("/")}
             className="text-sm text-indigo-500 hover:underline"
@@ -105,10 +101,10 @@ export function AcceptInvitationPage() {
           </button>
           <button
             onClick={handleAccept}
-            disabled={accepting}
+            disabled={acceptMutation.isPending}
             className="px-4 py-2 rounded-lg bg-indigo-500 text-white text-sm font-medium hover:bg-indigo-600 transition-colors disabled:opacity-50"
           >
-            {accepting ? "Accepting…" : "Accept invitation"}
+            {acceptMutation.isPending ? "Accepting…" : "Accept invitation"}
           </button>
         </div>
       </div>

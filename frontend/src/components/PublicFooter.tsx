@@ -1,4 +1,5 @@
 import { Link, useLocation } from "react-router-dom";
+import { RunaLogo } from "./RunaLogo";
 
 export function PublicFooter() {
   const { pathname } = useLocation();
@@ -6,6 +7,7 @@ export function PublicFooter() {
   const links = [
     { to: "/privacy", label: "Privacy" },
     { to: "/terms", label: "Terms" },
+    { to: "/status", label: "Status" },
     { to: "/docs", label: "Docs" },
   ];
 
@@ -17,12 +19,8 @@ export function PublicFooter() {
           style={{ borderColor: "var(--border-light)" }}
         >
           <div className="flex items-center gap-6">
-            <Link
-              to="/home"
-              className="font-display text-xl no-underline"
-              style={{ color: "var(--text-primary)" }}
-            >
-              Runa
+            <Link to="/home" className="no-underline leading-none">
+              <RunaLogo height={28} />
             </Link>
             <span
               className="text-[12px]"

@@ -30,6 +30,16 @@ export interface User {
   currentPeriodEnd: string | null;
   hasGithub?: boolean;
   hasGitlab?: boolean;
+  /** True if user is a member of at least one team (access without own subscription). */
+  hasTeamMembership?: boolean;
+  /** User has opened Stripe billing at least once (can use customer portal). */
+  hasStripeCustomer?: boolean;
+  /** Usage credits balance in cents. */
+  creditsBalance?: number;
+  /** False when the account signed up with email/password and has not verified yet. */
+  emailVerified?: boolean;
+  /** True when the account can sign in with email + password. */
+  hasPassword?: boolean;
   createdAt: string;
 }
 
@@ -128,6 +138,7 @@ export interface Execution {
   endTime: string | null;
   status: "running" | "completed" | "failed";
   actionLog: Record<string, unknown>[];
+  tokensUsed: number;
   createdAt: string;
 }
 
@@ -237,4 +248,31 @@ export interface InvitationInfo {
   expiresAt: string;
   team: { id: string; name: string };
   invitedBy: { name: string };
+}
+
+// Notifications
+
+export type EmailDigestFrequency = "instant" | "hourly" | "daily" | "none";
+
+export interface NotificationPreference {
+  id: string;
+  userId: string;
+  inAppAgentCompleted: boolean;
+  inAppAgentFailed: boolean;
+  inAppPipelineStageChanged: boolean;
+  inAppPrCreated: boolean;
+  inAppTicketAssigned: boolean;
+  inAppTicketCommented: boolean;
+  inAppTeamInvitation: boolean;
+  inAppTeamMemberJoined: boolean;
+  emailAgentCompleted: boolean;
+  emailAgentFailed: boolean;
+  emailPipelineStageChanged: boolean;
+  emailPrCreated: boolean;
+  emailTicketAssigned: boolean;
+  emailTicketCommented: boolean;
+  emailTeamInvitation: boolean;
+  emailTeamMemberJoined: boolean;
+  emailDigestFrequency: EmailDigestFrequency;
+  muteAll: boolean;
 }

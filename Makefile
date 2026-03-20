@@ -1,4 +1,4 @@
-.PHONY: up down logs migrate build
+.PHONY: up down logs migrate build prod-up prod-down
 
 up:
 	docker compose up -d
@@ -23,3 +23,19 @@ prod-up:
 
 prod-down:
 	docker compose -f docker-compose.prod.yml down
+
+# Build the all-in-one CapRover image locally for testing
+caprover-build:
+	docker build -t runa-caprover .
+
+caprover-run:
+	docker run -d --name runa \
+		-p 80:80 \
+		-v runa_data:/data \
+		-e JWT_SECRET=change-me \
+		-e ENCRYPTION_KEY=change-me-32-chars-minimum-key00 \
+		-e ANTHROPIC_API_KEY=$${ANTHROPIC_API_KEY} \
+		runa-caprover
+
+caprover-stop:
+	docker stop runa && docker rm runa

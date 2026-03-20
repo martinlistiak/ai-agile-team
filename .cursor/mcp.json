@@ -2,10 +2,15 @@
   "mcpServers": {
     "shadcn": {
       "command": "npx",
-      "args": [
-        "shadcn@latest",
-        "mcp"
-      ]
+      "args": ["shadcn@latest", "mcp"]
+    },
+    "runa": {
+      "command": "node",
+      "args": ["mcp-server/dist/index.js"],
+      "env": {
+        "RUNA_API_URL": "http://localhost:3001",
+        "RUNA_API_KEY": "${RUNA_API_KEY}"
+      }
     }
   }
 }

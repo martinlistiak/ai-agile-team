@@ -19,7 +19,10 @@ import {
   ApiBearerAuth,
   ApiParam,
 } from "@nestjs/swagger";
+import { Request } from "express";
 import { JwtOrApiKeyGuard } from "../auth/jwt-or-apikey.guard";
+import { SubscriptionActiveGuard } from "../common/subscription-active.guard";
+import { CountlyService } from "../common/countly.service";
 import { Throttle } from "@nestjs/throttler";
 import { TicketsService } from "./tickets.service";
 import { AgentsService } from "../agents/agents.service";
@@ -32,17 +35,19 @@ import { CreateCommentDto } from "./dto/create-comment.dto";
 import { CreateTicketDto } from "./dto/create-ticket.dto";
 import { UpdateTicketDto } from "./dto/update-ticket.dto";
 import { MoveTicketDto } from "./dto/move-ticket.dto";
+import { BulkDeleteTicketsDto } from "./dto/bulk-delete-tickets.dto";
 
 @ApiTags("Tickets")
 @ApiBearerAuth("bearer")
 @Controller()
-@UseGuards(JwtOrApiKeyGuard)
+@UseGuards(JwtOrApiKeyGuard, SubscriptionActiveGuard)
 export class TicketsController {
   constructor(
     private ticketsService: TicketsService,
     private agentsService: AgentsService,
     @Inject(forwardRef(() => PipelineService))
     private pipelineService: PipelineService,
+    private countly: CountlyService,
   ) {}
 
   @Get("spaces/:spaceId/tickets")
@@ -58,10 +63,16 @@ export class TicketsController {
   @ApiParam({ name: "spaceId", format: "uuid" })
   @ApiResponse({ status: 201, description: "Created ticket" })
   async create(
+    @Req() req: Request,
     @Param("spaceId") spaceId: string,
     @Body() body: CreateTicketDto,
   ) {
-    return this.ticketsService.create({ spaceId, ...body });
+    const ticket = await this.ticketsService.create({ spaceId, ...body });
+    const userId = (req.user as { id?: string })?.id;
+    if (userId) {
+      this.countly.record(userId, "ticket_created", { source: "api" });
+    }
+    return ticket;
   }
 
   @Get("tickets/:id")
@@ -146,6 +157,19 @@ export class TicketsController {
   @ApiResponse({ status: 204, description: "Ticket deleted" })
   async remove(@Param("id") id: string) {
     await this.ticketsService.delete(id);
+  }
+
+  @Post("spaces/:spaceId/tickets/bulk-delete")
+  @HttpCode(200)
+  @ApiOperation({ summary: "Delete multiple tickets at once" })
+  @ApiParam({ name: "spaceId", format: "uuid" })
+  @ApiResponse({ status: 200, description: "Number of deleted tickets" })
+  async bulkDelete(
+    @Param("spaceId") spaceId: string,
+    @Body() body: BulkDeleteTicketsDto,
+  ) {
+    const deleted = await this.ticketsService.bulkDelete(body.ticketIds);
+    return { deleted };
   }
 
   @Post("tickets/:id/trigger-agent")

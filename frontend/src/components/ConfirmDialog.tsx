@@ -8,6 +8,9 @@ interface ConfirmDialogProps {
   message: string;
   confirmLabel?: string;
   cancelLabel?: string;
+  /** When true, confirm/cancel are disabled and confirm shows pending label. */
+  confirmPending?: boolean;
+  pendingConfirmLabel?: string;
   variant?: "danger" | "default";
   onConfirm: () => void;
   onCancel: () => void;
@@ -19,6 +22,8 @@ export function ConfirmDialog({
   message,
   confirmLabel = "Confirm",
   cancelLabel = "Cancel",
+  confirmPending = false,
+  pendingConfirmLabel = "Working…",
   variant = "default",
   onConfirm,
   onCancel,
@@ -58,7 +63,8 @@ export function ConfirmDialog({
           <button
             type="button"
             onClick={onCancel}
-            className="cursor-pointer rounded-lg border border-stone-300 px-4 py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-stone-100 dark:border-stone-600 dark:text-gray-300 dark:hover:bg-stone-800"
+            disabled={confirmPending}
+            className="cursor-pointer rounded-lg border border-stone-300 px-4 py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-stone-100 disabled:cursor-not-allowed disabled:opacity-50 dark:border-stone-600 dark:text-gray-300 dark:hover:bg-stone-800"
           >
             {cancelLabel}
           </button>
@@ -66,13 +72,14 @@ export function ConfirmDialog({
             ref={confirmRef}
             type="button"
             onClick={onConfirm}
-            className={`cursor-pointer rounded-lg px-4 py-2 text-sm font-medium text-white transition-colors ${
+            disabled={confirmPending}
+            className={`cursor-pointer rounded-lg px-4 py-2 text-sm font-medium text-white transition-colors disabled:cursor-not-allowed disabled:opacity-70 ${
               isDanger
                 ? "bg-red-500 hover:bg-red-600"
                 : "bg-primary-500 hover:bg-primary-600"
             }`}
           >
-            {confirmLabel}
+            {confirmPending ? pendingConfirmLabel : confirmLabel}
           </button>
         </div>
       </div>

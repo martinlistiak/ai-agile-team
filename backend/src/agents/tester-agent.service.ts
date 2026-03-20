@@ -15,6 +15,7 @@ import { EventsGateway } from "../chat/events.gateway";
 import { formatAgentExecutionLog } from "../common/structured-logger";
 import { getModelForAgent } from "./agent-models.config";
 import { ExecutionRegistry } from "./execution-registry";
+import { AgentRunQuotaService } from "../common/agent-run-quota.service";
 const TESTER_SYSTEM_PROMPT = `You are a Tester AI agent in an agile software development team.
 Your role is to write and execute tests for the project, ensuring code quality and correctness.
 
@@ -61,6 +62,7 @@ export class TesterAgentService {
     @InjectRepository(Execution) private executionRepo: Repository<Execution>,
     @InjectRepository(Space) private spaceRepo: Repository<Space>,
     private executionRegistry: ExecutionRegistry,
+    private agentRunQuota: AgentRunQuotaService,
   ) {}
   /**
    * Run the tester agent — either on a specific ticket or a freeform testing instruction.
@@ -70,6 +72,8 @@ export class TesterAgentService {
     userMessage: string,
     ticketId?: string,
   ): Promise<string> {
+    await this.agentRunQuota.assertCanStartRunForSpace(spaceId);
+
     let agent = await this.agentRepo.findOneBy({
       spaceId,
       agentType: "tester",

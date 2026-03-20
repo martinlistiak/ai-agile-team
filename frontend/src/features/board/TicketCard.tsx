@@ -40,6 +40,9 @@ interface TicketCardProps {
   agents?: Agent[];
   onDelete?: (ticketId: string) => void;
   activeTicketId?: string | null;
+  selectionMode?: boolean;
+  selected?: boolean;
+  onToggleSelect?: (ticketId: string) => void;
 }
 
 export function TicketCard({
@@ -50,6 +53,9 @@ export function TicketCard({
   agents = [],
   onDelete,
   activeTicketId,
+  selectionMode,
+  selected,
+  onToggleSelect,
 }: TicketCardProps) {
   const {
     attributes,
@@ -139,8 +145,24 @@ export function TicketCard({
         "group relative bg-white dark:bg-gray-700 rounded-lg p-3 border border-gray-200 dark:border-gray-600 cursor-grab active:cursor-grabbing transition-shadow hover:shadow-md",
         (isDragging || isSortDragging) && "shadow-lg opacity-80 rotate-2",
         isHiddenDuringDrag && "opacity-0",
+        selected && "ring-2 ring-primary-500 border-primary-400",
       )}
     >
+      {selectionMode && (
+        <button
+          type="button"
+          aria-label={selected ? "Deselect ticket" : "Select ticket"}
+          onClick={(e) => {
+            e.stopPropagation();
+            onToggleSelect?.(ticket.id);
+          }}
+          className="absolute -top-2 -left-2 z-10 flex h-5 w-5 items-center justify-center rounded-full border-2 border-gray-300 bg-white dark:border-gray-500 dark:bg-gray-800 transition-colors hover:border-primary-500"
+        >
+          {selected && (
+            <span className="block h-3 w-3 rounded-full bg-primary-500" />
+          )}
+        </button>
+      )}
       <p className="text-sm font-medium text-gray-900 dark:text-gray-100 line-clamp-2">
         {ticket.title}
       </p>

@@ -277,7 +277,7 @@ export function TicketDetailPanel({
           "ticket-detail-panel",
           overlaySurfaceClass,
           overlayBorderClass,
-          "fixed right-0 top-0 z-50 h-full w-full max-w-[560px] flex flex-col border-l",
+          "fixed right-0 top-0 z-50 h-full w-full max-w-full md:max-w-[560px] flex flex-col border-l",
           "shadow-[-8px_0_32px_rgba(28,25,23,0.08)]",
           "dark:shadow-[-8px_0_32px_rgba(0,0,0,0.3)]",
           "transition-transform duration-280 ease-[cubic-bezier(0.16,1,0.3,1)]",
@@ -285,7 +285,7 @@ export function TicketDetailPanel({
         )}
       >
         {/* ── header ── */}
-        <div className="px-7 pt-6 pb-0 space-y-3">
+        <div className="px-4 pt-4 pb-0 md:px-7 md:pt-6 space-y-3">
           {/* top bar: status · priority | actions */}
           <div className="flex items-center gap-2.5">
             <span
@@ -574,7 +574,7 @@ export function TicketDetailPanel({
         </div>
 
         {/* ── title ── */}
-        <div className="px-7 pb-5 pt-0">
+        <div className="px-4 pb-5 pt-0 md:px-7">
           <input
             type="text"
             value={title}
@@ -658,11 +658,11 @@ export function TicketDetailPanel({
         </div>
 
         {/* ── divider ── */}
-        <div className="mx-7 h-px bg-stone-200 dark:bg-stone-800" />
+        <div className="mx-4 md:mx-7 h-px bg-stone-200 dark:bg-stone-800" />
 
         {/* ── scrollable body ── */}
         <div className="flex-1 overflow-y-auto min-h-0">
-          <div className="px-7 py-5 space-y-6">
+          <div className="px-4 py-5 space-y-6 md:px-7">
             {/* pipeline prompt (edit mode only) */}
             {!isCreateMode && (
               <PipelinePrompt ticketId={ticket!.id} spaceId={spaceId} />
@@ -774,7 +774,7 @@ export function TicketDetailPanel({
 
         {/* ── footer ── */}
         {isCreateMode ? (
-          <div className="border-t border-stone-200 dark:border-stone-800 px-7 py-4 bg-stone-50 dark:bg-stone-900">
+          <div className="border-t border-stone-200 dark:border-stone-800 px-4 py-4 md:px-7 bg-stone-50 dark:bg-stone-900">
             <div className="flex items-center justify-end gap-2">
               <button
                 type="button"
@@ -799,7 +799,7 @@ export function TicketDetailPanel({
             </div>
           </div>
         ) : (
-          <div className="border-t border-stone-200 dark:border-stone-800 px-7 py-4 bg-stone-50 dark:bg-stone-900">
+          <div className="border-t border-stone-200 dark:border-stone-800 px-4 py-4 md:px-7 bg-stone-50 dark:bg-stone-900">
             <div
               className={cn(
                 "p-1 h-16",

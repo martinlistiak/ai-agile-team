@@ -53,6 +53,7 @@ export function formatRequestLog(entry: {
   path: string;
   statusCode: number;
   responseTime: number;
+  requestId?: string;
 }): string {
   return formatLogEntry({
     level: "info",
@@ -61,6 +62,7 @@ export function formatRequestLog(entry: {
     path: entry.path,
     statusCode: entry.statusCode,
     responseTime: entry.responseTime,
+    requestId: entry.requestId,
   });
 }
 

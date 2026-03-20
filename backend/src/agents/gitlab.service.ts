@@ -82,7 +82,7 @@ export class GitlabService {
         stdio: "pipe",
       });
       execSync(
-        'git config user.email "agent@runa.io" && git config user.name "Runa Agent"',
+        'git config user.email "agent@runa-app.com" && git config user.name "Runa Agent"',
         { cwd: repoDir, stdio: "pipe" },
       );
       this.logger.log(`Cloned GitLab repo for space ${spaceId} to ${repoDir}`);
@@ -176,7 +176,7 @@ export class GitlabService {
     const encodedPath = encodeURIComponent(projectPath);
     const appBaseUrl = this.configService.get(
       "APP_BASE_URL",
-      "http://localhost:3000",
+      "https://runa-app.com",
     );
 
     const title = GitlabService.formatMrTitle(ticket.id, ticket.title);

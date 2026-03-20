@@ -13,7 +13,7 @@ import { GithubService } from "../github.service";
  */
 
 describe("Feature: spec-gap-implementation, Property 11: PR title and body contain required ticket information", () => {
-  const appBaseUrl = "http://localhost:3000";
+  const appBaseUrl = "https://runa-app.com";
 
   it("PR title matches format [{ticketId}] {ticketTitle}", () => {
     fc.assert(

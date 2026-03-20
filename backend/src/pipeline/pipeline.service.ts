@@ -1,6 +1,7 @@
 import { Injectable, Logger, BadRequestException } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
 import { Repository } from "typeorm";
+import { EventEmitter2 } from "@nestjs/event-emitter";
 import { Space } from "../entities/space.entity";
 import { Ticket } from "../entities/ticket.entity";
 import { PmAgentService } from "../agents/pm-agent.service";
@@ -9,6 +10,7 @@ import { TesterAgentService } from "../agents/tester-agent.service";
 import { ReviewerAgentService } from "../agents/reviewer-agent.service";
 import { SuggestedRulesService } from "../rules/suggested-rules.service";
 import { EventsGateway } from "../chat/events.gateway";
+import { CountlyService } from "../common/countly.service";
 
 /**
  * Pipeline stages and the agent responsible for each transition:
@@ -70,6 +72,8 @@ export class PipelineService {
     private reviewerAgentService: ReviewerAgentService,
     private suggestedRulesService: SuggestedRulesService,
     private eventsGateway: EventsGateway,
+    private countly: CountlyService,
+    private eventEmitter: EventEmitter2,
   ) {}
 
   /**
@@ -160,12 +164,43 @@ export class PipelineService {
         nextStage,
         agentType,
       });
+
+      // Emit notification events for agent completion and stage change
+      this.eventEmitter.emit("agent.execution.completed", {
+        spaceId,
+        agentType,
+        agentName: agentType.charAt(0).toUpperCase() + agentType.slice(1),
+        ticketId: ticket.id,
+        ticketTitle: ticket.title,
+        executionId: ticket.id, // best available reference
+      });
+
+      if (actualStatus !== ticket.status) {
+        this.eventEmitter.emit("pipeline.stage.changed", {
+          spaceId,
+          ticketId: ticket.id,
+          ticketTitle: ticket.title,
+          fromStage: ticket.status,
+          toStage: actualStatus,
+        });
+      }
     } catch (error: any) {
       this.eventsGateway.emitPipelineEvent(spaceId, {
         ticketId: ticket.id,
         stage: ticket.status,
         agentType,
         action: "failed",
+        error: error.message,
+      });
+
+      // Emit notification event for agent failure
+      this.eventEmitter.emit("agent.execution.failed", {
+        spaceId,
+        agentType,
+        agentName: agentType.charAt(0).toUpperCase() + agentType.slice(1),
+        ticketId: ticket.id,
+        ticketTitle: ticket.title,
+        executionId: ticket.id,
         error: error.message,
       });
     }
@@ -319,6 +354,15 @@ export class PipelineService {
       to: nextStage,
     };
 
+    // Emit pipeline stage change notification
+    this.eventEmitter.emit("pipeline.stage.changed", {
+      spaceId: space.id,
+      ticketId,
+      ticketTitle: updatedTicket?.title ?? ticket.title,
+      fromStage: currentStage,
+      toStage: nextStage,
+    });
+
     // Trigger agent if the new stage has a mapped agent
     const agentType = STAGE_AGENT_MAP[nextStage];
     if (agentType && updatedTicket && !this.activeRuns.has(ticketId)) {
@@ -358,6 +402,9 @@ export class PipelineService {
     }
 
     const startStage = ticket.status as PipelineStage;
+    this.countly.record(space.userId, "pipeline_run_started", {
+      start_stage: String(startStage),
+    });
     const stagesAdvanced: string[] = [];
     let currentStage = startStage;
 

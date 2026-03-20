@@ -1,8 +1,41 @@
-import { useState } from "react";
-import { useNavigate, Link } from "react-router-dom";
+import { useState, useLayoutEffect, useRef, useEffect } from "react";
+import { useNavigate, Link, useSearchParams } from "react-router-dom";
+import { RunaLogo } from "@/components/RunaLogo";
 import { useAuth } from "@/contexts/AuthContext";
-import { FaGithub, FaGitlab } from "react-icons/fa";
+import { FaGithub } from "react-icons/fa";
+import { GitlabIcon } from "@/components/GitlabIcon";
 import api from "@/api/client";
+import { isSafeInternalPath, stashOAuthRedirect } from "@/lib/auth-redirect";
+
+const TURNSTILE_SCRIPT =
+  "https://challenges.cloudflare.com/turnstile/v0/api.js";
+
+function loadTurnstileScript(): Promise<void> {
+  if (typeof window !== "undefined" && window.turnstile) {
+    return Promise.resolve();
+  }
+  return new Promise((resolve, reject) => {
+    const existing = document.querySelector<HTMLScriptElement>(
+      `script[src="${TURNSTILE_SCRIPT}"]`,
+    );
+    if (existing) {
+      if (window.turnstile) resolve();
+      else {
+        existing.addEventListener("load", () => resolve());
+        existing.addEventListener("error", () =>
+          reject(new Error("Turnstile load failed")),
+        );
+      }
+      return;
+    }
+    const script = document.createElement("script");
+    script.src = TURNSTILE_SCRIPT;
+    script.async = true;
+    script.onload = () => resolve();
+    script.onerror = () => reject(new Error("Turnstile load failed"));
+    document.body.appendChild(script);
+  });
+}
 
 export function LoginPage() {
   const [email, setEmail] = useState("");
@@ -11,21 +44,89 @@ export function LoginPage() {
   const [isRegister, setIsRegister] = useState(false);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [turnstileToken, setTurnstileToken] = useState<string | null>(null);
+  const turnstileHostRef = useRef<HTMLDivElement>(null);
+  const turnstileWidgetId = useRef<string | null>(null);
   const { login } = useAuth();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+
+  useEffect(() => {
+    const wantsRegister =
+      searchParams.get("register") === "1" ||
+      searchParams.get("register") === "true" ||
+      searchParams.get("mode") === "signup";
+    if (wantsRegister) setIsRegister(true);
+  }, [searchParams]);
+
+  const turnstileSiteKey = import.meta.env.VITE_TURNSTILE_SITE_KEY ?? "";
+
+  useLayoutEffect(() => {
+    if (!isRegister || !turnstileSiteKey) {
+      setTurnstileToken(null);
+      if (turnstileWidgetId.current && window.turnstile?.remove) {
+        window.turnstile.remove(turnstileWidgetId.current);
+        turnstileWidgetId.current = null;
+      }
+      return;
+    }
+
+    let cancelled = false;
+
+    const run = async () => {
+      try {
+        await loadTurnstileScript();
+      } catch {
+        return;
+      }
+      if (cancelled || !turnstileHostRef.current || !window.turnstile) return;
+      if (turnstileWidgetId.current && window.turnstile.remove) {
+        window.turnstile.remove(turnstileWidgetId.current);
+        turnstileWidgetId.current = null;
+      }
+      turnstileWidgetId.current = window.turnstile.render(
+        turnstileHostRef.current,
+        {
+          sitekey: turnstileSiteKey,
+          callback: (token: string) => setTurnstileToken(token),
+          "expired-callback": () => setTurnstileToken(null),
+        },
+      );
+    };
+
+    void run();
+
+    return () => {
+      cancelled = true;
+      if (turnstileWidgetId.current && window.turnstile?.remove) {
+        window.turnstile.remove(turnstileWidgetId.current);
+        turnstileWidgetId.current = null;
+      }
+    };
+  }, [isRegister, turnstileSiteKey]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
+    if (isRegister && turnstileSiteKey && !turnstileToken) {
+      setError("Please complete the verification step below.");
+      return;
+    }
     setLoading(true);
     try {
       const endpoint = isRegister ? "/auth/register" : "/auth/login";
       const payload = isRegister
-        ? { email, password, name }
+        ? {
+            email,
+            password,
+            name,
+            ...(turnstileToken ? { turnstileToken } : {}),
+          }
         : { email, password };
       const { data } = await api.post(endpoint, payload);
       login(data.accessToken, data.user);
-      navigate("/");
+      const next = searchParams.get("next");
+      navigate(isSafeInternalPath(next) ? next : "/");
     } catch (err: any) {
       setError(err.response?.data?.message || "Something went wrong");
     } finally {
@@ -34,10 +135,12 @@ export function LoginPage() {
   };
 
   const handleGithubLogin = () => {
+    stashOAuthRedirect(searchParams.get("next"));
     window.location.href = "/api/auth/github";
   };
 
   const handleGitlabLogin = () => {
+    stashOAuthRedirect(searchParams.get("next"));
     window.location.href = "/api/auth/gitlab";
   };
 
@@ -45,20 +148,20 @@ export function LoginPage() {
     <div>
       {/* Logo + heading */}
       <div className="mb-10">
-        <Link
-          to="/home"
-          className="font-display text-[2.6rem] leading-none tracking-tight no-underline block mb-3"
-          style={{ color: "var(--text-primary)" }}
-        >
-          Runa
+        <Link to="/home" className="no-underline block mb-3 leading-none">
+          <RunaLogo height={42} />
         </Link>
         <p
           className="text-[15px] leading-relaxed"
           style={{ color: "var(--text-secondary)" }}
         >
           {isRegister
-            ? "Create your account to get started."
-            : "Sign in to your workspace."}
+            ? searchParams.get("next") === "/billing"
+              ? "Create your account, then start your trial on the next step."
+              : "Create your account to get started."
+            : searchParams.get("next") === "/billing"
+              ? "Sign in to continue to billing and start your trial."
+              : "Sign in to your workspace."}
         </p>
       </div>
 
@@ -86,7 +189,7 @@ export function LoginPage() {
         <button
           type="button"
           onClick={handleGitlabLogin}
-          className="cursor-pointer flex-1 flex items-center justify-center gap-2.5 rounded-lg px-4 py-3 text-[13px] font-medium transition-all"
+          className="cursor-pointer flex-1 flex items-center justify-center gap-0.5 rounded-lg px-4 py-3 text-[13px] font-medium transition-all"
           style={{
             border: "1px solid var(--border)",
             color: "var(--text-primary)",
@@ -99,7 +202,7 @@ export function LoginPage() {
             e.currentTarget.style.borderColor = "var(--border)";
           }}
         >
-          <FaGitlab size={18} style={{ color: "#fc6d26" }} />
+          <GitlabIcon size={32} className="shrink-0" />
           GitLab
         </button>
       </div>
@@ -155,13 +258,24 @@ export function LoginPage() {
           />
         </div>
         <div>
-          <label
-            htmlFor="auth-password"
-            className="block text-[12px] font-medium mb-1.5"
-            style={{ color: "var(--text-secondary)" }}
-          >
-            Password
-          </label>
+          <div className="flex items-center justify-between gap-2 mb-1.5">
+            <label
+              htmlFor="auth-password"
+              className="block text-[12px] font-medium"
+              style={{ color: "var(--text-secondary)" }}
+            >
+              Password
+            </label>
+            {!isRegister ? (
+              <Link
+                to="/login/forgot-password"
+                className="text-[12px] font-medium shrink-0 transition-opacity hover:opacity-70"
+                style={{ color: "var(--accent)" }}
+              >
+                Forgot password?
+              </Link>
+            ) : null}
+          </div>
           <input
             id="auth-password"
             type="password"
@@ -177,6 +291,10 @@ export function LoginPage() {
             {error}
           </p>
         )}
+
+        {isRegister && turnstileSiteKey ? (
+          <div ref={turnstileHostRef} className="min-h-[65px]" />
+        ) : null}
 
         <button
           type="submit"
@@ -208,6 +326,7 @@ export function LoginPage() {
           onClick={() => {
             setIsRegister(!isRegister);
             setError("");
+            setTurnstileToken(null);
           }}
           className="cursor-pointer font-medium transition-opacity hover:opacity-70"
           style={{ color: "var(--accent)" }}

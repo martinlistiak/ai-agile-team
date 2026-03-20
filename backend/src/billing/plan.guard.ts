@@ -46,8 +46,7 @@ export class PlanGuard implements CanActivate {
     const userLevel = PLAN_HIERARCHY[user.planTier] ?? 0;
     const isActive =
       user.subscriptionStatus === "active" ||
-      user.subscriptionStatus === "trialing" ||
-      user.planTier === "starter";
+      user.subscriptionStatus === "trialing";
 
     if (!isActive) {
       throw new ForbiddenException(

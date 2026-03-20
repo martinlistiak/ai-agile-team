@@ -5,6 +5,7 @@ import {
   Param,
   Post,
   Query,
+  Req,
   Res,
   UploadedFiles,
   UseGuards,
@@ -18,7 +19,10 @@ import {
   ApiParam,
   ApiConsumes,
 } from "@nestjs/swagger";
+import { Request } from "express";
 import { JwtOrApiKeyGuard } from "../auth/jwt-or-apikey.guard";
+import { SubscriptionActiveGuard } from "../common/subscription-active.guard";
+import { CountlyService } from "../common/countly.service";
 import { FilesInterceptor } from "@nestjs/platform-express";
 import { ChatService } from "./chat.service";
 import { SendChatMessageDto } from "./dto/send-chat-message.dto";
@@ -28,11 +32,12 @@ import { Response } from "express";
 @ApiTags("Chat")
 @ApiBearerAuth("bearer")
 @Controller("chat")
-@UseGuards(JwtOrApiKeyGuard)
+@UseGuards(JwtOrApiKeyGuard, SubscriptionActiveGuard)
 export class ChatController {
   constructor(
     private chatService: ChatService,
     private agentsService: AgentsService,
+    private countly: CountlyService,
   ) {}
 
   @Get(":spaceId/messages")
@@ -76,6 +81,7 @@ export class ChatController {
   @ApiConsumes("multipart/form-data")
   @ApiResponse({ status: 201, description: "Assistant response message" })
   async send(
+    @Req() req: Request,
     @Param("spaceId") spaceId: string,
     @Body() body: SendChatMessageDto,
     @UploadedFiles()
@@ -93,6 +99,16 @@ export class ChatController {
       (body.agentType as any) ?? "pm",
       body.ticketId,
     );
+
+    const userId = (req.user as { id?: string })?.id;
+    if (userId) {
+      const agentType = (body.agentType as string) ?? "pm";
+      this.countly.record(userId, "chat_message_sent", {
+        agent_type: agentType,
+        has_attachments: files.length > 0 ? "true" : "false",
+        has_ticket_ref: body.ticketId ? "true" : "false",
+      });
+    }
 
     // Extract created ticket IDs from the latest execution's action log
     let createdTickets: Array<{ ticketId: string; title: string }> = [];

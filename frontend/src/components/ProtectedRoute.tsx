@@ -1,8 +1,19 @@
-import { Navigate } from 'react-router-dom';
+import { Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
+import type { User } from '@/types';
+
+function hasAppAccess(user: User | null): boolean {
+  if (!user) return false;
+  if (user.subscriptionStatus === 'active' || user.subscriptionStatus === 'trialing') {
+    return true;
+  }
+  if (user.hasTeamMembership) return true;
+  return false;
+}
 
 export function ProtectedRoute({ children }: { children: React.ReactNode }) {
-  const { isAuthenticated, isLoading } = useAuth();
+  const { isAuthenticated, isLoading, user } = useAuth();
+  const location = useLocation();
 
   if (isLoading) {
     return (
@@ -14,6 +25,14 @@ export function ProtectedRoute({ children }: { children: React.ReactNode }) {
 
   if (!isAuthenticated) {
     return <Navigate to="/login" replace />;
+  }
+
+  const billingExempt =
+    location.pathname.startsWith('/billing') ||
+    location.pathname.startsWith('/invitations');
+
+  if (!billingExempt && !hasAppAccess(user)) {
+    return <Navigate to="/billing" replace state={{ from: location.pathname }} />;
   }
 
   return <>{children}</>;

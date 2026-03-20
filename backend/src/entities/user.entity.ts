@@ -42,8 +42,8 @@ export class User {
   @Column({ type: "text", nullable: true })
   gitlabTokenEncrypted: string;
 
-  @Column({ nullable: true })
-  avatarUrl: string;
+  @Column({ type: "text", nullable: true })
+  avatarUrl: string | null;
 
   @Column({ type: "text", nullable: true, unique: true })
   stripeCustomerId: string;
@@ -59,6 +59,19 @@ export class User {
 
   @Column({ type: "timestamptz", nullable: true })
   currentPeriodEnd: Date;
+
+  /** Usage credits balance in cents. Topped up via one-time payments. */
+  @Column({ type: "int", default: 0 })
+  creditsBalance: number;
+
+  @Column({ type: "text", nullable: true })
+  ssoProvider: string;
+
+  @Column({ type: "text", nullable: true })
+  ssoExternalId: string;
+
+  @Column({ type: "timestamptz", nullable: true })
+  emailVerifiedAt: Date | null;
 
   @CreateDateColumn()
   createdAt: Date;

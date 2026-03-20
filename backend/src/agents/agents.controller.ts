@@ -7,6 +7,7 @@ import {
   Patch,
   Post,
   Query,
+  Req,
   UseGuards,
 } from "@nestjs/common";
 import {
@@ -18,7 +19,10 @@ import {
   ApiQuery,
   ApiBody,
 } from "@nestjs/swagger";
+import { Request } from "express";
 import { JwtOrApiKeyGuard } from "../auth/jwt-or-apikey.guard";
+import { SubscriptionActiveGuard } from "../common/subscription-active.guard";
+import { CountlyService } from "../common/countly.service";
 import { AgentsService } from "./agents.service";
 import { DeveloperAgentService } from "./developer-agent.service";
 import { TesterAgentService } from "./tester-agent.service";
@@ -26,12 +30,13 @@ import { TesterAgentService } from "./tester-agent.service";
 @ApiTags("Agents")
 @ApiBearerAuth("bearer")
 @Controller()
-@UseGuards(JwtOrApiKeyGuard)
+@UseGuards(JwtOrApiKeyGuard, SubscriptionActiveGuard)
 export class AgentsController {
   constructor(
     private agentsService: AgentsService,
     private developerAgentService: DeveloperAgentService,
     private testerAgentService: TesterAgentService,
+    private countly: CountlyService,
   ) {}
 
   @Get("spaces/:spaceId/agents")
@@ -178,10 +183,16 @@ export class AgentsController {
   })
   @ApiResponse({ status: 201, description: "Created custom agent" })
   async createCustomAgent(
+    @Req() req: Request,
     @Param("spaceId") spaceId: string,
     @Body() body: { name: string; description?: string; systemPrompt?: string },
   ) {
-    return this.agentsService.createCustomAgent(spaceId, body);
+    const agent = await this.agentsService.createCustomAgent(spaceId, body);
+    const userId = (req.user as { id?: string })?.id;
+    if (userId) {
+      this.countly.record(userId, "custom_agent_created", {});
+    }
+    return agent;
   }
 
   @Patch("agents/:id/custom")

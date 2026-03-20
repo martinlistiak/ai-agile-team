@@ -38,7 +38,10 @@ export class BillingController {
     schema: {
       type: "object",
       properties: {
-        plan: { type: "string", enum: ["team", "enterprise"] },
+        plan: {
+          type: "string",
+          enum: ["starter", "team", "enterprise"],
+        },
         interval: { type: "string", enum: ["monthly", "annual"] },
       },
       required: ["plan", "interval"],
@@ -48,7 +51,10 @@ export class BillingController {
   async createCheckout(
     @Req() req: Request,
     @Body()
-    body: { plan: "team" | "enterprise"; interval: "monthly" | "annual" },
+    body: {
+      plan: "starter" | "team" | "enterprise";
+      interval: "monthly" | "annual";
+    },
   ) {
     return this.billingService.createCheckoutSession(
       (req.user as any).id,
@@ -73,6 +79,66 @@ export class BillingController {
   @ApiResponse({ status: 200, description: "Subscription details" })
   async getSubscription(@Req() req: Request) {
     return this.billingService.getSubscriptionInfo((req.user as any).id);
+  }
+
+  @Get("usage")
+  @UseGuards(JwtOrApiKeyGuard)
+  @ApiBearerAuth("bearer")
+  @ApiOperation({ summary: "Get usage stats for the current billing period" })
+  @ApiResponse({ status: 200, description: "Usage statistics" })
+  async getUsage(@Req() req: Request) {
+    return this.billingService.getUsageStats((req.user as any).id);
+  }
+
+  @Get("invoices")
+  @UseGuards(JwtOrApiKeyGuard)
+  @ApiBearerAuth("bearer")
+  @ApiOperation({ summary: "List past invoices for the billing customer" })
+  @ApiResponse({
+    status: 200,
+    description: "Invoice list with PDF URLs when available",
+  })
+  async listInvoices(@Req() req: Request) {
+    return this.billingService.listInvoices((req.user as any).id);
+  }
+
+  @Post("top-up")
+  @UseGuards(JwtOrApiKeyGuard)
+  @ApiBearerAuth("bearer")
+  @ApiOperation({
+    summary: "Create a Stripe checkout session for credit top-up",
+  })
+  @ApiBody({
+    schema: {
+      type: "object",
+      properties: {
+        amount: {
+          type: "number",
+          description: "Dollar amount in $5 increments (min $5)",
+          example: 10,
+        },
+      },
+      required: ["amount"],
+    },
+  })
+  @ApiResponse({
+    status: 201,
+    description: "Checkout session URL for one-time payment",
+  })
+  async createTopUp(@Req() req: Request, @Body() body: { amount: number }) {
+    return this.billingService.createTopUpSession(
+      (req.user as any).id,
+      body.amount,
+    );
+  }
+
+  @Get("credits")
+  @UseGuards(JwtOrApiKeyGuard)
+  @ApiBearerAuth("bearer")
+  @ApiOperation({ summary: "Get current credits balance" })
+  @ApiResponse({ status: 200, description: "Credits balance in cents" })
+  async getCredits(@Req() req: Request) {
+    return this.billingService.getCreditsBalance((req.user as any).id);
   }
 
   @Post("webhook")

@@ -18,6 +18,7 @@ import {
   useChatMessages,
   useSendChatMessage,
 } from "@/api/hooks/useChat";
+import { AgentRunLimitUpsell } from "@/components/AgentRunLimitUpsell";
 
 interface AgentOption {
   value: string;
@@ -441,6 +442,11 @@ export function ChatPanel() {
 
       {/* Input area */}
       <div className="border-t border-gray-100 px-5 py-4 dark:border-gray-800/60">
+        <AgentRunLimitUpsell
+          error={sendMessage.error}
+          onDismiss={() => sendMessage.reset()}
+          className="mb-3"
+        />
         {filePreviews.length > 0 && (
           <div className="mb-3 flex gap-2 overflow-x-auto pb-1">
             {filePreviews.map((preview) => (

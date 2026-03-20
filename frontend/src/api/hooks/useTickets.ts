@@ -135,6 +135,29 @@ export function useDeleteTicket() {
   });
 }
 
+export function useBulkDeleteTickets() {
+  const queryClient = useQueryClient();
+  const { success, error: showError } = useToast();
+  return useMutation({
+    mutationFn: async (payload: { spaceId: string; ticketIds: string[] }) => {
+      const { data } = await api.post(
+        `/spaces/${payload.spaceId}/tickets/bulk-delete`,
+        { ticketIds: payload.ticketIds },
+      );
+      return data as { deleted: number };
+    },
+    onSuccess: (data, variables) => {
+      queryClient.invalidateQueries({
+        queryKey: ["tickets", variables.spaceId],
+      });
+      success(`${data.deleted} ticket${data.deleted === 1 ? "" : "s"} deleted`);
+    },
+    onError: (err: Error) => {
+      showError(err.message || "Failed to delete tickets");
+    },
+  });
+}
+
 export function useAddComment() {
   const queryClient = useQueryClient();
   const { error: showError } = useToast();

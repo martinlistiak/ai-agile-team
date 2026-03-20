@@ -134,6 +134,27 @@ export class TicketsService {
     this.eventEmitter.emit("ticket.deleted", ticket);
   }
 
+  async bulkDelete(ids: string[]): Promise<number> {
+    if (!ids.length) return 0;
+
+    // Nullify execution references for all tickets
+    await this.executionRepo
+      .createQueryBuilder()
+      .update(Execution)
+      .set({ ticketId: () => "NULL" })
+      .where('"ticketId" IN (:...ids)', { ids })
+      .execute();
+
+    const tickets = await this.ticketRepo.findByIds(ids);
+    if (!tickets.length) return 0;
+
+    await this.ticketRepo.remove(tickets);
+    for (const ticket of tickets) {
+      this.eventEmitter.emit("ticket.deleted", ticket);
+    }
+    return tickets.length;
+  }
+
   /**
    * Reorder tickets within a column. Receives an ordered array of ticket IDs
    * representing the new order for that status column.

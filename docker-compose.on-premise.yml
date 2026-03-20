@@ -1,0 +1,85 @@
+version: "3.8"
+
+# On-premise deployment for Runa Enterprise
+# Usage: docker compose -f docker-compose.on-premise.yml up -d
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${DATABASE_USER:-runa}
+      POSTGRES_PASSWORD: ${DATABASE_PASSWORD:-runa}
+      POSTGRES_DB: ${DATABASE_NAME:-runa}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DATABASE_USER:-runa}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    volumes:
+      - redisdata:/data
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      DEPLOYMENT_MODE: on-premise
+      LICENSE_KEY: ${LICENSE_KEY}
+      DATABASE_HOST: postgres
+      DATABASE_PORT: 5432
+      DATABASE_USER: ${DATABASE_USER:-runa}
+      DATABASE_PASSWORD: ${DATABASE_PASSWORD:-runa}
+      DATABASE_NAME: ${DATABASE_NAME:-runa}
+      REDIS_URL: redis://redis:6379
+      JWT_SECRET: ${JWT_SECRET}
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      AIRGAPPED: ${AIRGAPPED:-false}
+      LOCAL_STORAGE_PATH: /data/runa
+      APP_URL: ${APP_URL:-http://localhost:3001}
+      MAX_USERS: ${MAX_USERS:-0}
+      MAX_SPACES: ${MAX_SPACES:-0}
+    volumes:
+      - appdata:/data/runa
+    ports:
+      - "3001:3001"
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    depends_on:
+      - backend
+    ports:
+      - "3000:3000"
+    environment:
+      VITE_API_URL: ${APP_URL:-http://localhost:3001}/api
+
+volumes:
+  pgdata:
+  redisdata:
+  appdata:

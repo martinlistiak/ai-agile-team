@@ -15,6 +15,7 @@ import { formatAgentExecutionLog } from "../common/structured-logger";
 import { getModelForAgent } from "./agent-models.config";
 
 import { ExecutionRegistry } from "./execution-registry";
+import { AgentRunQuotaService } from "../common/agent-run-quota.service";
 
 const REVIEWER_SYSTEM_PROMPT = `You are a Code Reviewer AI agent in an agile software development team.
 Your role is to review pull requests, identify issues, and provide constructive feedback.
@@ -74,6 +75,7 @@ export class ReviewerAgentService {
     @InjectRepository(Execution) private executionRepo: Repository<Execution>,
     @InjectRepository(Space) private spaceRepo: Repository<Space>,
     private executionRegistry: ExecutionRegistry,
+    private agentRunQuota: AgentRunQuotaService,
   ) {}
 
   /**
@@ -85,6 +87,8 @@ export class ReviewerAgentService {
     userMessage: string,
     ticketId?: string,
   ): Promise<string> {
+    await this.agentRunQuota.assertCanStartRunForSpace(spaceId);
+
     let agent = await this.agentRepo.findOneBy({
       spaceId,
       agentType: "reviewer",

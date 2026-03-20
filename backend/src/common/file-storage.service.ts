@@ -1,12 +1,24 @@
 import { Injectable } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
-import {
-  S3Client,
-  PutObjectCommand,
-  GetObjectCommand,
-} from "@aws-sdk/client-s3";
-import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import * as crypto from "crypto";
+import * as fs from "fs";
+import * as path from "path";
+
+function mimeForAvatarExtension(ext: string): string | undefined {
+  switch (ext) {
+    case "jpg":
+    case "jpeg":
+      return "image/jpeg";
+    case "png":
+      return "image/png";
+    case "webp":
+      return "image/webp";
+    case "gif":
+      return "image/gif";
+    default:
+      return undefined;
+  }
+}
 
 export interface FileUploadMetadata {
   spaceId: string;
@@ -17,29 +29,14 @@ export interface FileUploadMetadata {
 
 @Injectable()
 export class FileStorageService {
-  private readonly s3: S3Client;
-  private readonly bucket: string;
+  private readonly storagePath: string;
 
   constructor(private configService: ConfigService) {
-    this.bucket = this.configService.get<string>("S3_BUCKET", "runa-uploads");
-    this.s3 = new S3Client({
-      endpoint: this.configService.get<string>(
-        "S3_ENDPOINT",
-        "http://localhost:9000",
-      ),
-      region: this.configService.get<string>("AWS_REGION", "us-east-1"),
-      credentials: {
-        accessKeyId: this.configService.get<string>(
-          "AWS_ACCESS_KEY_ID",
-          "minioadmin",
-        ),
-        secretAccessKey: this.configService.get<string>(
-          "AWS_SECRET_ACCESS_KEY",
-          "minioadmin",
-        ),
-      },
-      forcePathStyle: true,
-    });
+    this.storagePath = this.configService.get<string>(
+      "LOCAL_STORAGE_PATH",
+      "/data/runa/uploads",
+    );
+    fs.mkdirSync(this.storagePath, { recursive: true });
   }
 
   /**
@@ -51,30 +48,61 @@ export class FileStorageService {
     return `${metadata.spaceId}/${metadata.entityType}/${metadata.entityId}/${fileUuid}.${metadata.extension}`;
   }
 
+  /** Storage key for a user-uploaded profile image, or null if URL is external / not ours. */
+  static parseStorageKeyFromAvatarUrl(avatarUrl: string | null): string | null {
+    if (!avatarUrl) return null;
+    const m = avatarUrl.match(/\/api\/files\/(.+)$/);
+    return m ? decodeURIComponent(m[1]) : null;
+  }
+
+  private resolveFilePath(key: string): string {
+    return path.join(this.storagePath, key);
+  }
+
+  async uploadUserAvatar(
+    userId: string,
+    file: Buffer,
+    extension: string,
+  ): Promise<{ key: string }> {
+    const ext = extension.replace(/^\./, "").toLowerCase() || "bin";
+    const fileUuid = crypto.randomUUID();
+    const key = `user-avatars/${userId}/${fileUuid}.${ext}`;
+
+    const filePath = this.resolveFilePath(key);
+    fs.mkdirSync(path.dirname(filePath), { recursive: true });
+    fs.writeFileSync(filePath, file);
+
+    return { key };
+  }
+
+  async deleteObject(key: string): Promise<void> {
+    const filePath = this.resolveFilePath(key);
+    if (fs.existsSync(filePath)) {
+      fs.unlinkSync(filePath);
+    }
+  }
+
   async upload(
     file: Buffer,
     metadata: FileUploadMetadata,
   ): Promise<{ key: string; url: string }> {
     const key = FileStorageService.generateKey(metadata);
 
-    await this.s3.send(
-      new PutObjectCommand({
-        Bucket: this.bucket,
-        Key: key,
-        Body: file,
-      }),
-    );
+    const filePath = this.resolveFilePath(key);
+    fs.mkdirSync(path.dirname(filePath), { recursive: true });
+    fs.writeFileSync(filePath, file);
 
-    const url = await this.getSignedUrl(key);
+    const url = `/api/files/${key}`;
     return { key, url };
   }
 
-  async getSignedUrl(key: string): Promise<string> {
-    const command = new GetObjectCommand({
-      Bucket: this.bucket,
-      Key: key,
-    });
+  getFilePath(key: string): string | null {
+    const filePath = this.resolveFilePath(key);
+    return fs.existsSync(filePath) ? filePath : null;
+  }
 
-    return getSignedUrl(this.s3, command, { expiresIn: 3600 });
+  getMimeType(key: string): string {
+    const ext = path.extname(key).replace(".", "").toLowerCase();
+    return mimeForAvatarExtension(ext) || "application/octet-stream";
   }
 }

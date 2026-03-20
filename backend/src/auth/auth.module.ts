@@ -9,11 +9,17 @@ import { JwtStrategy } from "./jwt.strategy";
 import { ApiKeyStrategy } from "./api-key.strategy";
 import { JwtOrApiKeyGuard } from "./jwt-or-apikey.guard";
 import { User } from "../entities/user.entity";
+import { PasswordResetToken } from "../entities/password-reset-token.entity";
+import { EmailVerificationToken } from "../entities/email-verification-token.entity";
 import { IntegrationsModule } from "../integrations/integrations.module";
+import { TeamsModule } from "../teams/teams.module";
+import { BillingModule } from "../billing/billing.module";
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([User]),
+    TypeOrmModule.forFeature([User, PasswordResetToken, EmailVerificationToken]),
+    BillingModule,
+    TeamsModule,
     PassportModule,
     JwtModule.registerAsync({
       imports: [ConfigModule],

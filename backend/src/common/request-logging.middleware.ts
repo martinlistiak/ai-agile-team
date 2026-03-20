@@ -12,6 +12,7 @@ export class RequestLoggingMiddleware implements NestMiddleware {
     res.on("finish", () => {
       const responseTime = Date.now() - start;
       const isProduction = process.env.NODE_ENV === "production";
+      const requestId = req.requestId;
 
       if (isProduction) {
         this.logger.log(
@@ -20,11 +21,12 @@ export class RequestLoggingMiddleware implements NestMiddleware {
             path: req.originalUrl,
             statusCode: res.statusCode,
             responseTime,
+            requestId,
           }),
         );
       } else {
         this.logger.log(
-          `${req.method} ${req.originalUrl} ${res.statusCode} ${responseTime}ms`,
+          `[${requestId}] ${req.method} ${req.originalUrl} ${res.statusCode} ${responseTime}ms`,
         );
       }
     });

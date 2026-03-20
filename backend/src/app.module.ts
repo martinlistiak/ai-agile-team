@@ -7,6 +7,7 @@ import { ThrottlerModule, ThrottlerGuard } from "@nestjs/throttler";
 import { APP_GUARD } from "@nestjs/core";
 import { AuthModule } from "./auth/auth.module";
 import { RequestLoggingMiddleware } from "./common/request-logging.middleware";
+import { RequestIdMiddleware } from "./common/request-id.middleware";
 import { SpacesModule } from "./spaces/spaces.module";
 import { TicketsModule } from "./tickets/tickets.module";
 import { AgentsModule } from "./agents/agents.module";
@@ -19,6 +20,7 @@ import { HealthModule } from "./health/health.module";
 import { BillingModule } from "./billing/billing.module";
 import { TeamsModule } from "./teams/teams.module";
 import { IntegrationsModule } from "./integrations/integrations.module";
+import { OAuthModule } from "./oauth/oauth.module";
 import { User } from "./entities/user.entity";
 import { Space } from "./entities/space.entity";
 import { Agent } from "./entities/agent.entity";
@@ -32,6 +34,19 @@ import { Team } from "./entities/team.entity";
 import { TeamMember } from "./entities/team-member.entity";
 import { TeamInvitation } from "./entities/team-invitation.entity";
 import { ApiKey } from "./entities/api-key.entity";
+import { OAuthClient } from "./entities/oauth-client.entity";
+import { OAuthCode } from "./entities/oauth-code.entity";
+import { OAuthToken } from "./entities/oauth-token.entity";
+import { PasswordResetToken } from "./entities/password-reset-token.entity";
+import { EmailVerificationToken } from "./entities/email-verification-token.entity";
+import { SsoConfig } from "./entities/sso-config.entity";
+import { AgentTraining } from "./entities/agent-training.entity";
+import { SlaConfig } from "./entities/sla-config.entity";
+import { AnalyticsEvent } from "./entities/analytics-event.entity";
+import { EnterpriseModule } from "./enterprise/enterprise.module";
+import { NotificationsModule } from "./notifications/notifications.module";
+import { Notification } from "./entities/notification.entity";
+import { NotificationPreference } from "./entities/notification-preference.entity";
 
 @Module({
   imports: [
@@ -64,6 +79,17 @@ import { ApiKey } from "./entities/api-key.entity";
           TeamMember,
           TeamInvitation,
           ApiKey,
+          OAuthClient,
+          OAuthCode,
+          OAuthToken,
+          PasswordResetToken,
+          EmailVerificationToken,
+          SsoConfig,
+          AgentTraining,
+          SlaConfig,
+          AnalyticsEvent,
+          Notification,
+          NotificationPreference,
         ],
         synchronize: config.get("NODE_ENV") !== "production",
         migrations: [__dirname + "/migrations/*{.ts,.js}"],
@@ -89,6 +115,9 @@ import { ApiKey } from "./entities/api-key.entity";
     BillingModule,
     TeamsModule,
     IntegrationsModule,
+    OAuthModule,
+    EnterpriseModule,
+    NotificationsModule,
   ],
   providers: [
     {
@@ -99,6 +128,7 @@ import { ApiKey } from "./entities/api-key.entity";
 })
 export class AppModule implements NestModule {
   configure(consumer: MiddlewareConsumer) {
+    consumer.apply(RequestIdMiddleware).forRoutes("*");
     consumer.apply(RequestLoggingMiddleware).forRoutes("*");
   }
 }

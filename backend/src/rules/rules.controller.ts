@@ -16,6 +16,7 @@ import {
   ApiParam,
 } from "@nestjs/swagger";
 import { JwtOrApiKeyGuard } from "../auth/jwt-or-apikey.guard";
+import { SubscriptionActiveGuard } from "../common/subscription-active.guard";
 import { RulesService } from "./rules.service";
 import { SuggestedRulesService } from "./suggested-rules.service";
 import { CreateRuleDto } from "./dto/create-rule.dto";
@@ -24,7 +25,7 @@ import { UpdateRuleDto } from "./dto/update-rule.dto";
 @ApiTags("Rules")
 @ApiBearerAuth("bearer")
 @Controller()
-@UseGuards(JwtOrApiKeyGuard)
+@UseGuards(JwtOrApiKeyGuard, SubscriptionActiveGuard)
 export class RulesController {
   constructor(
     private rulesService: RulesService,

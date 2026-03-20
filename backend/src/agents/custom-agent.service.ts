@@ -8,6 +8,7 @@ import { Execution } from "../entities/execution.entity";
 import { RulesService } from "../rules/rules.service";
 import { EventsGateway } from "../chat/events.gateway";
 import { ExecutionRegistry } from "./execution-registry";
+import { AgentRunQuotaService } from "../common/agent-run-quota.service";
 
 const DEFAULT_MODEL = "claude-sonnet-4-20250514";
 
@@ -24,6 +25,7 @@ export class CustomAgentService {
     @InjectRepository(Agent) private agentRepo: Repository<Agent>,
     @InjectRepository(Execution) private executionRepo: Repository<Execution>,
     private executionRegistry: ExecutionRegistry,
+    private agentRunQuota: AgentRunQuotaService,
   ) {
     this.client = new Anthropic({
       apiKey: this.configService.get("ANTHROPIC_API_KEY", ""),
@@ -39,6 +41,8 @@ export class CustomAgentService {
     if (!agent) {
       throw new Error(`Custom agent ${agentId} not found in space ${spaceId}`);
     }
+
+    await this.agentRunQuota.assertCanStartRunForSpace(spaceId);
 
     await this.agentRepo.update(agent.id, { status: "active" });
     this.eventsGateway.emitAgentStatus(spaceId, agent.id, "active");

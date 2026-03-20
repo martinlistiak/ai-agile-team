@@ -17,6 +17,7 @@ import { GithubService } from "./github.service";
 import { GitlabService } from "./gitlab.service";
 import { EventsGateway } from "../chat/events.gateway";
 import { ExecutionRegistry } from "./execution-registry";
+import { AgentRunQuotaService } from "../common/agent-run-quota.service";
 
 const TOOLS: Anthropic.Tool[] = [
   {
@@ -192,6 +193,7 @@ export class PmAgentService {
     @InjectRepository(Execution) private executionRepo: Repository<Execution>,
     @InjectRepository(Space) private spaceRepo: Repository<Space>,
     private executionRegistry: ExecutionRegistry,
+    private agentRunQuota: AgentRunQuotaService,
   ) {
     this.client = new Anthropic({
       apiKey: this.configService.get("ANTHROPIC_API_KEY", ""),
@@ -207,6 +209,8 @@ export class PmAgentService {
       data: Buffer;
     }> = [],
   ): Promise<string> {
+    await this.agentRunQuota.assertCanStartRunForSpace(spaceId);
+
     let agent = await this.agentRepo.findOneBy({ spaceId, agentType: "pm" });
     if (!agent) {
       this.logger.warn(`PM agent missing for space ${spaceId}, auto-creating`);

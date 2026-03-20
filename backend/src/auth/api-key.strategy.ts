@@ -1,4 +1,4 @@
-import { Injectable, UnauthorizedException } from "@nestjs/common";
+import { Injectable } from "@nestjs/common";
 import { PassportStrategy } from "@nestjs/passport";
 import { Strategy } from "passport-custom";
 import { Request } from "express";
@@ -6,7 +6,9 @@ import { IntegrationsService } from "../integrations/integrations.service";
 
 /**
  * Passport strategy that authenticates via API key (Bearer runa_...).
- * Falls through to let JwtOrApiKeyGuard try JWT if no API key is present.
+ * Used after JWT in JwtOrApiKeyGuard. Must return null (not throw) when the
+ * request is not an API key attempt so passport calls fail() and the strategy
+ * chain can finish; throwing maps to error() and aborts the chain early.
  */
 @Injectable()
 export class ApiKeyStrategy extends PassportStrategy(Strategy, "api-key") {
@@ -17,17 +19,17 @@ export class ApiKeyStrategy extends PassportStrategy(Strategy, "api-key") {
   async validate(req: Request): Promise<any> {
     const authHeader = req.headers.authorization;
     if (!authHeader) {
-      throw new UnauthorizedException();
+      return null;
     }
 
     const [scheme, token] = authHeader.split(" ");
     if (scheme !== "Bearer" || !token?.startsWith("runa_")) {
-      throw new UnauthorizedException();
+      return null;
     }
 
     const user = await this.integrationsService.validateApiKey(token);
     if (!user) {
-      throw new UnauthorizedException("Invalid API key");
+      return null;
     }
 
     return {

@@ -1,0 +1,20 @@
+{
+  "_comment_stdio": "Option 1: stdio mode with API key (simple, local use)",
+  "mcpServers": {
+    "runa": {
+      "command": "node",
+      "args": ["/Users/martin.listiak/projects/runa/mcp-server/dist/index.js"],
+      "env": {
+        "RUNA_API_URL": "http://localhost:3001",
+        "RUNA_API_KEY": "runa_your_api_key_here"
+      }
+    }
+  },
+
+  "_comment_http": "Option 2: HTTP mode with OAuth (run the server separately, then point Claude Desktop to the URL)",
+  "_http_setup": {
+    "start_server": "RUNA_API_URL=http://localhost:3001 node /Users/martin.listiak/projects/runa/mcp-server/dist/index.js --http",
+    "mcp_url": "http://localhost:3002/mcp",
+    "note": "Claude Desktop will handle the OAuth flow automatically — it opens a browser for login"
+  }
+}

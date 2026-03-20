@@ -7,6 +7,7 @@ import { AgentInspector } from "@/features/agents/AgentInspector";
 import { CustomAgentsPanel } from "@/features/agents/CustomAgentsPanel";
 import { cn } from "@/lib/cn";
 import { getStatusRingClass, getAvatarSrc } from "@/lib/avatars";
+import { AgentPanelSkeleton } from "@/components/Skeleton";
 import RotatingBorder from "@/components/RotatingBorder";
 import type { Agent } from "@/types";
 
@@ -130,7 +131,7 @@ export function AgentBadge({
 
 export function AgentPanel() {
   const { spaceId } = useParams();
-  const { data: agents } = useAgents(spaceId || null);
+  const { data: agents, isLoading: agentsLoading } = useAgents(spaceId || null);
   const [inspectedAgent, setInspectedAgent] = useState<Agent | null>(null);
   const [showCustomAgents, setShowCustomAgents] = useState(false);
 
@@ -140,13 +141,17 @@ export function AgentPanel() {
     <>
       <div className="w-14 border-r border-gray-200 bg-white px-1 py-4 dark:border-gray-800 dark:bg-gray-950/60 shrink-0">
         <div className="flex h-full flex-col items-center gap-3 overflow-y-auto py-1">
-          {agents?.map((agent) => (
-            <AgentBadge
-              key={agent.id}
-              agent={agent}
-              onClick={setInspectedAgent}
-            />
-          ))}
+          {agentsLoading ? (
+            <AgentPanelSkeleton />
+          ) : (
+            agents?.map((agent) => (
+              <AgentBadge
+                key={agent.id}
+                agent={agent}
+                onClick={setInspectedAgent}
+              />
+            ))
+          )}
           <RailTooltip label="Custom agents">
             <button
               type="button"

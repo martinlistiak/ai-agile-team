@@ -19,20 +19,25 @@ import {
   ApiBody,
 } from "@nestjs/swagger";
 import { JwtOrApiKeyGuard } from "../auth/jwt-or-apikey.guard";
+import { SubscriptionActiveGuard } from "../common/subscription-active.guard";
 import { SpacesService } from "./spaces.service";
 import { TeamsService } from "../teams/teams.service";
 import { CreateSpaceDto } from "./dto/create-space.dto";
 import { UpdateSpaceDto } from "./dto/update-space.dto";
 import { Request } from "express";
+import { CountlyService } from "../common/countly.service";
+import { BillingService } from "../billing/billing.service";
 
 @ApiTags("Spaces")
 @ApiBearerAuth("bearer")
 @Controller("spaces")
-@UseGuards(JwtOrApiKeyGuard)
+@UseGuards(JwtOrApiKeyGuard, SubscriptionActiveGuard)
 export class SpacesController {
   constructor(
     private spacesService: SpacesService,
     private teamsService: TeamsService,
+    private countly: CountlyService,
+    private billingService: BillingService,
   ) {}
 
   @Get()
@@ -74,7 +79,24 @@ export class SpacesController {
       );
     }
 
-    return this.spacesService.create(user.id, body);
+    const space = await this.spacesService.create(user.id, body);
+    this.countly.record(user.id, "space_created", {
+      has_github: body.githubRepoUrl ? "true" : "false",
+      has_gitlab: body.gitlabRepoUrl ? "true" : "false",
+    });
+
+    // Update Stripe subscription quantity based on space count
+    const allSpaces = await this.spacesService.findAllByUser(user.id);
+    try {
+      await this.billingService.updateSubscriptionQuantity(
+        user.id,
+        allSpaces.length,
+      );
+    } catch (err) {
+      // Non-fatal: space is created, billing update can be retried
+    }
+
+    return space;
   }
 
   @Post("reorder")
@@ -104,8 +126,21 @@ export class SpacesController {
   @ApiOperation({ summary: "Delete a space and all its data" })
   @ApiParam({ name: "id", format: "uuid" })
   @ApiResponse({ status: 200, description: "Space deleted" })
-  async remove(@Param("id") id: string) {
+  async remove(@Req() req: Request, @Param("id") id: string) {
     await this.spacesService.delete(id);
+
+    // Update Stripe subscription quantity based on remaining space count
+    const userId = (req.user as any).id;
+    const remainingSpaces = await this.spacesService.findAllByUser(userId);
+    try {
+      await this.billingService.updateSubscriptionQuantity(
+        userId,
+        Math.max(remainingSpaces.length, 1),
+      );
+    } catch (err) {
+      // Non-fatal: space is deleted, billing update can be retried
+    }
+
     return { deleted: true };
   }
 }

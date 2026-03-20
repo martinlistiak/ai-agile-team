@@ -9,6 +9,7 @@ import { AgentSelectorDropdown } from "./AgentSelectorDropdown";
 import { TypingIndicator } from "./TypingIndicator";
 import { useChatMessages, useSendChatMessage } from "@/api/hooks/useChat";
 import { Modal } from "@/components/Modal";
+import { AgentRunLimitUpsell } from "@/components/AgentRunLimitUpsell";
 import type { ChatAttachment, ChatMessage } from "@/types";
 import api from "@/api/client";
 
@@ -79,12 +80,15 @@ const AGENT_BADGE: Record<string, { label: string; color: string }> = {
   },
 };
 
-function getAgentBadge(agentType: string): { label: string; color: string } | null {
+function getAgentBadge(
+  agentType: string,
+): { label: string; color: string } | null {
   if (AGENT_BADGE[agentType]) return AGENT_BADGE[agentType];
   if (agentType.startsWith("custom:")) {
     return {
       label: "Custom",
-      color: "bg-violet-100 text-violet-700 dark:bg-violet-900 dark:text-violet-300",
+      color:
+        "bg-violet-100 text-violet-700 dark:bg-violet-900 dark:text-violet-300",
     };
   }
   return null;
@@ -223,7 +227,7 @@ export function ChatModal() {
   return createPortal(
     <Modal
       onClose={closeChat}
-      className="mx-4 flex max-h-[80vh] w-full max-w-[640px] flex-col overflow-hidden"
+      className="mx-2 flex max-h-[85vh] w-full max-w-[640px] flex-col overflow-hidden md:mx-4 md:max-h-[80vh]"
     >
       {/* Header */}
       <div className="flex shrink-0 items-center justify-between border-b border-stone-200 px-4 py-3 dark:border-stone-800">
@@ -266,6 +270,11 @@ export function ChatModal() {
 
       {/* Input area */}
       <div className="shrink-0 border-t border-stone-200 px-5 py-4 dark:border-stone-800">
+        <AgentRunLimitUpsell
+          error={sendMessage.error}
+          onDismiss={() => sendMessage.reset()}
+          className="mb-3"
+        />
         {filePreviews.length > 0 && (
           <div className="mb-3 flex gap-2 overflow-x-auto pb-1">
             {filePreviews.map((preview) => (
@@ -299,11 +308,11 @@ export function ChatModal() {
           </div>
         )}
 
-        <div className="flex items-end gap-2">
+        <div className="flex items-center gap-2">
           <button
             type="button"
             onClick={() => fileInputRef.current?.click()}
-            className="cursor-pointer flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-gray-400 transition-colors hover:bg-gray-100 hover:text-primary-500 dark:hover:bg-gray-800 dark:text-gray-500"
+            className="cursor-pointer flex h-11 w-11 shrink-0 items-center justify-center rounded-lg border border-transparent bg-gray-100 text-gray-500 transition-colors hover:border-gray-200 hover:bg-gray-50 hover:text-primary-500 dark:bg-gray-800/80 dark:text-gray-400 dark:hover:border-gray-600 dark:hover:bg-gray-800"
             aria-label="Attach files"
           >
             <FiImage className="h-[18px] w-[18px]" />
@@ -317,7 +326,7 @@ export function ChatModal() {
             onChange={handleFileSelection}
           />
 
-          <div className="relative flex-1">
+          <div className="relative min-h-11 min-w-0 flex-1">
             <textarea
               value={input}
               onChange={(event) => setInput(event.target.value)}
@@ -329,7 +338,7 @@ export function ChatModal() {
               }}
               placeholder="Type a message..."
               rows={1}
-              className="w-full resize-none rounded-xl border border-gray-200 bg-gray-50 px-4 py-2.5 text-sm text-gray-900 outline-none transition-colors placeholder:text-gray-400 focus:border-primary-300 focus:bg-white focus:ring-1 focus:ring-primary-200 dark:border-gray-700 dark:bg-gray-800/50 dark:text-gray-100 dark:placeholder:text-gray-500 dark:focus:border-primary-600 dark:focus:bg-gray-800"
+              className="box-border h-11 w-full resize-none overflow-y-auto rounded-lg border border-gray-200 bg-gray-50 px-3 pt-3 pb-2 text-sm leading-5 text-gray-900 outline-none transition-colors placeholder:text-gray-400 focus:border-primary-300 focus:bg-white focus:ring-1 focus:ring-primary-200 dark:border-gray-700 dark:bg-gray-800/50 dark:text-gray-100 dark:placeholder:text-gray-500 dark:focus:border-primary-600 dark:focus:bg-gray-800"
             />
           </div>
 
@@ -341,15 +350,15 @@ export function ChatModal() {
               (!input.trim() && selectedFiles.length === 0)
             }
             className={cn(
-              "cursor-pointer flex h-10 w-10 shrink-0 items-center justify-center rounded-xl transition-all",
+              "flex h-11 w-11 shrink-0 cursor-pointer items-center justify-center rounded-lg border border-transparent text-gray-300 transition-colors dark:text-gray-600",
               input.trim() || selectedFiles.length > 0
-                ? "bg-primary-500 text-white shadow-sm hover:bg-primary-600 active:scale-95"
-                : "text-gray-300 dark:text-gray-600",
-              "disabled:opacity-40 disabled:cursor-not-allowed disabled:active:scale-100",
+                ? "border-primary-600/20 bg-primary-500 text-white shadow-sm hover:bg-primary-600 active:scale-[0.97]"
+                : "bg-gray-100 dark:bg-gray-800/80",
+              "disabled:cursor-not-allowed disabled:opacity-40 disabled:active:scale-100",
             )}
             aria-label="Send message"
           >
-            <FiSend className="h-[16px] w-[16px]" />
+            <FiSend className="h-4 w-4" />
           </button>
         </div>
       </div>

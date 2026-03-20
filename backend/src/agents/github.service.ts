@@ -80,7 +80,7 @@ export class GithubService {
       });
       // Configure git user for commits
       execSync(
-        'git config user.email "agent@runa.io" && git config user.name "Runa Agent"',
+        'git config user.email "agent@runa-app.com" && git config user.name "Runa Agent"',
         {
           cwd: repoDir,
           stdio: "pipe",
@@ -197,7 +197,7 @@ export class GithubService {
     const { owner, repo } = this.getOwnerRepo(space.githubRepoUrl);
     const appBaseUrl = this.configService.get(
       "APP_BASE_URL",
-      "http://localhost:3000",
+      "https://runa-app.com",
     );
 
     const title = GithubService.formatPrTitle(ticket.id, ticket.title);

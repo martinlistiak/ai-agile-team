@@ -16,14 +16,23 @@ interface Toast {
   type: ToastType;
   message: string;
   duration?: number;
+  /** In-app link (plain anchor — Toast mounts outside the router). */
+  action?: { label: string; href: string };
 }
 
 interface ToastContextValue {
-  toast: (type: ToastType, message: string, duration?: number) => void;
+  toast: (
+    type: ToastType,
+    message: string,
+    duration?: number,
+    action?: { label: string; href: string },
+  ) => void;
   success: (message: string) => void;
   error: (message: string) => void;
   warning: (message: string) => void;
   info: (message: string) => void;
+  /** Starter daily agent run cap — long info toast with billing CTA. */
+  agentRunLimit: (message: string) => void;
 }
 
 const ToastContext = createContext<ToastContextValue | null>(null);
@@ -77,6 +86,7 @@ function ToastItem({
     <div
       className={cn(
         "flex items-start gap-2.5 rounded-lg border px-3 py-2.5 shadow-lg transition-all duration-300",
+        toast.action ? "max-w-md" : "max-w-sm",
         STYLE_MAP[toast.type],
         exiting ? "opacity-0 translate-x-4" : "opacity-100 translate-x-0",
       )}
@@ -89,8 +99,19 @@ function ToastItem({
       >
         {ICON_MAP[toast.type]}
       </span>
-      <p className="text-sm font-medium leading-5 flex-1">{toast.message}</p>
+      <div className="min-w-0 flex-1 space-y-2">
+        <p className="text-sm font-medium leading-5">{toast.message}</p>
+        {toast.action ? (
+          <a
+            href={toast.action.href}
+            className="inline-flex w-fit rounded-md bg-blue-700 px-2.5 py-1 text-xs font-semibold text-white shadow-sm transition-colors hover:bg-blue-800 dark:bg-blue-600 dark:hover:bg-blue-500"
+          >
+            {toast.action.label}
+          </a>
+        ) : null}
+      </div>
       <button
+        type="button"
         onClick={() => onDismiss(toast.id)}
         className="cursor-pointer shrink-0 rounded p-0.5 opacity-60 hover:opacity-100 transition-opacity"
       >
@@ -108,9 +129,17 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const addToast = useCallback(
-    (type: ToastType, message: string, duration?: number) => {
+    (
+      type: ToastType,
+      message: string,
+      duration?: number,
+      action?: { label: string; href: string },
+    ) => {
       const id = `toast-${++globalId}`;
-      setToasts((prev) => [...prev.slice(-4), { id, type, message, duration }]);
+      setToasts((prev) => [
+        ...prev.slice(-4),
+        { id, type, message, duration, action },
+      ]);
     },
     [],
   );
@@ -127,6 +156,14 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
       [addToast],
     ),
     info: useCallback((msg: string) => addToast("info", msg), [addToast]),
+    agentRunLimit: useCallback(
+      (msg: string) =>
+        addToast("info", msg, 16_000, {
+          label: "Upgrade to Team",
+          href: "/billing",
+        }),
+      [addToast],
+    ),
   };
 
   return (

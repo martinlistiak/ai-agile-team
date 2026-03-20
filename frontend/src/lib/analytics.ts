@@ -1,0 +1,38 @@
+import Countly from "countly-sdk-web";
+
+let initialized = false;
+
+function normalizeServerUrl(url: string): string {
+  return url.replace(/\/$/, "");
+}
+
+export function initAnalytics(): void {
+  const appKey = import.meta.env.VITE_COUNTLY_APP_KEY;
+  const url = import.meta.env.VITE_COUNTLY_SERVER_URL;
+  if (!appKey || !url || initialized) return;
+
+  Countly.init({
+    app_key: appKey,
+    url: normalizeServerUrl(url),
+  });
+  Countly.q.push(["track_sessions"]);
+  initialized = true;
+}
+
+export function setAnalyticsUserId(userId: string | null): void {
+  if (!initialized || !userId) return;
+  Countly.set_id(userId);
+}
+
+export function trackEvent(
+  key: string,
+  segmentation?: Record<string, string | number | boolean>,
+): void {
+  if (!initialized) return;
+  const seg = segmentation
+    ? Object.fromEntries(
+        Object.entries(segmentation).map(([k, v]) => [k, String(v)]),
+      )
+    : undefined;
+  Countly.add_event({ key, segmentation: seg });
+}

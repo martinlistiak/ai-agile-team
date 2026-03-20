@@ -17,6 +17,7 @@ import {
   ApiParam,
 } from "@nestjs/swagger";
 import { JwtOrApiKeyGuard } from "../auth/jwt-or-apikey.guard";
+import { SubscriptionActiveGuard } from "../common/subscription-active.guard";
 import { Request } from "express";
 import { TeamsService } from "./teams.service";
 import { CreateTeamDto } from "./dto/create-team.dto";
@@ -26,7 +27,7 @@ import { UpdateMemberRoleDto } from "./dto/update-member-role.dto";
 @ApiTags("Teams")
 @ApiBearerAuth("bearer")
 @Controller("teams")
-@UseGuards(JwtOrApiKeyGuard)
+@UseGuards(JwtOrApiKeyGuard, SubscriptionActiveGuard)
 export class TeamsController {
   constructor(private teamsService: TeamsService) {}
 

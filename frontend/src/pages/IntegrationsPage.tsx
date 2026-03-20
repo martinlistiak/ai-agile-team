@@ -1,7 +1,7 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
-import api from "@/api/client";
-import { FaGithub, FaGitlab } from "react-icons/fa";
+import { FaGithub } from "react-icons/fa";
+import { GitlabIcon } from "@/components/GitlabIcon";
 import {
   FiCopy,
   FiTrash2,
@@ -10,32 +10,18 @@ import {
   FiEye,
   FiEyeOff,
 } from "react-icons/fi";
-
-interface ApiKeyEntry {
-  id: string;
-  name: string;
-  prefix: string;
-  lastUsedAt: string | null;
-  createdAt: string;
-}
+import {
+  useApiKeys,
+  useCreateApiKey,
+  useRevokeApiKey,
+  useDisconnectProvider,
+} from "@/api/hooks/useIntegrations";
 
 /* ── Git Connections ─────────────────────────── */
 
 function GitConnections() {
   const { user } = useAuth();
-  const [disconnecting, setDisconnecting] = useState<string | null>(null);
-
-  const handleDisconnect = async (provider: "github" | "gitlab") => {
-    setDisconnecting(provider);
-    try {
-      await api.post(`/integrations/${provider}/disconnect`);
-      window.location.reload();
-    } catch {
-      /* ignore */
-    } finally {
-      setDisconnecting(null);
-    }
-  };
+  const disconnectMutation = useDisconnectProvider();
 
   const handleConnect = (provider: "github" | "gitlab") => {
     window.location.href = `/api/auth/${provider}`;
@@ -53,7 +39,7 @@ function GitConnections() {
     {
       key: "gitlab" as const,
       label: "GitLab",
-      icon: <FaGitlab size={20} style={{ color: "#fc6d26" }} />,
+      icon: <GitlabIcon size={20} className="shrink-0" />,
       connected: !!user?.hasGitlab,
       description: "Connect your GitLab account for repository access.",
     },
@@ -84,11 +70,17 @@ function GitConnections() {
             </div>
             {p.connected ? (
               <button
-                onClick={() => handleDisconnect(p.key)}
-                disabled={disconnecting === p.key}
+                onClick={() => disconnectMutation.mutate(p.key)}
+                disabled={
+                  disconnectMutation.isPending &&
+                  disconnectMutation.variables === p.key
+                }
                 className="cursor-pointer text-xs font-medium px-3 py-1.5 rounded-lg border border-red-200 text-red-600 hover:bg-red-50 dark:border-red-800 dark:text-red-400 dark:hover:bg-red-900/20 transition-colors disabled:opacity-50"
               >
-                {disconnecting === p.key ? "Disconnecting…" : "Disconnect"}
+                {disconnectMutation.isPending &&
+                disconnectMutation.variables === p.key
+                  ? "Disconnecting…"
+                  : "Disconnect"}
               </button>
             ) : (
               <button
@@ -108,48 +100,22 @@ function GitConnections() {
 /* ── API Keys ────────────────────────────────── */
 
 function ApiKeys() {
-  const [keys, setKeys] = useState<ApiKeyEntry[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [creating, setCreating] = useState(false);
+  const { data: keys = [], isLoading: loading } = useApiKeys();
+  const createMutation = useCreateApiKey();
+  const revokeMutation = useRevokeApiKey();
   const [newKeyName, setNewKeyName] = useState("");
   const [revealedKey, setRevealedKey] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
 
-  const fetchKeys = useCallback(async () => {
-    try {
-      const { data } = await api.get("/integrations/api-keys");
-      setKeys(data);
-    } catch {
-      /* ignore */
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    fetchKeys();
-  }, [fetchKeys]);
-
   const handleCreate = async () => {
     if (!newKeyName.trim()) return;
-    setCreating(true);
     try {
-      const { data } = await api.post("/integrations/api-keys", {
-        name: newKeyName.trim(),
-      });
+      const data = await createMutation.mutateAsync(newKeyName.trim());
       setRevealedKey(data.key);
       setNewKeyName("");
-      fetchKeys();
     } catch {
       /* ignore */
-    } finally {
-      setCreating(false);
     }
-  };
-
-  const handleRevoke = async (id: string) => {
-    await api.delete(`/integrations/api-keys/${id}`);
-    setKeys((prev) => prev.filter((k) => k.id !== id));
   };
 
   const handleCopy = (text: string) => {
@@ -173,7 +139,6 @@ function ApiKeys() {
         </a>
       </p>
 
-      {/* Revealed key banner */}
       {revealedKey && (
         <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 dark:border-amber-800 dark:bg-amber-900/20 p-4">
           <p className="text-xs font-medium text-amber-800 dark:text-amber-300 mb-2">
@@ -200,7 +165,6 @@ function ApiKeys() {
         </div>
       )}
 
-      {/* Create new key */}
       <div className="flex items-center gap-2 mb-4">
         <input
           type="text"
@@ -212,15 +176,14 @@ function ApiKeys() {
         />
         <button
           onClick={handleCreate}
-          disabled={!newKeyName.trim() || creating}
+          disabled={!newKeyName.trim() || createMutation.isPending}
           className="cursor-pointer inline-flex items-center gap-1.5 text-xs font-medium px-3 py-2 rounded-lg bg-gray-900 text-white hover:bg-gray-800 dark:bg-gray-200 dark:text-gray-900 dark:hover:bg-gray-300 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
         >
           <FiPlus size={13} />
-          {creating ? "Creating…" : "Create key"}
+          {createMutation.isPending ? "Creating…" : "Create key"}
         </button>
       </div>
 
-      {/* Key list */}
       {loading ? (
         <p className="text-xs text-gray-400">Loading…</p>
       ) : keys.length === 0 ? (
@@ -259,7 +222,7 @@ function ApiKeys() {
                 })}
               </span>
               <button
-                onClick={() => handleRevoke(k.id)}
+                onClick={() => revokeMutation.mutate(k.id)}
                 className="cursor-pointer p-1.5 rounded-md text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
                 title="Revoke key"
               >
@@ -315,7 +278,6 @@ function McpSection() {
       </p>
 
       <div className="space-y-4">
-        {/* API Key auth */}
         <div>
           <div className="flex items-center justify-between mb-2">
             <h3 className="text-sm font-medium text-gray-900 dark:text-gray-100">
@@ -329,19 +291,17 @@ function McpSection() {
               {showToken ? "Hide" : "Show"}
             </button>
           </div>
-          {showToken && (
+          {showToken ? (
             <pre className="text-xs bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-lg p-4 overflow-x-auto font-mono text-gray-700 dark:text-gray-300 leading-relaxed">
               {exampleConfig}
             </pre>
-          )}
-          {!showToken && (
+          ) : (
             <p className="text-xs text-gray-400 dark:text-gray-500">
               Add this to your MCP client config. Create an API key above first.
             </p>
           )}
         </div>
 
-        {/* OAuth flow */}
         <div>
           <h3 className="text-sm font-medium text-gray-900 dark:text-gray-100 mb-2">
             OAuth authentication
@@ -362,7 +322,6 @@ function McpSection() {
           </div>
         </div>
 
-        {/* Endpoints reference */}
         <div className="rounded-lg border border-gray-200 dark:border-gray-800 p-4">
           <h3 className="text-sm font-medium text-gray-900 dark:text-gray-100 mb-3">
             Endpoints
@@ -409,7 +368,7 @@ function McpSection() {
 
 export function IntegrationsPage() {
   return (
-    <div className="min-h-screen p-8 max-w-3xl mx-auto">
+    <div className="min-h-screen p-4 md:p-8 max-w-3xl mx-auto">
       <div className="mb-10">
         <h1 className="text-2xl font-semibold text-gray-900 dark:text-gray-100">
           Integrations
@@ -418,7 +377,6 @@ export function IntegrationsPage() {
           Manage connections, API access, and MCP configuration.
         </p>
       </div>
-
       <div className="space-y-12">
         <GitConnections />
         <ApiKeys />
