@@ -106,6 +106,22 @@ export class TicketsController {
     return this.ticketsService.moveTicket(id, body.status, "user");
   }
 
+  @Patch("spaces/:spaceId/tickets/reorder")
+  @ApiOperation({ summary: "Reorder tickets within a status column" })
+  @ApiParam({ name: "spaceId", format: "uuid" })
+  @ApiResponse({ status: 200, description: "Tickets reordered" })
+  async reorder(
+    @Param("spaceId") spaceId: string,
+    @Body() body: { status: string; ticketIds: string[] },
+  ) {
+    await this.ticketsService.reorderTickets(
+      spaceId,
+      body.status,
+      body.ticketIds,
+    );
+    return { success: true };
+  }
+
   @Post("tickets/:id/comments")
   @ApiOperation({ summary: "Add a comment to a ticket" })
   @ApiParam({ name: "id", format: "uuid" })

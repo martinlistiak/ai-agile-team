@@ -1,4 +1,4 @@
-type AgentType = "pm" | "developer" | "tester" | "reviewer";
+type AgentType = "pm" | "developer" | "tester" | "reviewer" | "custom";
 
 /**
  * Per-agent model configuration.
@@ -18,6 +18,7 @@ const AGENT_MODELS: Record<AgentType, string | null> = {
   developer: null,
   tester: null,
   reviewer: null,
+  custom: null,
 };
 
 const DEFAULT_MODEL = "claude-sonnet-4-20250514";

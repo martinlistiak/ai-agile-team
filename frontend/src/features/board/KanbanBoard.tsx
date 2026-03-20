@@ -1,18 +1,21 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import {
   DndContext,
   DragOverlay,
   closestCorners,
   type DragStartEvent,
   type DragEndEvent,
+  type DragOverEvent,
   PointerSensor,
   useSensor,
   useSensors,
 } from "@dnd-kit/core";
+import { arrayMove } from "@dnd-kit/sortable";
 import {
   useTickets,
   useMoveTicket,
   useDeleteTicket,
+  useReorderTickets,
 } from "@/api/hooks/useTickets";
 import { useAgents } from "@/api/hooks/useAgents";
 import { BoardColumn } from "./BoardColumn";
@@ -35,6 +38,7 @@ export function KanbanBoard({ spaceId }: { spaceId: string }) {
   const { data: agents = [] } = useAgents(spaceId);
   const moveTicket = useMoveTicket();
   const deleteTicket = useDeleteTicket();
+  const reorderTickets = useReorderTickets();
   const [activeTicket, setActiveTicket] = useState<Ticket | null>(null);
   const [selectedTicketId, setSelectedTicketId] = useState<string | null>(null);
 
@@ -46,13 +50,18 @@ export function KanbanBoard({ spaceId }: { spaceId: string }) {
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
   );
 
-  const ticketsByStatus = COLUMNS.reduce<Record<TicketStatus, Ticket[]>>(
-    (acc, col) => {
-      acc[col.id] = tickets.filter((t) => t.status === col.id);
-      return acc;
-    },
-    {} as Record<TicketStatus, Ticket[]>,
-  );
+  const ticketsByStatus = useMemo(() => {
+    const grouped = COLUMNS.reduce<Record<TicketStatus, Ticket[]>>(
+      (acc, col) => {
+        acc[col.id] = tickets
+          .filter((t) => t.status === col.id)
+          .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+        return acc;
+      },
+      {} as Record<TicketStatus, Ticket[]>,
+    );
+    return grouped;
+  }, [tickets]);
 
   const handleDragStart = (event: DragStartEvent) => {
     const ticket = tickets.find((t) => t.id === event.active.id);
@@ -65,11 +74,48 @@ export function KanbanBoard({ spaceId }: { spaceId: string }) {
     if (!over) return;
 
     const ticketId = active.id as string;
-    const newStatus = over.id as TicketStatus;
     const ticket = tickets.find((t) => t.id === ticketId);
+    if (!ticket) return;
 
-    if (ticket && ticket.status !== newStatus) {
-      moveTicket.mutate({ ticketId, status: newStatus, spaceId });
+    const overId = over.id as string;
+
+    // Check if we dropped on a column (status) or on another ticket
+    const isColumn = COLUMNS.some((c) => c.id === overId);
+
+    if (isColumn) {
+      // Dropped on a column header / empty area
+      const newStatus = overId as TicketStatus;
+      if (ticket.status !== newStatus) {
+        moveTicket.mutate({ ticketId, status: newStatus, spaceId });
+      }
+      return;
+    }
+
+    // Dropped on another ticket — could be same column reorder or cross-column
+    const overTicket = tickets.find((t) => t.id === overId);
+    if (!overTicket) return;
+
+    if (ticket.status === overTicket.status) {
+      // Same column reorder
+      const columnTickets = ticketsByStatus[ticket.status as TicketStatus];
+      const oldIndex = columnTickets.findIndex((t) => t.id === ticketId);
+      const newIndex = columnTickets.findIndex((t) => t.id === overId);
+
+      if (oldIndex !== newIndex) {
+        const reordered = arrayMove(columnTickets, oldIndex, newIndex);
+        reorderTickets.mutate({
+          spaceId,
+          status: ticket.status,
+          ticketIds: reordered.map((t) => t.id),
+        });
+      }
+    } else {
+      // Cross-column: move to the other ticket's column
+      moveTicket.mutate({
+        ticketId,
+        status: overTicket.status,
+        spaceId,
+      });
     }
   };
 

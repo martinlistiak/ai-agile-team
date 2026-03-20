@@ -64,6 +64,28 @@ export function useMoveTicket() {
   });
 }
 
+export function useReorderTickets() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (payload: {
+      spaceId: string;
+      status: string;
+      ticketIds: string[];
+    }) => {
+      const { data } = await api.patch(
+        `/spaces/${payload.spaceId}/tickets/reorder`,
+        { status: payload.status, ticketIds: payload.ticketIds },
+      );
+      return data;
+    },
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({
+        queryKey: ["tickets", variables.spaceId],
+      });
+    },
+  });
+}
+
 export function useUpdateTicket() {
   const queryClient = useQueryClient();
   const { success, error: showError } = useToast();

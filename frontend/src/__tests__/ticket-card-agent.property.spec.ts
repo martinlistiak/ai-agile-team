@@ -55,6 +55,8 @@ const agentTypeArb: fc.Arbitrary<AgentType> = fc.constantFrom(
   "pm",
   "developer",
   "tester",
+  "reviewer",
+  "custom",
 );
 
 const agentStatusArb: fc.Arbitrary<AgentStatus> = fc.constantFrom(
@@ -67,6 +69,10 @@ const agentArb: fc.Arbitrary<Agent> = fc.record({
   id: fc.uuid(),
   spaceId: fc.uuid(),
   agentType: agentTypeArb,
+  name: fc.constant(null as string | null),
+  description: fc.constant(null as string | null),
+  systemPrompt: fc.constant(null as string | null),
+  isCustom: fc.constant(false),
   rules: fc.constant(null as string | null),
   avatarRef: fc.constant("avatar.svg"),
   status: agentStatusArb,

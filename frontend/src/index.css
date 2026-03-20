@@ -9,6 +9,12 @@
   inherits: false;
 }
 
+@property --gradient-angle {
+  syntax: "<angle>";
+  initial-value: 0deg;
+  inherits: false;
+}
+
 @theme {
   --color-primary-50: #ebf4ff;
   --color-primary-100: #c3dafe;
@@ -66,6 +72,15 @@
   }
   to {
     --spin-angle: 360deg;
+  }
+}
+
+@keyframes gradient-rotation {
+  0% {
+    --gradient-angle: 0deg;
+  }
+  100% {
+    --gradient-angle: 360deg;
   }
 }
 

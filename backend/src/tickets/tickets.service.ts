@@ -26,7 +26,7 @@ export class TicketsService {
   async findBySpace(spaceId: string): Promise<Ticket[]> {
     return this.ticketRepo.find({
       where: { spaceId },
-      order: { createdAt: "DESC" },
+      order: { status: "ASC", order: "ASC", createdAt: "DESC" },
     });
   }
 
@@ -43,12 +43,26 @@ export class TicketsService {
     priority?: string;
     status?: string;
   }): Promise<Ticket> {
+    const status = data.status || "backlog";
+
+    // Get the max order for this space+status to append at the end
+    const result = await this.ticketRepo
+      .createQueryBuilder("t")
+      .select("COALESCE(MAX(t.order), -1)", "maxOrder")
+      .where("t.spaceId = :spaceId AND t.status = :status", {
+        spaceId: data.spaceId,
+        status,
+      })
+      .getRawOne();
+    const nextOrder = (result?.maxOrder ?? -1) + 1;
+
     const ticket = this.ticketRepo.create({
       spaceId: data.spaceId,
       title: data.title,
       description: data.description || "",
       priority: data.priority || "medium",
-      status: data.status || "backlog",
+      status,
+      order: nextOrder,
     });
     const saved = await this.ticketRepo.save(ticket);
     this.eventEmitter.emit("ticket.created", saved);
@@ -118,6 +132,22 @@ export class TicketsService {
       .execute();
     await this.ticketRepo.remove(ticket);
     this.eventEmitter.emit("ticket.deleted", ticket);
+  }
+
+  /**
+   * Reorder tickets within a column. Receives an ordered array of ticket IDs
+   * representing the new order for that status column.
+   */
+  async reorderTickets(
+    spaceId: string,
+    status: string,
+    ticketIds: string[],
+  ): Promise<void> {
+    // Batch update order for each ticket
+    const promises = ticketIds.map((id, index) =>
+      this.ticketRepo.update({ id, spaceId, status }, { order: index }),
+    );
+    await Promise.all(promises);
   }
 
   async addComment(

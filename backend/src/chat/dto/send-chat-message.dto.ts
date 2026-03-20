@@ -1,4 +1,4 @@
-import { IsString, IsEnum, IsOptional } from "class-validator";
+import { IsString, IsOptional } from "class-validator";
 import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
 
 export class SendChatMessageDto {
@@ -7,10 +7,11 @@ export class SendChatMessageDto {
   message: string;
 
   @ApiProperty({
-    enum: ["pm", "developer", "tester", "reviewer"],
+    description:
+      'Agent type: "pm", "developer", "tester", "reviewer", or "custom:<agentId>" for custom agents',
     example: "pm",
   })
-  @IsEnum(["pm", "developer", "tester", "reviewer"])
+  @IsString()
   agentType: string;
 
   @ApiPropertyOptional({ format: "uuid" })

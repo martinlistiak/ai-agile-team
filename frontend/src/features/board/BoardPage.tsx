@@ -17,6 +17,12 @@ import { SuggestedRulesBar } from "@/features/rules/SuggestedRulesBar";
 import { PipelineToast } from "@/components/PipelinePrompt";
 import { TicketDetailPanel } from "./TicketDetailPanel";
 import { getSpaceColor, COLOR_PALETTE } from "@/lib/spaceColor";
+import { cn } from "@/lib/cn";
+import { formControlClassName } from "@/lib/formControlStyles";
+import {
+  overlaySurfaceClass,
+  overlayBorderClass,
+} from "@/components/overlaySurface";
 
 export function BoardPage() {
   const { spaceId } = useParams();
@@ -125,12 +131,15 @@ export function BoardPage() {
             {showEdit && (
               <div
                 ref={editRef}
-                className="absolute left-0 top-full z-40 mt-2 w-80 overflow-hidden rounded-2xl border border-gray-200/80 bg-white shadow-[0_8px_40px_-8px_rgba(0,0,0,0.12),0_0_0_1px_rgba(0,0,0,0.03)] dark:border-gray-700/60 dark:bg-gray-850 dark:shadow-[0_8px_40px_-8px_rgba(0,0,0,0.5)]"
-                style={{ animation: "fade-in 0.15s ease-out" }}
+                className={cn(
+                  "absolute left-0 top-full z-40 mt-2 w-80 overflow-hidden rounded-lg border shadow-lg dark:shadow-none animate-fade-in",
+                  overlaySurfaceClass,
+                  overlayBorderClass,
+                )}
               >
-                {/* Color band preview */}
+                {/* Color band preview — matches modal accent bar without a second surface */}
                 <div
-                  className="h-2 w-full transition-colors duration-200"
+                  className="h-2 w-full border-b border-stone-200/80 dark:border-stone-800 transition-colors duration-200"
                   style={{
                     backgroundColor:
                       editColor || getSpaceColor(editName, space?.color),
@@ -140,7 +149,7 @@ export function BoardPage() {
                 <div className="p-5">
                   {/* Name field */}
                   <div className="mb-5">
-                    <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500">
+                    <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wider text-stone-400 dark:text-stone-500">
                       Name
                     </label>
                     <input
@@ -150,7 +159,9 @@ export function BoardPage() {
                       onKeyDown={(e) => {
                         if (e.key === "Enter") saveEdit();
                       }}
-                      className="w-full rounded-lg border border-gray-200 bg-gray-50/50 px-3 py-2 text-sm font-medium text-gray-900 outline-none transition-all placeholder:text-gray-400 focus:border-primary-400 focus:bg-white focus:shadow-[0_0_0_3px_rgba(102,126,234,0.1)] dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100 dark:focus:bg-gray-750"
+                      className={formControlClassName(
+                        "w-full px-3 py-2 text-sm font-medium",
+                      )}
                       placeholder="Space name"
                       autoFocus
                     />
@@ -158,7 +169,7 @@ export function BoardPage() {
 
                   {/* Color picker */}
                   <div className="mb-5">
-                    <label className="mb-2 block text-[11px] font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500">
+                    <label className="mb-2 block text-[11px] font-semibold uppercase tracking-wider text-stone-400 dark:text-stone-500">
                       Color
                     </label>
                     <div className="flex flex-wrap gap-1.5">
@@ -204,7 +215,7 @@ export function BoardPage() {
                         <button
                           type="button"
                           onClick={() => setConfirmDelete(true)}
-                          className="cursor-pointer flex items-center gap-1 rounded-md px-2 py-1.5 text-[12px] font-medium text-gray-400 transition-colors hover:bg-red-50 hover:text-red-500 dark:hover:bg-red-950/30 dark:hover:text-red-400"
+                          className="cursor-pointer flex items-center gap-1 rounded-md px-2 py-1.5 text-[12px] font-medium text-stone-400 transition-colors hover:bg-red-50 hover:text-red-600 dark:text-stone-500 dark:hover:bg-red-950/35 dark:hover:text-red-400"
                         >
                           <FiTrash2 size={12} />
                           Delete
@@ -221,7 +232,7 @@ export function BoardPage() {
                           <button
                             type="button"
                             onClick={() => setConfirmDelete(false)}
-                            className="cursor-pointer rounded-md px-2 py-1.5 text-[12px] text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
+                            className="cursor-pointer rounded-md px-2 py-1.5 text-[12px] text-stone-400 hover:text-stone-600 dark:text-stone-500 dark:hover:text-stone-300"
                           >
                             Cancel
                           </button>
@@ -234,7 +245,7 @@ export function BoardPage() {
                       <button
                         type="button"
                         onClick={() => setShowEdit(false)}
-                        className="cursor-pointer rounded-lg px-3 py-1.5 text-xs font-medium text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-700 dark:text-gray-400 dark:hover:bg-gray-700 dark:hover:text-gray-200"
+                        className="cursor-pointer rounded-lg px-3 py-1.5 text-xs font-medium text-stone-500 transition-colors hover:bg-stone-100 hover:text-stone-800 dark:text-stone-400 dark:hover:bg-stone-800 dark:hover:text-stone-200"
                       >
                         Cancel
                       </button>

@@ -39,6 +39,8 @@ const agentTypeArb: fc.Arbitrary<AgentType> = fc.constantFrom(
   "pm",
   "developer",
   "tester",
+  "reviewer",
+  "custom",
 );
 
 const chatMessageBaseArb = fc.record({
@@ -51,7 +53,7 @@ const chatMessageBaseArb = fc.record({
       noInvalidDate: true,
     })
     .map((d) => d.toISOString()),
-  attachments: fc.constant([]),
+  attachments: fc.constant([] as ChatMessage["attachments"]),
 });
 
 const assistantMessageArb: fc.Arbitrary<ChatMessage> = fc
@@ -59,7 +61,7 @@ const assistantMessageArb: fc.Arbitrary<ChatMessage> = fc
   .map(([base, agentType]) => ({
     ...base,
     role: "assistant" as const,
-    agentType,
+    agentType: agentType as string,
   }));
 
 const userMessageArb: fc.Arbitrary<ChatMessage> = chatMessageBaseArb.map(
@@ -116,11 +118,15 @@ describe("Property 12: Agent messages render with avatar, user messages without"
     );
   });
 
-  it("avatar src always matches the /avatars/{agentType}.svg pattern for agent messages", () => {
+  it("avatar src always matches the /avatars/{type}.svg pattern for agent messages", () => {
     fc.assert(
       fc.property(agentTypeArb, (agentType) => {
         const src = getAvatarSrc(agentType);
-        expect(src).toBe(`/avatars/${agentType}.svg`);
+        if (agentType === "custom") {
+          expect(src).toBe("/avatars/custom.svg");
+        } else {
+          expect(src).toBe(`/avatars/${agentType}.svg`);
+        }
       }),
       { numRuns: 100 },
     );

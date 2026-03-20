@@ -1,12 +1,16 @@
 import { useCallback, useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { Drawer } from "@/components/Drawer";
-import { useExecutions } from "@/api/hooks/useAgents";
+import {
+  useExecutions,
+  useUpdateAgentSystemPrompt,
+} from "@/api/hooks/useAgents";
 import { useTickets } from "@/api/hooks/useTickets";
 import { useQueryClient } from "@tanstack/react-query";
 import { useParams } from "react-router-dom";
 import { getSocket } from "@/lib/socket";
 import { cn } from "@/lib/cn";
+import { formControlClassName } from "@/lib/formControlStyles";
 import { useChatContext } from "@/contexts/ChatContext";
 import { useStopAgent } from "@/api/hooks/useStopAgent";
 import type { Agent, Execution, Ticket } from "@/types";
@@ -335,6 +339,12 @@ export function AgentInspector({ agent, onClose }: AgentInspectorProps) {
   const queryClient = useQueryClient();
   const { openChat } = useChatContext();
   const stopAgent = useStopAgent();
+  const updateSystemPrompt = useUpdateAgentSystemPrompt(spaceId ?? null);
+
+  const [editingInstructions, setEditingInstructions] = useState(false);
+  const [instructionsText, setInstructionsText] = useState(
+    agent.systemPrompt ?? "",
+  );
 
   const ticketMap = new Map(tickets.map((t) => [t.id, t]));
 
@@ -364,15 +374,20 @@ export function AgentInspector({ agent, onClose }: AgentInspectorProps) {
 
   useEffect(() => {
     setPage(1);
-  }, [agent.id]);
+    setEditingInstructions(false);
+    setInstructionsText(agent.systemPrompt ?? "");
+  }, [agent.id, agent.systemPrompt]);
 
-  const handleClose = useCallback(
-    (e: React.MouseEvent) => {
-      e.stopPropagation();
-      onClose();
-    },
-    [onClose],
-  );
+  const handleClose = useCallback(() => {
+    onClose();
+  }, [onClose]);
+
+  const handleSaveInstructions = useCallback(() => {
+    updateSystemPrompt.mutate(
+      { id: agent.id, systemPrompt: instructionsText },
+      { onSuccess: () => setEditingInstructions(false) },
+    );
+  }, [updateSystemPrompt, agent.id, instructionsText]);
 
   const executions = data?.data ?? [];
   const total = data?.total ?? 0;
@@ -441,6 +456,63 @@ export function AgentInspector({ agent, onClose }: AgentInspectorProps) {
 
       {/* ── content ── */}
       <div className="min-h-0 flex-1 overflow-y-auto">
+        {/* Instructions */}
+        <div className="px-4 pt-3 pb-1">
+          <div className="flex items-center justify-between mb-2">
+            <p className="text-[11px] font-medium uppercase tracking-wider text-stone-400 dark:text-stone-500">
+              Instructions
+            </p>
+            {!editingInstructions && (
+              <button
+                type="button"
+                onClick={() => setEditingInstructions(true)}
+                className="cursor-pointer rounded-md px-2 py-0.5 text-[11px] font-medium text-stone-500 transition-colors hover:bg-stone-100 hover:text-stone-700 dark:text-stone-400 dark:hover:bg-stone-800 dark:hover:text-stone-300"
+              >
+                Edit
+              </button>
+            )}
+          </div>
+          {editingInstructions ? (
+            <div className="space-y-2">
+              <textarea
+                value={instructionsText}
+                onChange={(e) => setInstructionsText(e.target.value)}
+                placeholder="Define the agent's behavior, role, and instructions..."
+                rows={5}
+                className={formControlClassName(
+                  "w-full resize-none px-3 py-2 text-[13px] text-stone-800 dark:text-stone-200",
+                )}
+                autoFocus
+              />
+              <div className="flex items-center justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEditingInstructions(false);
+                    setInstructionsText(agent.systemPrompt ?? "");
+                  }}
+                  className="cursor-pointer rounded-md px-2.5 py-1 text-[12px] text-stone-500 hover:bg-stone-100 dark:text-stone-400 dark:hover:bg-stone-800 transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSaveInstructions}
+                  disabled={updateSystemPrompt.isPending}
+                  className="cursor-pointer rounded-md bg-stone-800 dark:bg-stone-200 px-3 py-1 text-[12px] font-medium text-stone-50 dark:text-stone-800 hover:bg-stone-700 dark:hover:bg-stone-300 disabled:opacity-50 transition-colors"
+                >
+                  {updateSystemPrompt.isPending ? "Saving…" : "Save"}
+                </button>
+              </div>
+            </div>
+          ) : (
+            <p className="text-[13px] text-stone-500 dark:text-stone-400 whitespace-pre-wrap">
+              {agent.systemPrompt ||
+                "No instructions set. Click Edit to add some."}
+            </p>
+          )}
+        </div>
+
         {/* Browser session for tester */}
         {agent.agentType === "tester" && (
           <div className="px-4 pt-3 pb-1">

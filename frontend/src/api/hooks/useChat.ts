@@ -4,8 +4,9 @@ import { useToast } from "@/components/Toast";
 import type { ChatMessage } from "@/types";
 
 export type AgentType = "pm" | "developer" | "tester" | "reviewer";
+export type ChatAgentType = AgentType | string;
 
-export function useChatMessages(spaceId: string | null, agentType?: AgentType) {
+export function useChatMessages(spaceId: string | null, agentType?: ChatAgentType) {
   return useQuery<ChatMessage[]>({
     queryKey: ["chatMessages", spaceId, agentType],
     queryFn: async () => {
@@ -25,7 +26,7 @@ export function useSendChatMessage(spaceId: string | null) {
     mutationFn: async (payload: {
       message: string;
       files: File[];
-      agentType?: AgentType;
+      agentType?: ChatAgentType;
       ticketId?: string;
     }) => {
       if (!spaceId) {

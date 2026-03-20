@@ -1,27 +1,50 @@
 import { useEffect, useRef, useState } from "react";
+import { useParams } from "react-router-dom";
 import { FiChevronDown } from "react-icons/fi";
 import { cn } from "@/lib/cn";
 import { getAvatarSrc } from "@/lib/avatars";
-import type { AgentType } from "@/types";
+import { useAgents } from "@/api/hooks/useAgents";
+import type { Agent } from "@/types";
 
-const AGENTS: { value: AgentType; label: string }[] = [
-  { value: "pm", label: "PM Agent" },
-  { value: "developer", label: "Developer Agent" },
-  { value: "reviewer", label: "Reviewer Agent" },
-  { value: "tester", label: "Tester Agent" },
+interface AgentOption {
+  value: string;
+  label: string;
+  avatarType: string;
+}
+
+const BUILT_IN_AGENTS: AgentOption[] = [
+  { value: "pm", label: "PM Agent", avatarType: "pm" },
+  { value: "developer", label: "Developer Agent", avatarType: "developer" },
+  { value: "reviewer", label: "Reviewer Agent", avatarType: "reviewer" },
+  { value: "tester", label: "Tester Agent", avatarType: "tester" },
 ];
 
+function buildAgentOptions(agents: Agent[]): AgentOption[] {
+  const customAgents = agents
+    .filter((a) => a.isCustom)
+    .map((a) => ({
+      value: `custom:${a.id}`,
+      label: a.name || "Custom Agent",
+      avatarType: "custom",
+    }));
+  return [...BUILT_IN_AGENTS, ...customAgents];
+}
+
 interface AgentSelectorDropdownProps {
-  value: AgentType;
-  onChange: (agent: AgentType) => void;
+  value: string;
+  onChange: (agent: string) => void;
 }
 
 export function AgentSelectorDropdown({
   value,
   onChange,
 }: AgentSelectorDropdownProps) {
+  const { spaceId } = useParams();
+  const { data: agents = [] } = useAgents(spaceId || null);
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
+
+  const allAgents = buildAgentOptions(agents);
 
   useEffect(() => {
     function handleClickOutside(e: MouseEvent) {
@@ -33,7 +56,7 @@ export function AgentSelectorDropdown({
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  const selected = AGENTS.find((a) => a.value === value) ?? AGENTS[0];
+  const selected = allAgents.find((a) => a.value === value) ?? allAgents[0];
 
   return (
     <div ref={ref} className="relative">
@@ -50,7 +73,7 @@ export function AgentSelectorDropdown({
         aria-label="Select agent"
       >
         <img
-          src={getAvatarSrc(selected.value)}
+          src={getAvatarSrc(selected.avatarType)}
           alt={selected.label}
           className="h-5 w-5 rounded-full pixelated"
         />
@@ -68,11 +91,11 @@ export function AgentSelectorDropdown({
           role="listbox"
           aria-label="Agent options"
           className={cn(
-            "absolute left-0 top-full z-50 mt-1 w-full min-w-[200px] overflow-hidden rounded-lg border border-gray-200 bg-white shadow-lg",
+            "absolute left-0 top-full z-50 mt-1 w-full min-w-[200px] max-h-[280px] overflow-y-auto overflow-hidden rounded-lg border border-gray-200 bg-white shadow-lg",
             "dark:border-gray-700 dark:bg-gray-800",
           )}
         >
-          {AGENTS.map((agent) => {
+          {allAgents.map((agent) => {
             const isSelected = agent.value === value;
             return (
               <li
@@ -91,7 +114,7 @@ export function AgentSelectorDropdown({
                 )}
               >
                 <img
-                  src={getAvatarSrc(agent.value)}
+                  src={getAvatarSrc(agent.avatarType)}
                   alt={agent.label}
                   className="h-6 w-6 rounded-full pixelated"
                 />

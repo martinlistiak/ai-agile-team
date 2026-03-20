@@ -68,6 +68,10 @@ const AGENT_BADGE: Record<string, { label: string; color: string }> = {
     label: "Dev",
     color: "bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300",
   },
+  reviewer: {
+    label: "Review",
+    color: "bg-amber-100 text-amber-700 dark:bg-amber-900 dark:text-amber-300",
+  },
   tester: {
     label: "Test",
     color:
@@ -75,10 +79,21 @@ const AGENT_BADGE: Record<string, { label: string; color: string }> = {
   },
 };
 
+function getAgentBadge(agentType: string): { label: string; color: string } | null {
+  if (AGENT_BADGE[agentType]) return AGENT_BADGE[agentType];
+  if (agentType.startsWith("custom:")) {
+    return {
+      label: "Custom",
+      color: "bg-violet-100 text-violet-700 dark:bg-violet-900 dark:text-violet-300",
+    };
+  }
+  return null;
+}
+
 function ChatBubble({ message }: { message: ChatMessage }) {
   const isUser = message.role === "user";
   const agentBadge =
-    !isUser && message.agentType ? AGENT_BADGE[message.agentType] : null;
+    !isUser && message.agentType ? getAgentBadge(message.agentType) : null;
 
   return (
     <div className={cn("flex", isUser ? "justify-end" : "justify-start")}>

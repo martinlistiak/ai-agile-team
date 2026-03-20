@@ -1,5 +1,9 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useDroppable } from "@dnd-kit/core";
+import {
+  SortableContext,
+  verticalListSortingStrategy,
+} from "@dnd-kit/sortable";
 import { FiPlus } from "react-icons/fi";
 import { TicketCard } from "./TicketCard";
 import { useCreateTicket } from "@/api/hooks/useTickets";
@@ -33,6 +37,8 @@ export function BoardColumn({
   const [quickAddOpen, setQuickAddOpen] = useState(false);
   const [quickTitle, setQuickTitle] = useState("");
   const createTicket = useCreateTicket();
+
+  const ticketIds = useMemo(() => tickets.map((t) => t.id), [tickets]);
 
   const handleQuickAdd = () => {
     if (!quickTitle.trim() || !spaceId) return;
@@ -68,17 +74,22 @@ export function BoardColumn({
         <span className="text-xs text-gray-400 ml-auto">{tickets.length}</span>
       </div>
       <div className="flex-1 overflow-y-auto px-3 pb-3 space-y-2">
-        {tickets.map((ticket) => (
-          <TicketCard
-            key={ticket.id}
-            ticket={ticket}
-            spaceId={spaceId}
-            onClick={() => onTicketClick(ticket)}
-            activeTicketId={activeTicketId}
-            agents={agents}
-            onDelete={onDelete}
-          />
-        ))}
+        <SortableContext
+          items={ticketIds}
+          strategy={verticalListSortingStrategy}
+        >
+          {tickets.map((ticket) => (
+            <TicketCard
+              key={ticket.id}
+              ticket={ticket}
+              spaceId={spaceId}
+              onClick={() => onTicketClick(ticket)}
+              activeTicketId={activeTicketId}
+              agents={agents}
+              onDelete={onDelete}
+            />
+          ))}
+        </SortableContext>
         {/* Quick-add inline input */}
         {quickAddOpen ? (
           <div className="rounded-lg border border-stone-300 dark:border-stone-600 bg-white dark:bg-stone-900 p-2 shadow-sm">

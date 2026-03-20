@@ -51,6 +51,9 @@ export class Ticket {
   @Column({ type: "text", nullable: true })
   prUrl: string;
 
+  @Column({ type: "integer", default: 0 })
+  order: number;
+
   @CreateDateColumn()
   createdAt: Date;
 

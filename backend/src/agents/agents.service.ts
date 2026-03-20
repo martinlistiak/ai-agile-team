@@ -15,8 +15,37 @@ export class AgentsService {
     private eventsGateway: EventsGateway,
   ) {}
 
+  private static readonly BUILT_IN_AGENTS = [
+    { agentType: "pm", avatarRef: "pm_default.png" },
+    { agentType: "developer", avatarRef: "dev_default.png" },
+    { agentType: "reviewer", avatarRef: "reviewer_default.png" },
+    { agentType: "tester", avatarRef: "tester_default.png" },
+  ];
+
   async findBySpace(spaceId: string): Promise<Agent[]> {
-    return this.agentRepo.find({ where: { spaceId } });
+    let agents = await this.agentRepo.find({ where: { spaceId } });
+
+    // Auto-create any missing built-in agents (handles spaces created before all agents were seeded)
+    const existingTypes = new Set(agents.map((a) => a.agentType));
+    const missing = AgentsService.BUILT_IN_AGENTS.filter(
+      (def) => !existingTypes.has(def.agentType),
+    );
+
+    if (missing.length > 0) {
+      const created = await this.agentRepo.save(
+        missing.map((def) =>
+          this.agentRepo.create({
+            spaceId,
+            agentType: def.agentType,
+            avatarRef: def.avatarRef,
+            status: "idle",
+          }),
+        ),
+      );
+      agents = [...agents, ...created];
+    }
+
+    return agents;
   }
 
   async findById(id: string): Promise<Agent | null> {
@@ -34,6 +63,51 @@ export class AgentsService {
   async updateRules(id: string, rules: string): Promise<Agent | null> {
     await this.agentRepo.update(id, { rules });
     return this.agentRepo.findOneBy({ id });
+  }
+
+  async updateSystemPrompt(
+    id: string,
+    systemPrompt: string,
+  ): Promise<Agent | null> {
+    await this.agentRepo.update(id, { systemPrompt });
+    return this.agentRepo.findOneBy({ id });
+  }
+
+  async createCustomAgent(
+    spaceId: string,
+    data: { name: string; description?: string; systemPrompt?: string },
+  ): Promise<Agent> {
+    const agent = new Agent();
+    agent.spaceId = spaceId;
+    agent.agentType = "custom";
+    agent.name = data.name;
+    if (data.description) agent.description = data.description;
+    if (data.systemPrompt) agent.systemPrompt = data.systemPrompt;
+    agent.isCustom = true;
+    agent.avatarRef = "custom_default.png";
+    agent.status = "idle";
+    return this.agentRepo.save(agent);
+  }
+
+  async updateCustomAgent(
+    id: string,
+    data: { name?: string; description?: string; systemPrompt?: string },
+  ): Promise<Agent | null> {
+    const agent = await this.agentRepo.findOneBy({ id });
+    if (!agent || !agent.isCustom) return null;
+
+    if (data.name !== undefined) agent.name = data.name;
+    if (data.description !== undefined) agent.description = data.description;
+    if (data.systemPrompt !== undefined) agent.systemPrompt = data.systemPrompt;
+
+    return this.agentRepo.save(agent);
+  }
+
+  async deleteCustomAgent(id: string): Promise<boolean> {
+    const agent = await this.agentRepo.findOneBy({ id });
+    if (!agent || !agent.isCustom) return false;
+    await this.agentRepo.remove(agent);
+    return true;
   }
 
   async getExecutionsByAgent(

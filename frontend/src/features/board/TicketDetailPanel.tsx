@@ -30,15 +30,19 @@ import { cn } from "@/lib/cn";
 import type { Ticket, AgentType, Priority, TicketStatus } from "@/types";
 
 /** Default column label per agent type (for "Start working?" confirmation). */
-const AGENT_DEFAULT_COLUMN: Record<AgentType, string> = {
+const AGENT_DEFAULT_COLUMN: Record<string, string> = {
   pm: "Planning",
   developer: "Development",
+  reviewer: "Review",
   tester: "Testing",
+  custom: "Development",
 };
-const AGENT_LABEL: Record<AgentType, string> = {
+const AGENT_LABEL: Record<string, string> = {
   pm: "PM",
   developer: "Developer",
+  reviewer: "Reviewer",
   tester: "Tester",
+  custom: "Custom",
 };
 
 /* ── status config ─────────────────────────────────────────── */

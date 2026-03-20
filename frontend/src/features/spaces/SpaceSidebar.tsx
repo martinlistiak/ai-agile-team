@@ -219,7 +219,7 @@ export function SpaceSidebar() {
   }, [showUserMenu]);
 
   return (
-    <div className="w-16 border-r border-gray-200 bg-gray-50 dark:bg-gray-900/60 flex flex-col shrink-0">
+    <div className="w-16 border-r border-gray-200 bg-gray-50 dark:border-gray-800 dark:bg-gray-900/60 flex flex-col shrink-0">
       <div className="flex flex-col items-center gap-3 px-3 py-4">
         <div className="relative" ref={userMenuRef}>
           <RailTooltip label={user?.name || "User menu"}>

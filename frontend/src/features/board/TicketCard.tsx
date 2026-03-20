@@ -1,12 +1,13 @@
 import { useState, useEffect, useCallback } from "react";
-import { useDraggable } from "@dnd-kit/core";
+import { useSortable } from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 import { cn } from "@/lib/cn";
 import { FiPlay } from "react-icons/fi";
 import { useTriggerAgent } from "@/api/hooks/useTriggerAgent";
 import { getSocket } from "@/lib/socket";
 import { getAvatarSrc } from "@/lib/avatars";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
-import ElectricBorder from "@/components/ElectricBorder";
+import RotatingBorder from "@/components/RotatingBorder";
 import type { Agent, Ticket, TicketStatus } from "@/types";
 import { AgentBadge } from "../agents/AgentPanel";
 
@@ -50,9 +51,14 @@ export function TicketCard({
   onDelete,
   activeTicketId,
 }: TicketCardProps) {
-  const { attributes, listeners, setNodeRef, transform } = useDraggable({
-    id: ticket.id,
-  });
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging: isSortDragging,
+  } = useSortable({ id: ticket.id });
   const triggerAgent = useTriggerAgent();
   const [agentActive, setAgentActive] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
@@ -108,9 +114,10 @@ export function TicketCard({
     onDelete?.(ticket.id);
   }, [onDelete, ticket.id]);
 
-  const style = transform
-    ? { transform: `translate3d(${transform.x}px, ${transform.y}px, 0)` }
-    : undefined;
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+  };
 
   // Tooltip text for the play button
   const tooltipText = isLoading
@@ -129,8 +136,8 @@ export function TicketCard({
       {...attributes}
       onClick={onClick}
       className={cn(
-        "group relative bg-white dark:bg-gray-700 rounded-lg p-3 shadow-sm border border-gray-200 dark:border-gray-600 cursor-grab active:cursor-grabbing transition-shadow hover:shadow-md",
-        isDragging && "shadow-lg opacity-80 rotate-2",
+        "group relative bg-white dark:bg-gray-700 rounded-lg p-3 border border-gray-200 dark:border-gray-600 cursor-grab active:cursor-grabbing transition-shadow hover:shadow-md",
+        (isDragging || isSortDragging) && "shadow-lg opacity-80 rotate-2",
         isHiddenDuringDrag && "opacity-0",
       )}
     >
@@ -148,10 +155,9 @@ export function TicketCard({
         </span>
         <div className="flex items-center gap-1.5">
           {assignedAgent && (
-            <ElectricBorder
+            <RotatingBorder
+              active={assignedAgent.status === "active"}
               color={AGENT_BORDER_COLORS[assignedAgent.agentType] ?? "#8b5cf6"}
-              speed={0.4}
-              chaos={0.02}
               borderRadius={9999}
             >
               <img
@@ -159,7 +165,7 @@ export function TicketCard({
                 alt={`${assignedAgent.agentType} agent`}
                 className="h-5 w-5 rounded-full pixelated"
               />
-            </ElectricBorder>
+            </RotatingBorder>
           )}
           {!isDisabled && (
             <button
@@ -201,14 +207,9 @@ export function TicketCard({
 
   if (isBeingWorkedOn || isLoading) {
     return (
-      <ElectricBorder
-        color={agentColor}
-        speed={0.8}
-        chaos={0.06}
-        borderRadius={8}
-      >
+      <RotatingBorder active color={agentColor} borderRadius={8} duration={3}>
         {card}
-      </ElectricBorder>
+      </RotatingBorder>
     );
   }
 

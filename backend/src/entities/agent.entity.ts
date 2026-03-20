@@ -13,6 +13,18 @@ export class Agent {
   @Column({ default: 'pm' })
   agentType: string;
 
+  @Column({ nullable: true })
+  name: string;
+
+  @Column({ type: 'text', nullable: true })
+  description: string;
+
+  @Column({ type: 'text', nullable: true })
+  systemPrompt: string;
+
+  @Column({ default: false })
+  isCustom: boolean;
+
   @Column({ type: 'text', nullable: true })
   rules: string;
 
