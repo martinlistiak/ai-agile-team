@@ -16,6 +16,7 @@ import { createHash, randomBytes } from "crypto";
 import { User } from "../entities/user.entity";
 import { PasswordResetToken } from "../entities/password-reset-token.entity";
 import { EmailVerificationToken } from "../entities/email-verification-token.entity";
+import { EventEmitter2 } from "@nestjs/event-emitter";
 import { TokenEncryptionService } from "../common/token-encryption.service";
 import { CountlyService } from "../common/countly.service";
 import { FileStorageService } from "../common/file-storage.service";
@@ -66,6 +67,7 @@ export class AuthService {
     private dataSource: DataSource,
     private billingService: BillingService,
     private fileStorageService: FileStorageService,
+    private eventEmitter: EventEmitter2,
   ) {}
 
   private async tryDeleteAvatarStorageKey(key: string | null): Promise<void> {
@@ -99,6 +101,11 @@ export class AuthService {
     await this.userRepo.save(user);
 
     this.countly.record(user.id, "user_registered", { method: "email" });
+
+    this.eventEmitter.emit("user.signup", {
+      email: user.email,
+      name: user.name,
+    });
 
     try {
       await this.issueEmailVerification(user);
@@ -325,6 +332,10 @@ export class AuthService {
       });
       await this.userRepo.save(user);
       this.countly.record(user.id, "user_registered", { method: "github" });
+      this.eventEmitter.emit("user.signup", {
+        email: user.email,
+        name: user.name,
+      });
     }
 
     const token = this.createToken(user);
@@ -428,6 +439,10 @@ export class AuthService {
       });
       await this.userRepo.save(user);
       this.countly.record(user.id, "user_registered", { method: "gitlab" });
+      this.eventEmitter.emit("user.signup", {
+        email: user.email,
+        name: user.name,
+      });
     }
 
     const token = this.createToken(user);

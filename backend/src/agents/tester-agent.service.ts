@@ -1,4 +1,5 @@
 import { Injectable, Logger, Inject, forwardRef } from "@nestjs/common";
+import { ConfigService } from "@nestjs/config";
 import { InjectRepository } from "@nestjs/typeorm";
 import { Repository } from "typeorm";
 import { query } from "@anthropic-ai/claude-agent-sdk";
@@ -25,7 +26,7 @@ When given a ticket or request to test, you should:
 3. Write appropriate tests:
    - **Unit tests** for individual functions, services, and components
    - **Integration tests** for API endpoints and service interactions
-   - **E2E tests** for user flows (if a browser testing framework is set up)
+   - **E2E tests** for user flows using the Playwright MCP browser tools (browser runs via CDP against Lightpanda)
 4. Run the tests and verify they pass
 5. If tests fail, analyze the failure and report whether it's a test issue or a code bug
 6. Report back with a detailed summary: tests written, pass/fail results, coverage notes, and any bugs found
@@ -51,6 +52,7 @@ export class TesterAgentService {
   private readonly logger = new Logger(TesterAgentService.name);
 
   constructor(
+    private configService: ConfigService,
     private ticketsService: TicketsService,
     private githubService: GithubService,
     private gitlabService: GitlabService,
@@ -159,7 +161,11 @@ ${userMessage ? `**Additional instructions from the user:** ${userMessage}` : "W
         : "";
       const fullPrompt = `${TESTER_SYSTEM_PROMPT}${rulesSection}\n\n---\n\n${prompt}`;
 
-      // Run the Claude Agent SDK with Playwright MCP for E2E testing
+      // Run the Claude Agent SDK with Playwright MCP (connects to Lightpanda over CDP)
+      const playwrightCdpEndpoint = this.configService.get<string>(
+        "PLAYWRIGHT_MCP_CDP_ENDPOINT",
+        "ws://127.0.0.1:9222",
+      );
       let finalResult = "";
       const actionLog: any[] = [];
       let lastScreenshotTime = 0;
@@ -181,8 +187,12 @@ ${userMessage ? `**Additional instructions from the user:** ${userMessage}` : "W
           },
           mcpServers: {
             playwright: {
-              command: "npx",
-              args: ["@anthropic-ai/mcp-server-playwright@latest"],
+              command: "bunx",
+              args: [
+                "@playwright/mcp@latest",
+                "--cdp-endpoint",
+                playwrightCdpEndpoint,
+              ],
             },
           },
         },
@@ -212,11 +222,12 @@ ${userMessage ? `**Additional instructions from the user:** ${userMessage}` : "W
                   timestamp: new Date().toISOString(),
                 });
 
-                // Track Playwright browser session start
+                // Track Playwright MCP browser session start
                 if (
                   !browserSessionActive &&
                   typeof block.name === "string" &&
-                  block.name.startsWith("browser_")
+                  (block.name.includes("browser_") ||
+                    block.name.toLowerCase().includes("playwright"))
                 ) {
                   browserSessionActive = true;
                 }

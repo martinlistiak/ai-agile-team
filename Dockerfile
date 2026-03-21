@@ -1,5 +1,4 @@
 # Pin amd64 so images built on Apple Silicon run on typical x86_64 hosts (CapRover, VPS).
-# Without this, `exec /entrypoint.sh` often fails with "exec format error".
 # ── Stage 1: Build frontend ──
 FROM --platform=linux/amd64 oven/bun:latest AS frontend-builder
 WORKDIR /app
@@ -33,55 +32,10 @@ COPY --from=backend-builder /app/package.json ./
 # Copy frontend static files
 COPY --from=frontend-builder /app/dist /app/frontend/dist
 
-# Nginx config
-RUN cat <<'NGINX' > /etc/nginx/sites-available/default
-server {
-    listen 80;
-    server_name _;
-    root /app/frontend/dist;
-    index index.html;
-    client_max_body_size 50M;
-
-    location / {
-        try_files $uri $uri/ /index.html;
-    }
-
-    location /api/ {
-        proxy_pass http://127.0.0.1:3001;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-        proxy_read_timeout 300s;
-    }
-
-    location /socket.io/ {
-        proxy_pass http://127.0.0.1:3001;
-        proxy_http_version 1.1;
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection "upgrade";
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-    }
-
-    location ~* \.(js|css|png|jpg|jpeg|gif|ico|svg|woff2?)$ {
-        expires 1y;
-        add_header Cache-Control "public, immutable";
-    }
-}
-NGINX
-
-# Entrypoint: start nginx + backend
-RUN cat <<'ENTRYPOINT_SCRIPT' > /entrypoint.sh
-#!/bin/bash
-set -e
-nginx
-cd /app/backend
-./node_modules/.bin/typeorm migration:run -d dist/data-source.js
-exec bun run start:prod
-ENTRYPOINT_SCRIPT
-RUN sed -i 's/\r$//' /entrypoint.sh && chmod +x /entrypoint.sh
+# Nginx config + entrypoint as real files (avoids heredoc issues)
+COPY nginx.conf /etc/nginx/sites-available/default
+COPY entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
 
 EXPOSE 80
 

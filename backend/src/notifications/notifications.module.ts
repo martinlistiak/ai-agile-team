@@ -3,6 +3,7 @@ import { TypeOrmModule } from "@nestjs/typeorm";
 import { NotificationsController } from "./notifications.controller";
 import { NotificationsService } from "./notifications.service";
 import { NotificationsListener } from "./notifications.listener";
+import { SlackService } from "./slack.service";
 import { Notification } from "../entities/notification.entity";
 import { NotificationPreference } from "../entities/notification-preference.entity";
 import { User } from "../entities/user.entity";
@@ -24,7 +25,7 @@ import { ChatModule } from "../chat/chat.module";
     ChatModule,
   ],
   controllers: [NotificationsController],
-  providers: [NotificationsService, NotificationsListener],
-  exports: [NotificationsService],
+  providers: [NotificationsService, NotificationsListener, SlackService],
+  exports: [NotificationsService, SlackService],
 })
 export class NotificationsModule {}

@@ -3,6 +3,7 @@ import { OnEvent } from "@nestjs/event-emitter";
 import { InjectRepository } from "@nestjs/typeorm";
 import { Repository } from "typeorm";
 import { NotificationsService } from "./notifications.service";
+import { SlackService } from "./slack.service";
 import { Ticket } from "../entities/ticket.entity";
 import { Space } from "../entities/space.entity";
 import { TeamMember } from "../entities/team-member.entity";
@@ -13,6 +14,7 @@ export class NotificationsListener {
 
   constructor(
     private notificationsService: NotificationsService,
+    private slackService: SlackService,
     @InjectRepository(Space) private spaceRepo: Repository<Space>,
     @InjectRepository(TeamMember) private memberRepo: Repository<TeamMember>,
   ) {}
@@ -208,5 +210,25 @@ export class NotificationsListener {
       title: "New team member",
       message: `${payload.newMemberName} joined the team`,
     });
+  }
+
+  // --- Slack notification events ---
+
+  @OnEvent("user.signup")
+  async handleUserSignup(payload: { email: string; name: string }) {
+    await this.slackService.notifySignup(payload.email, payload.name);
+  }
+
+  @OnEvent("credits.topup")
+  async handleCreditTopUp(payload: { email: string; amountCents: number }) {
+    await this.slackService.notifyCreditTopUp(
+      payload.email,
+      payload.amountCents,
+    );
+  }
+
+  @OnEvent("credits.exhausted")
+  async handleCreditsExhausted(payload: { email: string }) {
+    await this.slackService.notifyCreditsExhausted(payload.email);
   }
 }

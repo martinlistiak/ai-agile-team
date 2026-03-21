@@ -11,6 +11,7 @@ import Stripe from "stripe";
 import { User, PlanTier, SubscriptionStatus } from "../entities/user.entity";
 import { Space } from "../entities/space.entity";
 import { Execution } from "../entities/execution.entity";
+import { EventEmitter2 } from "@nestjs/event-emitter";
 import { CountlyService } from "../common/countly.service";
 
 const TRIAL_PERIOD_DAYS = 7;
@@ -26,6 +27,7 @@ export class BillingService {
     @InjectRepository(Execution) private executionRepo: Repository<Execution>,
     private configService: ConfigService,
     private countly: CountlyService,
+    private eventEmitter: EventEmitter2,
   ) {
     this.stripe = new Stripe(
       this.configService.get<string>("STRIPE_SECRET_KEY", ""),
@@ -420,12 +422,40 @@ export class BillingService {
     this.countly.record(userId, "credits_topup_completed", {
       amountCents: String(amountCents),
     });
+
+    const user = await this.userRepo.findOneBy({ id: userId });
+    this.eventEmitter.emit("credits.topup", {
+      email: user?.email ?? userId,
+      amountCents,
+    });
   }
 
   async getCreditsBalance(userId: string): Promise<{ creditsBalance: number }> {
     const user = await this.userRepo.findOneBy({ id: userId });
     if (!user) throw new NotFoundException("User not found");
     return { creditsBalance: user.creditsBalance };
+  }
+
+  /**
+   * Deduct credits from a user's balance. Emits `credits.exhausted` when
+   * the balance reaches zero.
+   */
+  async deductCredits(userId: string, amountCents: number): Promise<void> {
+    await this.userRepo.decrement(
+      { id: userId },
+      "creditsBalance",
+      amountCents,
+    );
+
+    const user = await this.userRepo.findOneBy({ id: userId });
+    if (user && user.creditsBalance <= 0) {
+      // Clamp to zero
+      if (user.creditsBalance < 0) {
+        user.creditsBalance = 0;
+        await this.userRepo.save(user);
+      }
+      this.eventEmitter.emit("credits.exhausted", { email: user.email });
+    }
   }
 
   /**
