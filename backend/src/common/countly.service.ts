@@ -39,6 +39,8 @@ export class CountlyService {
     const body = new URLSearchParams({
       app_key: appKey,
       device_id: deviceId,
+      begin_session: "1",
+      metrics: JSON.stringify({ _os: "server" }),
       events,
     });
 
