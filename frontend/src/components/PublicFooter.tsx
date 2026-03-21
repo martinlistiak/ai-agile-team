@@ -19,7 +19,7 @@ export function PublicFooter() {
           style={{ borderColor: "var(--border-light)" }}
         >
           <div className="flex items-center gap-6">
-            <Link to="/home" className="no-underline leading-none">
+            <Link to="/" className="no-underline leading-none">
               <RunaLogo height={28} />
             </Link>
             <span

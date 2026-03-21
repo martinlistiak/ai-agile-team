@@ -40,7 +40,9 @@ export function PublicNav() {
 
   useEffect(() => {
     if (!menuOpen) return;
-    const id = window.requestAnimationFrame(() => firstLinkRef.current?.focus());
+    const id = window.requestAnimationFrame(() =>
+      firstLinkRef.current?.focus(),
+    );
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
         e.preventDefault();
@@ -58,16 +60,16 @@ export function PublicNav() {
   const onHomeSectionClick =
     (sectionId: string) => (e: React.MouseEvent<HTMLAnchorElement>) => {
       setMenuOpen(false);
-      if (location.pathname !== "/home") return;
+      if (location.pathname !== "/") return;
       e.preventDefault();
-      navigate(`/home#${sectionId}`);
+      navigate(`/#${sectionId}`);
     };
 
   const navLinks = [
-    { to: "/home#features", label: "Features", section: "features" },
-    { to: "/home#pricing", label: "Pricing", section: "pricing" },
+    { to: "/#features", label: "Features", section: "features" },
+    { to: "/#pricing", label: "Pricing", section: "pricing" },
     {
-      to: "/home#how-it-works",
+      to: "/#how-it-works",
       label: "How it works",
       section: "how-it-works",
     },
@@ -143,7 +145,7 @@ export function PublicNav() {
     >
       <div className="max-w-[1200px] mx-auto px-6 h-14 flex items-center justify-between">
         <div className="flex items-center gap-8">
-          <Link to="/home" className="no-underline">
+          <Link to="/" className="no-underline">
             <RunaLogo height={32} />
           </Link>
           {/* Desktop nav links */}

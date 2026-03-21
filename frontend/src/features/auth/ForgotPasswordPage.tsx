@@ -3,7 +3,8 @@ import { Link } from "react-router-dom";
 import { RunaLogo } from "@/components/RunaLogo";
 import api from "@/api/client";
 
-const TURNSTILE_SCRIPT = "https://challenges.cloudflare.com/turnstile/v0/api.js";
+const TURNSTILE_SCRIPT =
+  "https://challenges.cloudflare.com/turnstile/v0/api.js";
 
 function loadTurnstileScript(): Promise<void> {
   if (typeof window !== "undefined" && window.turnstile) {
@@ -111,7 +112,7 @@ export function ForgotPasswordPage() {
   return (
     <div>
       <div className="mb-10">
-        <Link to="/home" className="no-underline block mb-3 leading-none">
+        <Link to="/" className="no-underline block mb-3 leading-none">
           <RunaLogo height={42} />
         </Link>
         <p

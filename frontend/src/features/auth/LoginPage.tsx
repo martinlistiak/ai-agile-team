@@ -148,7 +148,7 @@ export function LoginPage() {
     <div>
       {/* Logo + heading */}
       <div className="mb-10">
-        <Link to="/home" className="no-underline block mb-3 leading-none">
+        <Link to="/" className="no-underline block mb-3 leading-none">
           <RunaLogo height={42} />
         </Link>
         <p

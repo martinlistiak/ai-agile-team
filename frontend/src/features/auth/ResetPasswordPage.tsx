@@ -28,7 +28,9 @@ export function ResetPasswordPage() {
       return;
     }
     if (!token) {
-      setError("This link is missing a reset token. Request a new reset email.");
+      setError(
+        "This link is missing a reset token. Request a new reset email.",
+      );
       return;
     }
     setLoading(true);
@@ -51,7 +53,7 @@ export function ResetPasswordPage() {
   return (
     <div>
       <div className="mb-10">
-        <Link to="/home" className="no-underline block mb-3 leading-none">
+        <Link to="/" className="no-underline block mb-3 leading-none">
           <RunaLogo height={42} />
         </Link>
         <p

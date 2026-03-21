@@ -47,7 +47,7 @@ export function VerifyEmailPage() {
   return (
     <div>
       <div className="mb-10">
-        <Link to="/home" className="no-underline block mb-3 leading-none">
+        <Link to="/" className="no-underline block mb-3 leading-none">
           <RunaLogo height={42} />
         </Link>
         <p
@@ -69,7 +69,9 @@ export function VerifyEmailPage() {
       ) : (
         <p
           className="text-[13px] font-medium"
-          style={{ color: status === "ok" ? "var(--text-secondary)" : "#dc2626" }}
+          style={{
+            color: status === "ok" ? "var(--text-secondary)" : "#dc2626",
+          }}
         >
           {message}
         </p>

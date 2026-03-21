@@ -39,7 +39,7 @@ export const router = createBrowserRouter([
     element: <RootLayout />,
     children: [
       {
-        path: "/home",
+        path: "/",
         element: <HomePage />,
       },
       {
@@ -71,25 +71,23 @@ export const router = createBrowserRouter([
         ],
       },
       {
-        path: "/",
         element: (
           <ProtectedRoute>
             <AppLayout />
           </ProtectedRoute>
         ),
         children: [
-          { index: true, element: <Navigate to="/spaces" replace /> },
-          { path: "spaces", element: <SpaceListPage /> },
-          { path: "spaces/:spaceId", element: <BoardPage /> },
-          { path: "billing", element: <BillingPage /> },
-          { path: "settings", element: <SettingsPage /> },
+          { path: "/spaces", element: <SpaceListPage /> },
+          { path: "/spaces/:spaceId", element: <BoardPage /> },
+          { path: "/billing", element: <BillingPage /> },
+          { path: "/settings", element: <SettingsPage /> },
           {
-            path: "settings/notifications",
+            path: "/settings/notifications",
             element: <NotificationSettingsPage />,
           },
-          { path: "team", element: <TeamPage /> },
-          { path: "integrations", element: <IntegrationsPage /> },
-          { path: "enterprise", element: <EnterprisePage /> },
+          { path: "/team", element: <TeamPage /> },
+          { path: "/integrations", element: <IntegrationsPage /> },
+          { path: "/enterprise", element: <EnterprisePage /> },
         ],
       },
       {
