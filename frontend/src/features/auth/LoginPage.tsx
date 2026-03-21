@@ -44,6 +44,8 @@ export function LoginPage() {
   const [isRegister, setIsRegister] = useState(false);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [acceptTerms, setAcceptTerms] = useState(false);
+  const [acceptPrivacy, setAcceptPrivacy] = useState(false);
   const [turnstileToken, setTurnstileToken] = useState<string | null>(null);
   const turnstileHostRef = useRef<HTMLDivElement>(null);
   const turnstileWidgetId = useRef<string | null>(null);
@@ -112,6 +114,12 @@ export function LoginPage() {
       setError("Please complete the verification step below.");
       return;
     }
+    if (isRegister && (!acceptTerms || !acceptPrivacy)) {
+      setError(
+        "You must accept the Terms of Service and Privacy Policy to create an account.",
+      );
+      return;
+    }
     setLoading(true);
     try {
       const endpoint = isRegister ? "/auth/register" : "/auth/login";
@@ -120,6 +128,8 @@ export function LoginPage() {
             email,
             password,
             name,
+            acceptTerms,
+            acceptPrivacy,
             ...(turnstileToken ? { turnstileToken } : {}),
           }
         : { email, password };
@@ -286,6 +296,57 @@ export function LoginPage() {
           />
         </div>
 
+        {isRegister && (
+          <div className="space-y-2.5 pt-1">
+            <label className="flex items-start gap-2.5 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={acceptTerms}
+                onChange={(e) => setAcceptTerms(e.target.checked)}
+                className="mt-0.5 accent-(--accent)"
+              />
+              <span
+                className="text-[12.5px] leading-relaxed"
+                style={{ color: "var(--text-secondary)" }}
+              >
+                I agree to the{" "}
+                <a
+                  href="/terms"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="underline transition-opacity hover:opacity-70"
+                  style={{ color: "var(--accent)" }}
+                >
+                  Terms of Service
+                </a>
+              </span>
+            </label>
+            <label className="flex items-start gap-2.5 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={acceptPrivacy}
+                onChange={(e) => setAcceptPrivacy(e.target.checked)}
+                className="mt-0.5 accent-(--accent)"
+              />
+              <span
+                className="text-[12.5px] leading-relaxed"
+                style={{ color: "var(--text-secondary)" }}
+              >
+                I have read and accept the{" "}
+                <a
+                  href="/privacy"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="underline transition-opacity hover:opacity-70"
+                  style={{ color: "var(--accent)" }}
+                >
+                  Privacy Policy
+                </a>
+              </span>
+            </label>
+          </div>
+        )}
+
         {error && (
           <p className="text-[13px] font-medium" style={{ color: "#dc2626" }}>
             {error}
@@ -327,6 +388,8 @@ export function LoginPage() {
             setIsRegister(!isRegister);
             setError("");
             setTurnstileToken(null);
+            setAcceptTerms(false);
+            setAcceptPrivacy(false);
           }}
           className="cursor-pointer font-medium transition-opacity hover:opacity-70"
           style={{ color: "var(--accent)" }}

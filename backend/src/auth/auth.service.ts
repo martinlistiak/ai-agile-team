@@ -92,11 +92,14 @@ export class AuthService {
     if (existing) throw new ConflictException("Email already registered");
 
     const hashedPassword = await bcrypt.hash(password, 10);
+    const now = new Date();
     const user = this.userRepo.create({
       email,
       name,
       hashedPassword,
       emailVerifiedAt: null,
+      termsAcceptedAt: now,
+      privacyAcceptedAt: now,
     });
     await this.userRepo.save(user);
 

@@ -24,6 +24,7 @@ import { ApiDocsPage } from "@/pages/ApiDocsPage";
 import { EnterprisePage } from "@/pages/EnterprisePage";
 import { SettingsPage } from "@/pages/SettingsPage";
 import { NotificationSettingsPage } from "@/pages/NotificationSettingsPage";
+import { NotFoundPage } from "@/pages/NotFoundPage";
 
 function RootLayout() {
   return (
@@ -97,6 +98,10 @@ export const router = createBrowserRouter([
             <AcceptInvitationPage />
           </ProtectedRoute>
         ),
+      },
+      {
+        path: "*",
+        element: <NotFoundPage />,
       },
     ],
   },

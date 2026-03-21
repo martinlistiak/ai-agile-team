@@ -27,6 +27,8 @@ export class Init1700000000000 implements MigrationInterface {
         "ssoProvider" text,
         "ssoExternalId" text,
         "emailVerifiedAt" timestamptz,
+        "termsAcceptedAt" timestamptz,
+        "privacyAcceptedAt" timestamptz,
         "createdAt" TIMESTAMP NOT NULL DEFAULT now(),
         CONSTRAINT "PK_users" PRIMARY KEY ("id"),
         CONSTRAINT "UQ_users_email" UNIQUE ("email"),

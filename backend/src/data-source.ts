@@ -57,6 +57,7 @@ export default new DataSource({
     Notification,
     NotificationPreference,
   ],
-  migrations: ["src/migrations/*.ts"],
+  // Must be relative to this file so CLI works from dist/ (production image has no src/)
+  migrations: [__dirname + "/migrations/*{.ts,.js}"],
   synchronize: false,
 });

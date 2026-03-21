@@ -73,6 +73,12 @@ export class User {
   @Column({ type: "timestamptz", nullable: true })
   emailVerifiedAt: Date | null;
 
+  @Column({ type: "timestamptz", nullable: true })
+  termsAcceptedAt: Date | null;
+
+  @Column({ type: "timestamptz", nullable: true })
+  privacyAcceptedAt: Date | null;
+
   @CreateDateColumn()
   createdAt: Date;
 

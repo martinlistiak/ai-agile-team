@@ -71,8 +71,15 @@ export class AuthController {
       password: string;
       name: string;
       turnstileToken?: string;
+      acceptTerms?: boolean;
+      acceptPrivacy?: boolean;
     },
   ) {
+    if (!body.acceptTerms || !body.acceptPrivacy) {
+      throw new BadRequestException(
+        "You must accept the Terms of Service and Privacy Policy to register.",
+      );
+    }
     return this.authService.register(
       body.email,
       body.password,
