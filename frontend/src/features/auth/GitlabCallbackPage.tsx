@@ -31,7 +31,7 @@ export function GitlabCallbackPage() {
       .post("/auth/gitlab/callback", { code })
       .then(({ data }) => {
         login(data.accessToken, data.user);
-        const dest = consumeAuthRedirect() ?? "/";
+        const dest = consumeAuthRedirect() ?? "/spaces";
         navigate(dest, { replace: true });
       })
       .catch((err: AxiosError<{ message?: string }>) => {

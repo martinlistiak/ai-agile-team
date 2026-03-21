@@ -1,6 +1,7 @@
 import {
   Controller,
   Get,
+  Post,
   Patch,
   Delete,
   Param,
@@ -12,6 +13,7 @@ import {
 } from "@nestjs/common";
 import { ApiTags, ApiBearerAuth, ApiQuery } from "@nestjs/swagger";
 import { NotificationsService } from "./notifications.service";
+import { SlackService } from "./slack.service";
 import { JwtOrApiKeyGuard } from "../auth/jwt-or-apikey.guard";
 
 @ApiTags("notifications")
@@ -19,7 +21,10 @@ import { JwtOrApiKeyGuard } from "../auth/jwt-or-apikey.guard";
 @UseGuards(JwtOrApiKeyGuard)
 @Controller("notifications")
 export class NotificationsController {
-  constructor(private notificationsService: NotificationsService) {}
+  constructor(
+    private notificationsService: NotificationsService,
+    private slackService: SlackService,
+  ) {}
 
   @Get()
   @ApiQuery({ name: "page", required: false })
@@ -73,5 +78,20 @@ export class NotificationsController {
     // Strip fields that shouldn't be user-editable
     const { id, userId, user, ...updates } = body;
     return this.notificationsService.updatePreferences(req.user.id, updates);
+  }
+
+  @Post("feedback")
+  @HttpCode(200)
+  async sendFeedback(
+    @Req() req: any,
+    @Body() body: { message: string; screenshotUrl?: string },
+  ) {
+    await this.slackService.sendFeedback({
+      userName: req.user.name,
+      userEmail: req.user.email,
+      message: body.message,
+      screenshotUrl: body.screenshotUrl,
+    });
+    return { success: true };
   }
 }

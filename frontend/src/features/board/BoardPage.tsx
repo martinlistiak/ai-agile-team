@@ -72,7 +72,7 @@ export function BoardPage() {
     deleteSpace.mutate(spaceId, {
       onSuccess: () => {
         setShowEdit(false);
-        navigate("/");
+        navigate("/spaces");
       },
     });
   };

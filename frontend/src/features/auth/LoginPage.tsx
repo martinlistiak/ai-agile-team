@@ -136,7 +136,7 @@ export function LoginPage() {
       const { data } = await api.post(endpoint, payload);
       login(data.accessToken, data.user);
       const next = searchParams.get("next");
-      navigate(isSafeInternalPath(next) ? next : "/");
+      navigate(isSafeInternalPath(next) ? next : "/spaces");
     } catch (err: any) {
       setError(err.response?.data?.message || "Something went wrong");
     } finally {
@@ -304,6 +304,7 @@ export function LoginPage() {
                 checked={acceptTerms}
                 onChange={(e) => setAcceptTerms(e.target.checked)}
                 className="mt-0.5 accent-(--accent)"
+                aria-required="true"
               />
               <span
                 className="text-[12.5px] leading-relaxed"
@@ -319,6 +320,10 @@ export function LoginPage() {
                 >
                   Terms of Service
                 </a>
+                <span aria-hidden="true" style={{ color: "#dc2626" }}>
+                  {" "}
+                  *
+                </span>
               </span>
             </label>
             <label className="flex items-start gap-2.5 cursor-pointer">
@@ -327,6 +332,7 @@ export function LoginPage() {
                 checked={acceptPrivacy}
                 onChange={(e) => setAcceptPrivacy(e.target.checked)}
                 className="mt-0.5 accent-(--accent)"
+                aria-required="true"
               />
               <span
                 className="text-[12.5px] leading-relaxed"
@@ -342,6 +348,10 @@ export function LoginPage() {
                 >
                   Privacy Policy
                 </a>
+                <span aria-hidden="true" style={{ color: "#dc2626" }}>
+                  {" "}
+                  *
+                </span>
               </span>
             </label>
           </div>

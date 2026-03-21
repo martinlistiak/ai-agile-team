@@ -31,7 +31,7 @@ export function VerifyEmailPage() {
         setStatus("ok");
         setMessage("Your email is verified.");
         const next = searchParams.get("next");
-        const target = isSafeInternalPath(next) ? next : "/";
+        const target = isSafeInternalPath(next) ? next : "/spaces";
         setTimeout(() => navigate(target, { replace: true }), 800);
       } catch (err: unknown) {
         setStatus("error");

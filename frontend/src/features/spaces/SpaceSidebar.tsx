@@ -27,10 +27,12 @@ import {
   FiLink,
   FiShield,
   FiSettings,
+  FiMessageSquare,
 } from "react-icons/fi";
 import { cn } from "@/lib/cn";
 import { getSpaceColor } from "@/lib/spaceColor";
 import { SpaceSidebarSkeleton } from "@/components/Skeleton";
+import { FeedbackModal } from "@/components/FeedbackModal";
 import type { Space } from "@/types";
 
 function RailTooltip({
@@ -146,6 +148,7 @@ export function SpaceSidebar() {
   const reorderSpaces = useReorderSpaces();
   const [showCreate, setShowCreate] = useState(false);
   const [showUserMenu, setShowUserMenu] = useState(false);
+  const [showFeedback, setShowFeedback] = useState(false);
   const userMenuRef = useRef<HTMLDivElement>(null);
 
   const sensors = useSensors(
@@ -274,6 +277,17 @@ export function SpaceSidebar() {
               )}
               <button
                 type="button"
+                onClick={() => {
+                  setShowUserMenu(false);
+                  setShowFeedback(true);
+                }}
+                className="cursor-pointer flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm text-gray-700 transition-colors hover:bg-gray-100 dark:text-gray-200 dark:hover:bg-gray-700"
+              >
+                <FiMessageSquare />
+                <span>Provide Feedback</span>
+              </button>
+              <button
+                type="button"
                 onClick={logout}
                 className="cursor-pointer flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm text-gray-700 transition-colors hover:bg-gray-100 dark:text-gray-200 dark:hover:bg-gray-700"
               >
@@ -331,6 +345,7 @@ export function SpaceSidebar() {
           </div>
         </div>
       </div>
+      {showFeedback && <FeedbackModal onClose={() => setShowFeedback(false)} />}
     </div>
   );
 }

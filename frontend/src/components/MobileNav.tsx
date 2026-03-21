@@ -15,6 +15,7 @@ import {
   FiMoon,
   FiSun,
   FiBell,
+  FiMessageSquare,
 } from "react-icons/fi";
 import { useAuth } from "@/contexts/AuthContext";
 import { useTheme } from "@/contexts/ThemeContext";
@@ -26,6 +27,7 @@ import { cn } from "@/lib/cn";
 import { getSpaceColor } from "@/lib/spaceColor";
 import { getStatusRingClass, getAvatarSrc } from "@/lib/avatars";
 import RotatingBorder from "@/components/RotatingBorder";
+import { FeedbackModal } from "@/components/FeedbackModal";
 import type { Agent } from "@/types";
 
 const AGENT_CONFIG: Record<string, { name: string; color: string }> = {
@@ -112,6 +114,7 @@ export function MobileNav() {
   >(null);
   const [showCreate, setShowCreate] = useState(false);
   const [inspectedAgent, setInspectedAgent] = useState<Agent | null>(null);
+  const [showFeedback, setShowFeedback] = useState(false);
 
   const closeSheet = () => setActiveSheet(null);
 
@@ -151,7 +154,10 @@ export function MobileNav() {
             aria-label="Spaces"
             aria-expanded={activeSheet === "spaces"}
           >
-            <FiGrid size={20} strokeWidth={activeSheet === "spaces" ? 2.25 : 2} />
+            <FiGrid
+              size={20}
+              strokeWidth={activeSheet === "spaces" ? 2.25 : 2}
+            />
             <span className="text-[10px] font-semibold tracking-wide">
               Spaces
             </span>
@@ -415,12 +421,16 @@ export function MobileNav() {
             )}
             <div className="my-2 h-px bg-[oklch(0.9_0.015_264)] dark:bg-white/8" />
             <ProfileRow
+              icon={<FiMessageSquare size={18} />}
+              label="Provide Feedback"
+              onClick={() => {
+                closeSheet();
+                setShowFeedback(true);
+              }}
+            />
+            <ProfileRow
               icon={
-                mode === "dark" ? (
-                  <FiSun size={18} />
-                ) : (
-                  <FiMoon size={18} />
-                )
+                mode === "dark" ? <FiSun size={18} /> : <FiMoon size={18} />
               }
               label={mode === "dark" ? "Light mode" : "Dark mode"}
               onClick={() => setMode(mode !== "dark" ? "dark" : "light")}
@@ -446,6 +456,7 @@ export function MobileNav() {
           onClose={() => setInspectedAgent(null)}
         />
       )}
+      {showFeedback && <FeedbackModal onClose={() => setShowFeedback(false)} />}
     </>
   );
 }

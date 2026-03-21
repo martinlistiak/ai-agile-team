@@ -42,4 +42,20 @@ export class SlackService {
   async notifyCreditsExhausted(email: string): Promise<void> {
     await this.send(`⚠️ Credits exhausted: *${email}* has $0.00 remaining`);
   }
+
+  async sendFeedback(opts: {
+    userName: string;
+    userEmail: string;
+    message: string;
+    screenshotUrl?: string;
+  }): Promise<void> {
+    const lines = [
+      `💬 *Feedback* from *${opts.userName}* (${opts.userEmail})`,
+      opts.message,
+    ];
+    if (opts.screenshotUrl) {
+      lines.push(`📎 Screenshot: ${opts.screenshotUrl}`);
+    }
+    await this.send(lines.join("\n"));
+  }
 }

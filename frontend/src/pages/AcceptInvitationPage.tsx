@@ -46,7 +46,7 @@ export function AcceptInvitationPage() {
             {error || "Invitation not found or has expired"}
           </p>
           <button
-            onClick={() => navigate("/")}
+            onClick={() => navigate("/spaces")}
             className="text-sm text-indigo-500 hover:underline"
           >
             Go to dashboard
@@ -94,7 +94,7 @@ export function AcceptInvitationPage() {
         {error && <p className="text-red-500 text-sm mb-4">{error}</p>}
         <div className="flex gap-3 justify-center">
           <button
-            onClick={() => navigate("/")}
+            onClick={() => navigate("/spaces")}
             className="px-4 py-2 rounded-lg border border-gray-200 dark:border-gray-700 text-sm text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
           >
             Decline

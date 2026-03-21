@@ -45,10 +45,9 @@ export class MailService {
     const acceptUrl = `${this.appUrl}/invitations/${params.token}`;
 
     const subject = `${params.inviterName} invited you to join ${params.teamName} on Runa`;
-    const html = `
-      <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 480px; margin: 0 auto;">
-        <h2 style="color: #111;">You've been invited</h2>
-        <p style="color: #555; line-height: 1.6;">
+    const html = this.wrapInLayout(`
+        <h2 style="margin: 0 0 16px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; color: #111; font-size: 20px;">You've been invited</h2>
+        <p style="color: #555; line-height: 1.6; margin: 0 0 8px;">
           <strong>${params.inviterName}</strong> has invited you to join
           <strong>${params.teamName}</strong> on Runa.
         </p>
@@ -56,11 +55,10 @@ export class MailService {
            style="display: inline-block; background: #6366f1; color: #fff; padding: 12px 24px; border-radius: 8px; text-decoration: none; font-weight: 500; margin: 16px 0;">
           Accept invitation
         </a>
-        <p style="color: #999; font-size: 13px;">
+        <p style="color: #999; font-size: 13px; margin: 0;">
           This invitation expires in 7 days. If you didn't expect this, you can ignore it.
         </p>
-      </div>
-    `;
+    `);
 
     if (!this.transporter) {
       this.logger.log(`[DEV EMAIL] To: ${params.to}`);
@@ -88,21 +86,19 @@ export class MailService {
     resetUrl: string;
   }): Promise<void> {
     const subject = "Reset your Runa password";
-    const html = `
-      <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 480px; margin: 0 auto;">
-        <h2 style="color: #111;">Password reset</h2>
-        <p style="color: #555; line-height: 1.6;">
+    const html = this.wrapInLayout(`
+        <h2 style="margin: 0 0 16px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; color: #111; font-size: 20px;">Password reset</h2>
+        <p style="color: #555; line-height: 1.6; margin: 0 0 8px;">
           We received a request to reset the password for your Runa account. Click the button below to choose a new password.
         </p>
         <a href="${params.resetUrl}"
            style="display: inline-block; background: #6366f1; color: #fff; padding: 12px 24px; border-radius: 8px; text-decoration: none; font-weight: 500; margin: 16px 0;">
           Reset password
         </a>
-        <p style="color: #999; font-size: 13px;">
+        <p style="color: #999; font-size: 13px; margin: 0;">
           This link expires in one hour. If you did not request a reset, you can ignore this email.
         </p>
-      </div>
-    `;
+    `);
 
     if (!this.transporter) {
       this.logger.log(`[DEV EMAIL] To: ${params.to}`);
@@ -133,21 +129,19 @@ export class MailService {
     verifyUrl: string;
   }): Promise<void> {
     const subject = "Verify your Runa email address";
-    const html = `
-      <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 480px; margin: 0 auto;">
-        <h2 style="color: #111;">Confirm your email</h2>
-        <p style="color: #555; line-height: 1.6;">
+    const html = this.wrapInLayout(`
+        <h2 style="margin: 0 0 16px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; color: #111; font-size: 20px;">Confirm your email</h2>
+        <p style="color: #555; line-height: 1.6; margin: 0 0 8px;">
           Thanks for signing up. Click the button below to verify this email address for your Runa account.
         </p>
         <a href="${params.verifyUrl}"
            style="display: inline-block; background: #6366f1; color: #fff; padding: 12px 24px; border-radius: 8px; text-decoration: none; font-weight: 500; margin: 16px 0;">
           Verify email
         </a>
-        <p style="color: #999; font-size: 13px;">
+        <p style="color: #999; font-size: 13px; margin: 0;">
           This link expires in 48 hours. If you did not create an account, you can ignore this email.
         </p>
-      </div>
-    `;
+    `);
 
     if (!this.transporter) {
       this.logger.log(`[DEV EMAIL] To: ${params.to}`);
@@ -188,11 +182,10 @@ export class MailService {
     );
     const actionLabel = this.getNotificationActionLabel(params.type);
 
-    const html = `
-      <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 480px; margin: 0 auto;">
-        <h2 style="color: #111;">${params.title}</h2>
-        <p style="color: #555; line-height: 1.6;">Hi ${params.userName},</p>
-        <p style="color: #555; line-height: 1.6;">${params.message}</p>
+    const html = this.wrapInLayout(`
+        <h2 style="margin: 0 0 16px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; color: #111; font-size: 20px;">${params.title}</h2>
+        <p style="color: #555; line-height: 1.6; margin: 0 0 8px;">Hi ${params.userName},</p>
+        <p style="color: #555; line-height: 1.6; margin: 0 0 8px;">${params.message}</p>
         ${
           actionUrl
             ? `
@@ -202,13 +195,12 @@ export class MailService {
         </a>`
             : ""
         }
-        <hr style="border: none; border-top: 1px solid #eee; margin: 24px 0;" />
-        <p style="color: #999; font-size: 13px;">
+        <hr style="border: none; border-top: 1px solid #eee; margin: 24px 0 16px;" />
+        <p style="color: #999; font-size: 13px; margin: 0;">
           You can manage your notification preferences in your
           <a href="${this.appUrl}/settings/notifications" style="color: #6366f1;">account settings</a>.
         </p>
-      </div>
-    `;
+    `);
 
     if (!this.transporter) {
       this.logger.log(`[DEV EMAIL] To: ${params.to}`);
@@ -249,6 +241,51 @@ export class MailService {
       default:
         return this.appUrl;
     }
+  }
+
+  /** Wraps email body content in a branded header + footer matching the homepage design. */
+  private wrapInLayout(bodyHtml: string): string {
+    return `
+      <div style="background-color: #f8f8fa; margin: 0; padding: 0; width: 100%;">
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color: #f8f8fa;">
+          <tr><td align="center" style="padding: 40px 16px;">
+            <table role="presentation" width="480" cellpadding="0" cellspacing="0" style="max-width: 480px; width: 100%;">
+              <!-- Header -->
+              <tr><td style="padding: 0 0 32px 0;">
+                <a href="${this.appUrl}" style="text-decoration: none; font-family: Georgia, 'Times New Roman', serif; font-size: 28px; color: #000000; letter-spacing: -0.02em;">Runa</a>
+              </td></tr>
+              <!-- Body card -->
+              <tr><td style="background: #ffffff; border-radius: 12px; padding: 36px 32px; box-shadow: 0 1px 3px rgba(0,0,0,0.04);">
+                ${bodyHtml}
+              </td></tr>
+              <!-- Footer -->
+              <tr><td style="padding: 32px 0 0 0; border-top: none;">
+                <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+                  <tr><td style="padding-top: 24px; border-top: 1px solid #e8e8ec;">
+                    <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+                      <tr>
+                        <td style="font-family: Georgia, 'Times New Roman', serif; font-size: 18px; color: #000000; letter-spacing: -0.02em;">
+                          <a href="${this.appUrl}" style="text-decoration: none; color: #000000;">Runa</a>
+                        </td>
+                        <td align="right" style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 12px;">
+                          <a href="${this.appUrl}/privacy" style="color: #888; text-decoration: none; margin-left: 16px;">Privacy</a>
+                          <a href="${this.appUrl}/terms" style="color: #888; text-decoration: none; margin-left: 16px;">Terms</a>
+                          <a href="${this.appUrl}/status" style="color: #888; text-decoration: none; margin-left: 16px;">Status</a>
+                          <a href="${this.appUrl}/docs" style="color: #888; text-decoration: none; margin-left: 16px;">Docs</a>
+                        </td>
+                      </tr>
+                    </table>
+                  </td></tr>
+                  <tr><td style="padding-top: 12px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 12px; color: #999;">
+                    &copy; ${new Date().getFullYear()} Runa. All rights reserved.
+                  </td></tr>
+                </table>
+              </td></tr>
+            </table>
+          </td></tr>
+        </table>
+      </div>
+    `;
   }
 
   private getNotificationActionLabel(type: string): string {
