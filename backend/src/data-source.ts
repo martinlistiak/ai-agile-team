@@ -19,6 +19,10 @@ import { SlaConfig } from "./entities/sla-config.entity";
 import { AnalyticsEvent } from "./entities/analytics-event.entity";
 import { Notification } from "./entities/notification.entity";
 import { NotificationPreference } from "./entities/notification-preference.entity";
+import { ApiKey } from "./entities/api-key.entity";
+import { OAuthClient } from "./entities/oauth-client.entity";
+import { OAuthCode } from "./entities/oauth-code.entity";
+import { OAuthToken } from "./entities/oauth-token.entity";
 
 export default new DataSource({
   type: "postgres",
@@ -40,6 +44,10 @@ export default new DataSource({
     Team,
     TeamMember,
     TeamInvitation,
+    ApiKey,
+    OAuthClient,
+    OAuthCode,
+    OAuthToken,
     PasswordResetToken,
     EmailVerificationToken,
     SsoConfig,
