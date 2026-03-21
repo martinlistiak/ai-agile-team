@@ -1,5 +1,7 @@
+# Pin amd64 so images built on Apple Silicon run on typical x86_64 hosts (CapRover, VPS).
+# Without this, `exec /entrypoint.sh` often fails with "exec format error".
 # ── Stage 1: Build frontend ──
-FROM oven/bun:latest AS frontend-builder
+FROM --platform=linux/amd64 oven/bun:latest AS frontend-builder
 WORKDIR /app
 COPY frontend/package.json frontend/bun.lock* frontend/bun.lockb* ./
 RUN bun install --frozen-lockfile || bun install
@@ -7,7 +9,7 @@ COPY frontend/ .
 RUN bun run build
 
 # ── Stage 2: Build backend ──
-FROM oven/bun:latest AS backend-builder
+FROM --platform=linux/amd64 oven/bun:latest AS backend-builder
 WORKDIR /app
 COPY backend/package.json backend/bun.lock* backend/bun.lockb* ./
 RUN bun install --frozen-lockfile || bun install
@@ -15,7 +17,7 @@ COPY backend/ .
 RUN bun run build
 
 # ── Stage 3: Final image ──
-FROM oven/bun:latest
+FROM --platform=linux/amd64 oven/bun:latest
 
 RUN apt-get update && apt-get install -y --no-install-recommends nginx \
     && rm -rf /var/lib/apt/lists/*
@@ -79,7 +81,7 @@ cd /app/backend
 ./node_modules/.bin/typeorm migration:run -d dist/data-source.js
 exec bun run start:prod
 ENTRYPOINT_SCRIPT
-RUN chmod +x /entrypoint.sh
+RUN sed -i 's/\r$//' /entrypoint.sh && chmod +x /entrypoint.sh
 
 EXPOSE 80
 
