@@ -32,7 +32,7 @@ COPY --from=backend-builder /app/package.json ./
 COPY --from=frontend-builder /app/dist /app/frontend/dist
 
 # Nginx config
-COPY <<'NGINX' /etc/nginx/sites-available/default
+RUN cat <<'NGINX' > /etc/nginx/sites-available/default
 server {
     listen 80;
     server_name _;
@@ -71,7 +71,7 @@ server {
 NGINX
 
 # Entrypoint: start nginx + backend
-COPY <<'ENTRYPOINT_SCRIPT' /entrypoint.sh
+RUN cat <<'ENTRYPOINT_SCRIPT' > /entrypoint.sh
 #!/bin/bash
 set -e
 nginx

@@ -137,6 +137,143 @@ export function SettingsPage() {
         </p>
       </div>
 
+      <section
+        id="profile"
+        className="rounded-xl border border-gray-200 dark:border-gray-800 p-5 mb-6"
+      >
+        <h2 className="text-sm font-semibold text-gray-900 dark:text-gray-100 mb-1">
+          Profile
+        </h2>
+        <p className="text-xs text-gray-500 dark:text-gray-400 mb-4">
+          How you appear across the workspace. Photos accept JPEG, PNG, WebP, or
+          GIF up to 2&nbsp;MB. OAuth accounts may show a provider image until
+          you add your own.
+        </p>
+
+        <form
+          onSubmit={handleSaveProfile}
+          className="grid gap-6 lg:grid-cols-[minmax(0,13rem)_minmax(0,1fr)] lg:gap-x-8 lg:gap-y-0"
+        >
+          <div>
+            <p className="block text-xs font-medium text-gray-600 dark:text-gray-300 mb-2">
+              Profile photo
+            </p>
+            <div
+              className={cn(
+                "relative mb-4 inline-flex size-24 items-center justify-center overflow-hidden rounded-full border border-gray-200 bg-gray-100 text-xl font-semibold text-gray-700 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200",
+                uploadAvatarMutation.isPending && "opacity-80",
+              )}
+            >
+              {user.avatarUrl && !avatarPreviewBroken ? (
+                <img
+                  src={user.avatarUrl}
+                  alt=""
+                  className="h-full w-full object-cover"
+                  onError={() => setAvatarPreviewBroken(true)}
+                />
+              ) : (
+                <span aria-hidden>{user.name[0]?.toUpperCase() || "?"}</span>
+              )}
+            </div>
+            <input
+              ref={fileInputRef}
+              id="settings-avatar-file"
+              type="file"
+              accept="image/jpeg,image/png,image/webp,image/gif"
+              className="sr-only"
+              tabIndex={-1}
+              onChange={handleAvatarFileChange}
+            />
+            <div className="flex flex-col gap-2 sm:max-w-xs">
+              <button
+                type="button"
+                disabled={uploadAvatarMutation.isPending}
+                onClick={() => fileInputRef.current?.click()}
+                aria-label="Upload profile photo"
+                className={cn(
+                  "inline-flex cursor-pointer items-center justify-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm font-medium text-gray-800 transition-colors hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200 dark:hover:bg-gray-800",
+                )}
+              >
+                <FiUpload
+                  className="h-4 w-4 shrink-0 text-gray-500 dark:text-gray-400"
+                  aria-hidden
+                />
+                {uploadAvatarMutation.isPending ? "Uploading…" : "Upload"}
+              </button>
+              {user.avatarUrl ? (
+                <button
+                  type="button"
+                  disabled={
+                    saveProfileMutation.isPending ||
+                    uploadAvatarMutation.isPending
+                  }
+                  onClick={() => setShowRemoveAvatarConfirm(true)}
+                  className="cursor-pointer text-left text-sm font-medium text-gray-600 transition-colors hover:text-red-600 disabled:cursor-not-allowed disabled:opacity-50 dark:text-gray-400 dark:hover:text-red-400"
+                >
+                  Remove photo…
+                </button>
+              ) : null}
+            </div>
+          </div>
+
+          <div className="space-y-4 lg:max-w-md">
+            <div>
+              <label
+                htmlFor="settings-name"
+                className="block text-xs font-medium text-gray-600 dark:text-gray-300 mb-1"
+              >
+                Display name
+              </label>
+              <input
+                id="settings-name"
+                type="text"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                required
+                maxLength={120}
+                className="w-full rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 px-3 py-2 text-sm text-gray-900 dark:text-gray-100"
+              />
+            </div>
+            <div>
+              <label
+                htmlFor="settings-email"
+                className="block text-xs font-medium text-gray-600 dark:text-gray-300 mb-1"
+              >
+                Email
+              </label>
+              <input
+                id="settings-email"
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                disabled={!canEditEmail}
+                className="w-full rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 px-3 py-2 text-sm text-gray-900 dark:text-gray-100 disabled:cursor-not-allowed disabled:opacity-60"
+              />
+              {!canEditEmail && (
+                <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
+                  Managed by your sign-in provider (GitHub, GitLab, or SSO).
+                </p>
+              )}
+              {canEditEmail && user.emailVerified === false && (
+                <p className="mt-2 text-xs text-amber-800 dark:text-amber-300/95">
+                  Verify your email to keep full access. Check your inbox or use
+                  the banner in the app.
+                </p>
+              )}
+            </div>
+            <div>
+              <button
+                type="submit"
+                disabled={saveProfileMutation.isPending}
+                className="text-sm font-medium px-4 py-2 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-800 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors disabled:opacity-50"
+              >
+                {saveProfileMutation.isPending ? "Saving…" : "Save profile"}
+              </button>
+            </div>
+          </div>
+        </form>
+      </section>
+
       <section className="rounded-xl border border-gray-200 dark:border-gray-800 p-5 mb-6">
         <h2 className="text-sm font-semibold text-gray-900 dark:text-gray-100 mb-1">
           Notifications
@@ -199,148 +336,6 @@ export function SettingsPage() {
             from your system preference.
           </p>
         )}
-      </section>
-
-      <section
-        id="profile"
-        className="relative mb-10 overflow-hidden rounded-2xl border border-stone-200 bg-stone-50/80 dark:border-stone-800 dark:bg-stone-950/50"
-      >
-        <div
-          className="absolute left-0 top-0 h-full w-1 bg-primary-500 dark:bg-primary-400"
-          aria-hidden
-        />
-        <div className="px-5 py-7 pl-6 sm:px-8 sm:py-9 sm:pl-8">
-          <header className="mb-9 max-w-2xl border-b border-stone-200/90 pb-7 dark:border-stone-800/90">
-            <h2 className="font-display text-[1.75rem] leading-[1.15] tracking-[-0.02em] text-stone-900 dark:text-stone-50 sm:text-[2rem]">
-              Profile
-            </h2>
-            <p className="mt-3 max-w-xl text-sm leading-relaxed text-stone-600 dark:text-stone-400">
-              How you appear across the workspace. Photos accept JPEG, PNG,
-              WebP, or GIF up to 2&nbsp;MB. OAuth accounts may show a provider
-              image until you add your own.
-            </p>
-          </header>
-
-          <form
-            onSubmit={handleSaveProfile}
-            className="grid gap-10 lg:grid-cols-[minmax(0,13.5rem)_minmax(0,1fr)] lg:gap-x-14 lg:gap-y-0"
-          >
-            <div className="lg:pt-1">
-              <p className="mb-4 text-[0.625rem] font-semibold uppercase tracking-[0.16em] text-stone-500 dark:text-stone-500">
-                Portrait
-              </p>
-              <div
-                className={cn(
-                  "relative isolate mb-5 inline-flex h-23 w-23 items-center justify-center overflow-hidden rounded-full bg-primary-600 text-xl font-semibold text-white shadow-[5px_5px_0_0_rgb(214_211_209)] motion-safe:transition-shadow motion-safe:duration-200 dark:bg-primary-700 dark:shadow-[5px_5px_0_0_rgb(68_64_60)]",
-                  uploadAvatarMutation.isPending && "opacity-80",
-                )}
-              >
-                {user.avatarUrl && !avatarPreviewBroken ? (
-                  <img
-                    src={user.avatarUrl}
-                    alt=""
-                    className="h-full w-full object-cover"
-                    onError={() => setAvatarPreviewBroken(true)}
-                  />
-                ) : (
-                  <span aria-hidden>{user.name[0]?.toUpperCase() || "?"}</span>
-                )}
-              </div>
-              <input
-                ref={fileInputRef}
-                id="settings-avatar-file"
-                type="file"
-                accept="image/jpeg,image/png,image/webp,image/gif"
-                className="sr-only"
-                tabIndex={-1}
-                onChange={handleAvatarFileChange}
-              />
-              <div className="flex flex-col items-stretch gap-2 sm:max-w-54">
-                <button
-                  type="button"
-                  disabled={uploadAvatarMutation.isPending}
-                  onClick={() => fileInputRef.current?.click()}
-                  aria-label="Upload profile photo"
-                  className={cn(
-                    "inline-flex cursor-pointer items-center justify-center gap-2 rounded-lg border border-stone-300 bg-white px-3 py-2.5 text-sm font-medium text-stone-800 motion-safe:transition-colors hover:bg-stone-100 disabled:cursor-not-allowed disabled:opacity-50 dark:border-stone-600 dark:bg-stone-900 dark:text-stone-100 dark:hover:bg-stone-800",
-                  )}
-                >
-                  <FiUpload className="h-4 w-4 shrink-0 opacity-70" aria-hidden />
-                  {uploadAvatarMutation.isPending ? "Uploading…" : "Upload"}
-                </button>
-                {user.avatarUrl ? (
-                  <button
-                    type="button"
-                    disabled={
-                      saveProfileMutation.isPending ||
-                      uploadAvatarMutation.isPending
-                    }
-                    onClick={() => setShowRemoveAvatarConfirm(true)}
-                    className="cursor-pointer text-left text-sm font-medium text-stone-500 underline decoration-stone-300 underline-offset-4 transition-colors hover:text-red-700 hover:decoration-red-400/60 disabled:cursor-not-allowed disabled:opacity-50 dark:text-stone-400 dark:decoration-stone-600 dark:hover:text-red-400"
-                  >
-                    Remove photo…
-                  </button>
-                ) : null}
-              </div>
-            </div>
-
-            <div className="space-y-5 lg:max-w-md">
-              <div>
-                <label
-                  htmlFor="settings-name"
-                  className="mb-1.5 block text-[0.625rem] font-semibold uppercase tracking-[0.12em] text-stone-500 dark:text-stone-500"
-                >
-                  Display name
-                </label>
-                <input
-                  id="settings-name"
-                  type="text"
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  required
-                  maxLength={120}
-                  className="w-full rounded-lg border border-stone-200 bg-white px-3 py-2.5 text-sm text-stone-900 outline-none ring-primary-500/0 transition-[box-shadow,border-color] focus:border-primary-400 focus:ring-2 focus:ring-primary-500/25 dark:border-stone-700 dark:bg-stone-900 dark:text-stone-100 dark:focus:border-primary-500"
-                />
-              </div>
-              <div>
-                <label
-                  htmlFor="settings-email"
-                  className="mb-1.5 block text-[0.625rem] font-semibold uppercase tracking-[0.12em] text-stone-500 dark:text-stone-500"
-                >
-                  Email
-                </label>
-                <input
-                  id="settings-email"
-                  type="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  disabled={!canEditEmail}
-                  className="w-full rounded-lg border border-stone-200 bg-white px-3 py-2.5 text-sm text-stone-900 outline-none ring-primary-500/0 transition-[box-shadow,border-color] focus:border-primary-400 focus:ring-2 focus:ring-primary-500/25 disabled:cursor-not-allowed disabled:opacity-60 dark:border-stone-700 dark:bg-stone-900 dark:text-stone-100 dark:focus:border-primary-500"
-                />
-                {!canEditEmail && (
-                  <p className="mt-2 text-xs leading-relaxed text-stone-500 dark:text-stone-400">
-                    Managed by your sign-in provider (GitHub, GitLab, or SSO).
-                  </p>
-                )}
-                {canEditEmail && user.emailVerified === false && (
-                  <p className="mt-2 text-xs leading-relaxed text-amber-800 dark:text-amber-300/95">
-                    Verify your email to keep full access. Check your inbox or
-                    use the banner in the app.
-                  </p>
-                )}
-              </div>
-              <div className="pt-1">
-                <button
-                  type="submit"
-                  disabled={saveProfileMutation.isPending}
-                  className="text-sm font-medium rounded-lg bg-primary-600 px-5 py-2.5 text-white motion-safe:transition-colors hover:bg-primary-700 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-primary-500 dark:hover:bg-primary-600"
-                >
-                  {saveProfileMutation.isPending ? "Saving…" : "Save profile"}
-                </button>
-              </div>
-            </div>
-          </form>
-        </div>
       </section>
 
       <ConfirmDialog
