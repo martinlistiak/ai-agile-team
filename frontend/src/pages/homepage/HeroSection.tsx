@@ -40,7 +40,7 @@ export function HeroSection() {
             </p>
           </Reveal>
           <Reveal delay={0.24}>
-            <div className="flex items-center gap-3 flex-wrap">
+            <div className="flex items-center gap-3 ">
               <a
                 href="/login"
                 className="inline-flex items-center gap-2 text-sm font-medium px-6 py-3 rounded-lg text-white transition-all hover:opacity-90"

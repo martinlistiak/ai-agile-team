@@ -2,6 +2,11 @@
 # ── Stage 1: Build frontend ──
 FROM --platform=linux/amd64 oven/bun:latest AS frontend-builder
 WORKDIR /app
+
+ARG VITE_COUNTLY_APP_KEY
+ARG VITE_COUNTLY_SERVER_URL
+ARG VITE_TURNSTILE_SITE_KEY
+
 COPY frontend/package.json frontend/bun.lock* frontend/bun.lockb* ./
 RUN bun install --frozen-lockfile || bun install
 COPY frontend/ .

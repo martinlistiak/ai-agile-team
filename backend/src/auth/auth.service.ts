@@ -132,6 +132,7 @@ export class AuthService {
     if (!valid) throw new UnauthorizedException("Invalid credentials");
 
     const token = this.createToken(user);
+    this.countly.beginSession(user.id);
     return { accessToken: token, user: this.sanitizeUser(user) };
   }
 
@@ -218,6 +219,7 @@ export class AuthService {
     this.countly.record(row.user.id, "password_reset_completed", {});
 
     const accessToken = this.createToken(row.user);
+    this.countly.beginSession(row.user.id);
     return { accessToken, user: this.sanitizeUser(row.user) };
   }
 
@@ -342,6 +344,7 @@ export class AuthService {
     }
 
     const token = this.createToken(user);
+    this.countly.beginSession(user.id);
     return { accessToken: token, user: this.sanitizeUser(user) };
   }
 
@@ -449,6 +452,7 @@ export class AuthService {
     }
 
     const token = this.createToken(user);
+    this.countly.beginSession(user.id);
     return { accessToken: token, user: this.sanitizeUser(user) };
   }
 
@@ -578,6 +582,7 @@ export class AuthService {
     this.countly.record(row.user.id, "email_verified", {});
 
     const accessToken = this.createToken(row.user);
+    this.countly.beginSession(row.user.id);
     return { accessToken, user: this.sanitizeUser(row.user) };
   }
 
@@ -812,6 +817,7 @@ export class AuthService {
       await manager.delete(User, { id: userId });
     });
 
+    this.countly.endSession(userId);
     this.countly.record(userId, "account_deleted", {});
     return { deleted: true };
   }
