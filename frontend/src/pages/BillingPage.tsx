@@ -46,8 +46,8 @@ const PLANS = [
     tier: "enterprise" as PlanTier,
     name: "Enterprise",
     description: "For organizations with advanced needs",
-    monthlyPrice: 109,
-    annualPrice: 89,
+    monthlyPrice: null,
+    annualPrice: null,
     features: [
       "Everything in Team",
       "SSO & SAML",
@@ -400,6 +400,7 @@ export function BillingPage({ onboarding = false }: { onboarding?: boolean }) {
         {PLANS.map((plan) => {
           const isCurrent = plan.tier === currentPlan && isActive;
           const price = annual ? plan.annualPrice : plan.monthlyPrice;
+          const isEnterprise = price === null;
 
           return (
             <div
@@ -421,19 +422,36 @@ export function BillingPage({ onboarding = false }: { onboarding?: boolean }) {
               <p className="text-[13px] text-gray-500 dark:text-gray-400 mb-2">
                 {plan.description}
               </p>
-              <p className="text-[11px] text-emerald-700 dark:text-emerald-400 font-medium mb-3">
-                7-day free trial
-              </p>
+              {!isEnterprise && (
+                <p className="text-[11px] text-emerald-700 dark:text-emerald-400 font-medium mb-3">
+                  7-day free trial
+                </p>
+              )}
               <div className="mb-5">
-                <span className="text-3xl font-semibold text-gray-900 dark:text-gray-100">
-                  ${price}
-                </span>
-                <span className="text-sm text-gray-400 ml-1">
-                  / space / mo{annual ? " (billed annually)" : ""}
-                </span>
+                {isEnterprise ? (
+                  <span className="text-3xl font-semibold text-gray-900 dark:text-gray-100">
+                    Custom
+                  </span>
+                ) : (
+                  <>
+                    <span className="text-3xl font-semibold text-gray-900 dark:text-gray-100">
+                      ${price}
+                    </span>
+                    <span className="text-sm text-gray-400 ml-1">
+                      / space / mo{annual ? " (billed annually)" : ""}
+                    </span>
+                  </>
+                )}
               </div>
 
-              {isCurrent ? (
+              {isEnterprise ? (
+                <a
+                  href="mailto:sales@runa-app.com"
+                  className="block w-full text-center text-sm font-medium py-2.5 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 transition-all mb-5"
+                >
+                  Talk to sales
+                </a>
+              ) : isCurrent ? (
                 <button
                   type="button"
                   disabled
