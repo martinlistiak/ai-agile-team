@@ -62,6 +62,10 @@ export class NotificationsListener {
       relatedEntityType: "execution",
       spaceId: payload.spaceId,
     });
+    await this.slackService.notifyAgentCompleted(
+      payload.agentName ?? payload.agentType,
+      payload.ticketTitle,
+    );
   }
 
   @OnEvent("agent.execution.failed")
@@ -85,6 +89,10 @@ export class NotificationsListener {
       relatedEntityType: "execution",
       spaceId: payload.spaceId,
     });
+    await this.slackService.notifyAgentFailed(
+      payload.agentName ?? payload.agentType,
+      payload.error,
+    );
   }
 
   // --- Pipeline events ---
@@ -106,6 +114,11 @@ export class NotificationsListener {
       relatedEntityType: "ticket",
       spaceId: payload.spaceId,
     });
+    await this.slackService.notifyPipelineStageChanged(
+      payload.ticketTitle,
+      payload.fromStage,
+      payload.toStage,
+    );
   }
 
   // --- PR events ---
@@ -127,6 +140,11 @@ export class NotificationsListener {
       relatedEntityType: "ticket",
       spaceId: payload.spaceId,
     });
+    await this.slackService.notifyPrCreated(
+      payload.ticketTitle,
+      payload.prNumber,
+      payload.prUrl,
+    );
   }
 
   // --- Ticket events ---
@@ -148,6 +166,10 @@ export class NotificationsListener {
       relatedEntityType: "ticket",
       spaceId: payload.spaceId,
     });
+    await this.slackService.notifyTicketAssigned(
+      payload.ticketTitle,
+      payload.assignerName,
+    );
   }
 
   @OnEvent("ticket.commented")
@@ -170,6 +192,10 @@ export class NotificationsListener {
       relatedEntityType: "ticket",
       spaceId: payload.spaceId,
     });
+    await this.slackService.notifyTicketCommented(
+      payload.ticketTitle,
+      payload.commenterName,
+    );
   }
 
   // --- Team events ---
@@ -190,6 +216,11 @@ export class NotificationsListener {
         message: `${payload.inviterName} invited you to join ${payload.teamName}`,
       });
     }
+    await this.slackService.notifyTeamInvitation(
+      payload.inviterName,
+      payload.teamName,
+      payload.inviteeEmail,
+    );
   }
 
   @OnEvent("team.member.joined")
@@ -210,6 +241,7 @@ export class NotificationsListener {
       title: "New team member",
       message: `${payload.newMemberName} joined the team`,
     });
+    await this.slackService.notifyTeamMemberJoined(payload.newMemberName);
   }
 
   // --- Slack notification events ---

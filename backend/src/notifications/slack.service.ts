@@ -58,4 +58,67 @@ export class SlackService {
     }
     await this.send(lines.join("\n"));
   }
+
+  // --- runa-updates channel notifications ---
+
+  async notifyAgentCompleted(
+    agentName: string,
+    ticketTitle?: string,
+  ): Promise<void> {
+    const detail = ticketTitle ? ` on "${ticketTitle}"` : "";
+    await this.send(`✅ *${agentName}* agent completed${detail}`);
+  }
+
+  async notifyAgentFailed(agentName: string, error?: string): Promise<void> {
+    const detail = error ? `: ${error.slice(0, 200)}` : "";
+    await this.send(`❌ *${agentName}* agent failed${detail}`);
+  }
+
+  async notifyPipelineStageChanged(
+    ticketTitle: string,
+    fromStage: string,
+    toStage: string,
+  ): Promise<void> {
+    await this.send(
+      `🔄 "${ticketTitle}" moved from *${fromStage}* → *${toStage}*`,
+    );
+  }
+
+  async notifyPrCreated(
+    ticketTitle: string,
+    prNumber: number,
+    prUrl: string,
+  ): Promise<void> {
+    await this.send(
+      `🔀 PR #${prNumber} created for "${ticketTitle}"\n${prUrl}`,
+    );
+  }
+
+  async notifyTicketAssigned(
+    ticketTitle: string,
+    assignerName: string,
+  ): Promise<void> {
+    await this.send(`📌 ${assignerName} assigned "${ticketTitle}"`);
+  }
+
+  async notifyTicketCommented(
+    ticketTitle: string,
+    commenterName: string,
+  ): Promise<void> {
+    await this.send(`💬 ${commenterName} commented on "${ticketTitle}"`);
+  }
+
+  async notifyTeamInvitation(
+    inviterName: string,
+    teamName: string,
+    inviteeEmail: string,
+  ): Promise<void> {
+    await this.send(
+      `📨 ${inviterName} invited ${inviteeEmail} to *${teamName}*`,
+    );
+  }
+
+  async notifyTeamMemberJoined(memberName: string): Promise<void> {
+    await this.send(`👋 ${memberName} joined the team`);
+  }
 }
