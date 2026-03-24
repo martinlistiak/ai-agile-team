@@ -73,8 +73,8 @@ function formatInvoiceAmount(cents: number, currency: string) {
   }
 }
 
-export function BillingPage() {
-  const { user, refreshUser } = useAuth();
+export function BillingPage({ onboarding = false }: { onboarding?: boolean }) {
+  const { user, refreshUser, logout } = useAuth();
   const [searchParams] = useSearchParams();
   const [annual, setAnnual] = useState(true);
 
@@ -138,62 +138,90 @@ export function BillingPage() {
   return (
     <div className="min-h-screen p-4 md:p-8 max-w-5xl mx-auto">
       <div className="mb-8">
-        <h1 className="text-2xl font-semibold text-gray-900 dark:text-gray-100">
-          Billing & Plan
-        </h1>
-        <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-          Every plan includes a 7-day free trial. A payment method is required;
-          you will not be charged until the trial ends. Cancel anytime.
-        </p>
-      </div>
-
-      {!isActive && (
-        <div
-          className="rounded-xl border border-amber-200 dark:border-amber-900/50 bg-amber-50 dark:bg-amber-950/30 px-4 py-3 mb-6 text-sm text-amber-900 dark:text-amber-200"
-          role="status"
-        >
-          Choose a plan below to start your trial and unlock the workspace.
-        </div>
-      )}
-
-      <div className="rounded-xl border border-gray-200 dark:border-gray-800 p-5 mb-8 flex flex-wrap items-center justify-between gap-4">
-        <div>
-          <p className="text-sm text-gray-500 dark:text-gray-400">
-            Current plan
-          </p>
-          <p className="text-lg font-semibold text-gray-900 dark:text-gray-100 capitalize">
-            {currentPlan}
-            {user?.subscriptionStatus && user.subscriptionStatus !== "none" && (
-              <span
-                className={`ml-2 text-xs font-medium px-2 py-0.5 rounded-full ${
-                  isActive
-                    ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400"
-                    : "bg-amber-50 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400"
-                }`}
+        {onboarding ? (
+          <>
+            <div className="flex items-center justify-between">
+              <h1 className="text-2xl font-semibold text-gray-900 dark:text-gray-100">
+                Choose your plan to get started
+              </h1>
+              <button
+                type="button"
+                onClick={logout}
+                className="text-sm text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 transition-colors"
               >
-                {user.subscriptionStatus}
-              </span>
-            )}
-          </p>
-          {user?.currentPeriodEnd && isActive && (
-            <p className="text-xs text-gray-400 mt-0.5">
-              Renews {new Date(user.currentPeriodEnd).toLocaleDateString()}
+                Log out
+              </button>
+            </div>
+            <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+              Select a plan below to start your 7-day free trial. A payment
+              method is required; you will not be charged until the trial ends.
+              Cancel anytime.
             </p>
-          )}
-        </div>
-        {showManageBilling && (
-          <button
-            type="button"
-            onClick={handleManageBilling}
-            disabled={portalMutation.isPending}
-            className="text-sm font-medium px-4 py-2 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors disabled:opacity-50"
-          >
-            {portalMutation.isPending ? "Loading…" : "Manage billing"}
-          </button>
+          </>
+        ) : (
+          <>
+            <h1 className="text-2xl font-semibold text-gray-900 dark:text-gray-100">
+              Billing & Plan
+            </h1>
+            <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+              Every plan includes a 7-day free trial. A payment method is
+              required; you will not be charged until the trial ends. Cancel
+              anytime.
+            </p>
+          </>
         )}
       </div>
 
-      {usage && (
+      {onboarding && (
+        <div
+          className="rounded-xl border border-amber-200 dark:border-amber-900/50 bg-amber-50 dark:bg-amber-950/30 px-4 py-3 mb-6 text-sm text-amber-900 dark:text-amber-200"
+          role="alert"
+        >
+          You must choose a plan before you can access the workspace.
+        </div>
+      )}
+
+      {!onboarding && (
+        <div className="rounded-xl border border-gray-200 dark:border-gray-800 p-5 mb-8 flex flex-wrap items-center justify-between gap-4">
+          <div>
+            <p className="text-sm text-gray-500 dark:text-gray-400">
+              Current plan
+            </p>
+            <p className="text-lg font-semibold text-gray-900 dark:text-gray-100 capitalize">
+              {currentPlan}
+              {user?.subscriptionStatus &&
+                user.subscriptionStatus !== "none" && (
+                  <span
+                    className={`ml-2 text-xs font-medium px-2 py-0.5 rounded-full ${
+                      isActive
+                        ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400"
+                        : "bg-amber-50 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400"
+                    }`}
+                  >
+                    {user.subscriptionStatus}
+                  </span>
+                )}
+            </p>
+            {user?.currentPeriodEnd && isActive && (
+              <p className="text-xs text-gray-400 mt-0.5">
+                Renews {new Date(user.currentPeriodEnd).toLocaleDateString()}
+              </p>
+            )}
+          </div>
+          {showManageBilling && (
+            <button
+              type="button"
+              onClick={handleManageBilling}
+              disabled={portalMutation.isPending}
+              className="text-sm font-medium px-4 py-2 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors disabled:opacity-50"
+            >
+              {portalMutation.isPending ? "Loading…" : "Manage billing"}
+            </button>
+          )}
+        </div>
+      )}
+
+      {!onboarding && usage && (
         <div className="rounded-xl border border-gray-200 dark:border-gray-800 p-5 mb-8">
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-sm font-semibold text-gray-900 dark:text-gray-100">
@@ -242,94 +270,99 @@ export function BillingPage() {
       )}
 
       {/* ── Credit Top-Up ── */}
-      <div className="rounded-xl border border-gray-200 dark:border-gray-800 p-5 mb-8">
-        <div className="flex items-center justify-between mb-3">
-          <div>
-            <h2 className="text-sm font-semibold text-gray-900 dark:text-gray-100">
-              Usage credits
-            </h2>
-            <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
-              Top up credits when you run out. Credits never expire.
-            </p>
-          </div>
-          <div className="text-right">
-            <p className="text-xs text-gray-500 dark:text-gray-400">Balance</p>
-            <p className="text-xl font-semibold text-gray-900 dark:text-gray-100">
-              $
-              {(
-                (creditsData?.creditsBalance ?? user?.creditsBalance ?? 0) / 100
-              ).toFixed(2)}
-            </p>
-          </div>
-        </div>
-
-        {searchParams.get("topup") === "success" && (
-          <div
-            className="rounded-lg border border-emerald-200 dark:border-emerald-900/50 bg-emerald-50 dark:bg-emerald-950/30 px-3 py-2 mb-4 text-sm text-emerald-800 dark:text-emerald-200"
-            role="status"
-          >
-            Credits added successfully.
-          </div>
-        )}
-
-        <div className="flex flex-wrap items-end gap-3">
-          <div className="flex-1 min-w-[140px]">
-            <label
-              htmlFor="topup-amount"
-              className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1"
-            >
-              Amount (USD)
-            </label>
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                onClick={() => setTopUpAmount((v) => Math.max(5, v - 5))}
-                disabled={topUpAmount <= 5}
-                className="w-8 h-8 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors disabled:opacity-30 cursor-pointer disabled:cursor-default flex items-center justify-center text-lg font-medium"
-                aria-label="Decrease amount by $5"
-              >
-                −
-              </button>
-              <input
-                id="topup-amount"
-                type="number"
-                min={5}
-                step={5}
-                value={topUpAmount}
-                onChange={(e) => {
-                  const raw = parseInt(e.target.value, 10);
-                  if (!isNaN(raw) && raw >= 5) {
-                    setTopUpAmount(Math.round(raw / 5) * 5 || 5);
-                  }
-                }}
-                onBlur={() => {
-                  if (topUpAmount < 5) setTopUpAmount(5);
-                  else setTopUpAmount(Math.round(topUpAmount / 5) * 5 || 5);
-                }}
-                className="w-24 text-center rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 px-3 py-1.5 text-sm font-semibold text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-indigo-500/40"
-              />
-              <button
-                type="button"
-                onClick={() => setTopUpAmount((v) => v + 5)}
-                className="w-8 h-8 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors cursor-pointer flex items-center justify-center text-lg font-medium"
-                aria-label="Increase amount by $5"
-              >
-                +
-              </button>
+      {!onboarding && (
+        <div className="rounded-xl border border-gray-200 dark:border-gray-800 p-5 mb-8">
+          <div className="flex items-center justify-between mb-3">
+            <div>
+              <h2 className="text-sm font-semibold text-gray-900 dark:text-gray-100">
+                Usage credits
+              </h2>
+              <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                Top up credits when you run out. Credits never expire.
+              </p>
+            </div>
+            <div className="text-right">
+              <p className="text-xs text-gray-500 dark:text-gray-400">
+                Balance
+              </p>
+              <p className="text-xl font-semibold text-gray-900 dark:text-gray-100">
+                $
+                {(
+                  (creditsData?.creditsBalance ?? user?.creditsBalance ?? 0) /
+                  100
+                ).toFixed(2)}
+              </p>
             </div>
           </div>
-          <button
-            type="button"
-            onClick={handleTopUp}
-            disabled={topUpMutation.isPending}
-            className="px-5 py-2 rounded-lg bg-indigo-500 text-white text-sm font-medium hover:bg-indigo-600 transition-colors disabled:opacity-50 cursor-pointer disabled:cursor-default"
-          >
-            {topUpMutation.isPending
-              ? "Loading…"
-              : `Add $${topUpAmount} credits`}
-          </button>
+
+          {searchParams.get("topup") === "success" && (
+            <div
+              className="rounded-lg border border-emerald-200 dark:border-emerald-900/50 bg-emerald-50 dark:bg-emerald-950/30 px-3 py-2 mb-4 text-sm text-emerald-800 dark:text-emerald-200"
+              role="status"
+            >
+              Credits added successfully.
+            </div>
+          )}
+
+          <div className="flex flex-wrap items-end gap-3">
+            <div className="flex-1 min-w-[140px]">
+              <label
+                htmlFor="topup-amount"
+                className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1"
+              >
+                Amount (USD)
+              </label>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setTopUpAmount((v) => Math.max(5, v - 5))}
+                  disabled={topUpAmount <= 5}
+                  className="w-8 h-8 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors disabled:opacity-30 cursor-pointer disabled:cursor-default flex items-center justify-center text-lg font-medium"
+                  aria-label="Decrease amount by $5"
+                >
+                  −
+                </button>
+                <input
+                  id="topup-amount"
+                  type="number"
+                  min={5}
+                  step={5}
+                  value={topUpAmount}
+                  onChange={(e) => {
+                    const raw = parseInt(e.target.value, 10);
+                    if (!isNaN(raw) && raw >= 5) {
+                      setTopUpAmount(Math.round(raw / 5) * 5 || 5);
+                    }
+                  }}
+                  onBlur={() => {
+                    if (topUpAmount < 5) setTopUpAmount(5);
+                    else setTopUpAmount(Math.round(topUpAmount / 5) * 5 || 5);
+                  }}
+                  className="w-24 text-center rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 px-3 py-1.5 text-sm font-semibold text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-indigo-500/40"
+                />
+                <button
+                  type="button"
+                  onClick={() => setTopUpAmount((v) => v + 5)}
+                  className="w-8 h-8 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors cursor-pointer flex items-center justify-center text-lg font-medium"
+                  aria-label="Increase amount by $5"
+                >
+                  +
+                </button>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={handleTopUp}
+              disabled={topUpMutation.isPending}
+              className="px-5 py-2 rounded-lg bg-indigo-500 text-white text-sm font-medium hover:bg-indigo-600 transition-colors disabled:opacity-50 cursor-pointer disabled:cursor-default"
+            >
+              {topUpMutation.isPending
+                ? "Loading…"
+                : `Add $${topUpAmount} credits`}
+            </button>
+          </div>
         </div>
-      </div>
+      )}
 
       <div className="flex items-center justify-center gap-3 mb-8">
         <span
@@ -455,93 +488,95 @@ export function BillingPage() {
         })}
       </div>
 
-      <div className="mt-12 rounded-xl border border-gray-200 dark:border-gray-800 p-5">
-        <h2 className="text-sm font-semibold text-gray-900 dark:text-gray-100 mb-1">
-          Past invoices
-        </h2>
-        <p className="text-xs text-gray-500 dark:text-gray-400 mb-4">
-          Download PDF copies of your Stripe invoices. You can also manage
-          payment methods from{" "}
-          {showManageBilling ? (
-            <button
-              type="button"
-              onClick={handleManageBilling}
-              disabled={portalMutation.isPending}
-              className="text-indigo-600 dark:text-indigo-400 hover:underline disabled:opacity-50"
-            >
-              Manage billing
-            </button>
-          ) : (
-            "Manage billing"
-          )}{" "}
-          in the section above.
-        </p>
+      {!onboarding && (
+        <div className="mt-12 rounded-xl border border-gray-200 dark:border-gray-800 p-5">
+          <h2 className="text-sm font-semibold text-gray-900 dark:text-gray-100 mb-1">
+            Past invoices
+          </h2>
+          <p className="text-xs text-gray-500 dark:text-gray-400 mb-4">
+            Download PDF copies of your Stripe invoices. You can also manage
+            payment methods from{" "}
+            {showManageBilling ? (
+              <button
+                type="button"
+                onClick={handleManageBilling}
+                disabled={portalMutation.isPending}
+                className="text-indigo-600 dark:text-indigo-400 hover:underline disabled:opacity-50"
+              >
+                Manage billing
+              </button>
+            ) : (
+              "Manage billing"
+            )}{" "}
+            in the section above.
+          </p>
 
-        {!hasStripeCustomer ? (
-          <p className="text-sm text-gray-500 dark:text-gray-400">
-            Invoice history appears here after you start a subscription or
-            complete checkout with a payment method.
-          </p>
-        ) : invoicesLoading ? (
-          <p className="text-sm text-gray-500 dark:text-gray-400">Loading…</p>
-        ) : !invoicesData?.invoices?.length ? (
-          <p className="text-sm text-gray-500 dark:text-gray-400">
-            No invoices yet.
-          </p>
-        ) : (
-          <div className="overflow-x-auto -mx-1">
-            <table className="w-full text-sm text-left min-w-lg">
-              <thead>
-                <tr className="border-b border-gray-200 dark:border-gray-700 text-xs text-gray-500 dark:text-gray-400">
-                  <th className="pb-2 pr-4 font-medium">Date</th>
-                  <th className="pb-2 pr-4 font-medium">Invoice</th>
-                  <th className="pb-2 pr-4 font-medium">Amount</th>
-                  <th className="pb-2 pr-4 font-medium">Status</th>
-                  <th className="pb-2 font-medium text-right">PDF</th>
-                </tr>
-              </thead>
-              <tbody>
-                {invoicesData.invoices.map((inv) => (
-                  <tr
-                    key={inv.id}
-                    className="border-b border-gray-100 dark:border-gray-800/80 last:border-0"
-                  >
-                    <td className="py-3 pr-4 text-gray-700 dark:text-gray-300 whitespace-nowrap">
-                      {new Date(inv.created).toLocaleDateString()}
-                    </td>
-                    <td
-                      className="py-3 pr-4 text-gray-700 dark:text-gray-300 font-mono text-xs max-w-[10rem] truncate"
-                      title={inv.id}
-                    >
-                      {inv.number ?? inv.id}
-                    </td>
-                    <td className="py-3 pr-4 text-gray-900 dark:text-gray-100 whitespace-nowrap">
-                      {formatInvoiceAmount(inv.amountPaid, inv.currency)}
-                    </td>
-                    <td className="py-3 pr-4 capitalize text-gray-600 dark:text-gray-400">
-                      {inv.status?.replace(/_/g, " ") ?? "—"}
-                    </td>
-                    <td className="py-3 text-right">
-                      {inv.pdfUrl ? (
-                        <a
-                          href={inv.pdfUrl}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="text-sm font-medium text-indigo-600 dark:text-indigo-400 hover:underline"
-                        >
-                          Download PDF
-                        </a>
-                      ) : (
-                        <span className="text-xs text-gray-400">—</span>
-                      )}
-                    </td>
+          {!hasStripeCustomer ? (
+            <p className="text-sm text-gray-500 dark:text-gray-400">
+              Invoice history appears here after you start a subscription or
+              complete checkout with a payment method.
+            </p>
+          ) : invoicesLoading ? (
+            <p className="text-sm text-gray-500 dark:text-gray-400">Loading…</p>
+          ) : !invoicesData?.invoices?.length ? (
+            <p className="text-sm text-gray-500 dark:text-gray-400">
+              No invoices yet.
+            </p>
+          ) : (
+            <div className="overflow-x-auto -mx-1">
+              <table className="w-full text-sm text-left min-w-lg">
+                <thead>
+                  <tr className="border-b border-gray-200 dark:border-gray-700 text-xs text-gray-500 dark:text-gray-400">
+                    <th className="pb-2 pr-4 font-medium">Date</th>
+                    <th className="pb-2 pr-4 font-medium">Invoice</th>
+                    <th className="pb-2 pr-4 font-medium">Amount</th>
+                    <th className="pb-2 pr-4 font-medium">Status</th>
+                    <th className="pb-2 font-medium text-right">PDF</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
+                </thead>
+                <tbody>
+                  {invoicesData.invoices.map((inv) => (
+                    <tr
+                      key={inv.id}
+                      className="border-b border-gray-100 dark:border-gray-800/80 last:border-0"
+                    >
+                      <td className="py-3 pr-4 text-gray-700 dark:text-gray-300 whitespace-nowrap">
+                        {new Date(inv.created).toLocaleDateString()}
+                      </td>
+                      <td
+                        className="py-3 pr-4 text-gray-700 dark:text-gray-300 font-mono text-xs max-w-[10rem] truncate"
+                        title={inv.id}
+                      >
+                        {inv.number ?? inv.id}
+                      </td>
+                      <td className="py-3 pr-4 text-gray-900 dark:text-gray-100 whitespace-nowrap">
+                        {formatInvoiceAmount(inv.amountPaid, inv.currency)}
+                      </td>
+                      <td className="py-3 pr-4 capitalize text-gray-600 dark:text-gray-400">
+                        {inv.status?.replace(/_/g, " ") ?? "—"}
+                      </td>
+                      <td className="py-3 text-right">
+                        {inv.pdfUrl ? (
+                          <a
+                            href={inv.pdfUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-sm font-medium text-indigo-600 dark:text-indigo-400 hover:underline"
+                          >
+                            Download PDF
+                          </a>
+                        ) : (
+                          <span className="text-xs text-gray-400">—</span>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }

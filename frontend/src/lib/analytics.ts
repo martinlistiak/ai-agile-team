@@ -17,7 +17,16 @@ export function initAnalytics(): void {
     url: normalizeServerUrl(url),
   });
   Countly.q.push(["track_sessions"]);
+  Countly.q.push(["track_pageview"]);
   initialized = true;
+}
+
+/**
+ * Call on route changes (SPA navigation) so Countly records each view.
+ */
+export function trackPageview(path?: string): void {
+  if (!initialized) return;
+  Countly.q.push(["track_pageview", path ?? window.location.pathname]);
 }
 
 export function setAnalyticsUserId(userId: string | null): void {

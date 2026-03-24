@@ -1,11 +1,20 @@
 import { useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
+import { useAuth } from "@/contexts/AuthContext";
 import { useSpaces } from "@/api/hooks/useSpaces";
 import { OnboardingWizard } from "@/features/onboarding/OnboardingWizard";
 
 export function SpaceListPage() {
   const { data: spaces, isLoading } = useSpaces();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const { refreshUser } = useAuth();
+
+  useEffect(() => {
+    if (searchParams.get("session_id")) {
+      void refreshUser();
+    }
+  }, [searchParams, refreshUser]);
 
   useEffect(() => {
     if (spaces && spaces.length > 0) {

@@ -1,9 +1,11 @@
-import { createBrowserRouter, Navigate, Outlet } from "react-router-dom";
+import { createBrowserRouter, Outlet, useLocation } from "react-router-dom";
+import { useEffect } from "react";
 import { AuthLayout } from "@/layouts/AuthLayout";
 import { AppLayout } from "@/layouts/AppLayout";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
 import { ScrollToTop } from "@/components/ScrollToTop";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
+import { trackPageview } from "@/lib/analytics";
 import { LoginPage } from "@/features/auth/LoginPage";
 import { ForgotPasswordPage } from "@/features/auth/ForgotPasswordPage";
 import { ResetPasswordPage } from "@/features/auth/ResetPasswordPage";
@@ -16,7 +18,8 @@ import { HomePage } from "@/pages/HomePage";
 import { PrivacyPolicyPage } from "@/pages/PrivacyPolicyPage";
 import { StatusPage } from "@/pages/StatusPage";
 import { TermsPage } from "@/pages/TermsPage";
-import { BillingPage } from "@/pages/BillingPage";
+import { BillingGate } from "@/components/BillingGate";
+import { SubscriptionGate } from "@/components/SubscriptionGate";
 import { TeamPage } from "@/pages/TeamPage";
 import { IntegrationsPage } from "@/pages/IntegrationsPage";
 import { AcceptInvitationPage } from "@/pages/AcceptInvitationPage";
@@ -27,6 +30,12 @@ import { NotificationSettingsPage } from "@/pages/NotificationSettingsPage";
 import { NotFoundPage } from "@/pages/NotFoundPage";
 
 function RootLayout() {
+  const { pathname } = useLocation();
+
+  useEffect(() => {
+    trackPageview(pathname);
+  }, [pathname]);
+
   return (
     <ErrorBoundary>
       <ScrollToTop />
@@ -72,15 +81,24 @@ export const router = createBrowserRouter([
         ],
       },
       {
+        path: "/billing",
         element: (
           <ProtectedRoute>
-            <AppLayout />
+            <BillingGate />
+          </ProtectedRoute>
+        ),
+      },
+      {
+        element: (
+          <ProtectedRoute>
+            <SubscriptionGate>
+              <AppLayout />
+            </SubscriptionGate>
           </ProtectedRoute>
         ),
         children: [
           { path: "/spaces", element: <SpaceListPage /> },
           { path: "/spaces/:spaceId", element: <BoardPage /> },
-          { path: "/billing", element: <BillingPage /> },
           { path: "/settings", element: <SettingsPage /> },
           {
             path: "/settings/notifications",

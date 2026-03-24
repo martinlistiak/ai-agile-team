@@ -31,7 +31,12 @@ export function GitlabCallbackPage() {
       .post("/auth/gitlab/callback", { code })
       .then(({ data }) => {
         login(data.accessToken, data.user);
-        const dest = consumeAuthRedirect() ?? "/spaces";
+        const stashed = consumeAuthRedirect();
+        const hasSubscription =
+          data.user.subscriptionStatus === "active" ||
+          data.user.subscriptionStatus === "trialing" ||
+          data.user.hasTeamMembership;
+        const dest = stashed ?? (hasSubscription ? "/spaces" : "/billing");
         navigate(dest, { replace: true });
       })
       .catch((err: AxiosError<{ message?: string }>) => {

@@ -69,7 +69,7 @@ export class BillingService {
       customer: customerId,
       mode: "subscription",
       line_items: [{ price: priceId, quantity }],
-      success_url: `${this.getAppUrl()}/billing?session_id={CHECKOUT_SESSION_ID}`,
+      success_url: `${this.getAppUrl()}/spaces?session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: `${this.getAppUrl()}/billing`,
       subscription_data: {
         trial_period_days: TRIAL_PERIOD_DAYS,

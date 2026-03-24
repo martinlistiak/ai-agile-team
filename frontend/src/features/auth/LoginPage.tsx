@@ -136,7 +136,12 @@ export function LoginPage() {
       const { data } = await api.post(endpoint, payload);
       login(data.accessToken, data.user);
       const next = searchParams.get("next");
-      navigate(isSafeInternalPath(next) ? next : "/spaces");
+      const hasSubscription =
+        data.user.subscriptionStatus === "active" ||
+        data.user.subscriptionStatus === "trialing" ||
+        data.user.hasTeamMembership;
+      const fallback = hasSubscription ? "/spaces" : "/billing";
+      navigate(isSafeInternalPath(next) ? next : fallback);
     } catch (err: any) {
       setError(err.response?.data?.message || "Something went wrong");
     } finally {
