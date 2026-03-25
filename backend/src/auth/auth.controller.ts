@@ -62,7 +62,10 @@ export class AuthController {
     status: 201,
     description: "Account created, returns JWT and user",
   })
-  @ApiResponse({ status: 409, description: "Email already registered" })
+  @ApiResponse({
+    status: 409,
+    description: "Email already registered (body includes code EMAIL_ALREADY_REGISTERED)",
+  })
   async register(
     @Req() req: Request,
     @Body()

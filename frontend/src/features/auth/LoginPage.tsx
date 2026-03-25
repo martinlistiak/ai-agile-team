@@ -6,6 +6,10 @@ import { FaGithub } from "react-icons/fa";
 import { GitlabIcon } from "@/components/GitlabIcon";
 import api from "@/api/client";
 import { isSafeInternalPath, stashOAuthRedirect } from "@/lib/auth-redirect";
+import {
+  getApiErrorPayload,
+  isRegisterEmailInUseError,
+} from "@/lib/api-errors";
 
 const TURNSTILE_SCRIPT =
   "https://challenges.cloudflare.com/turnstile/v0/api.js";
@@ -43,6 +47,7 @@ export function LoginPage() {
   const [name, setName] = useState("");
   const [isRegister, setIsRegister] = useState(false);
   const [error, setError] = useState("");
+  const [emailInUseError, setEmailInUseError] = useState(false);
   const [loading, setLoading] = useState(false);
   const [acceptTerms, setAcceptTerms] = useState(false);
   const [acceptPrivacy, setAcceptPrivacy] = useState(false);
@@ -110,6 +115,7 @@ export function LoginPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
+    setEmailInUseError(false);
     if (isRegister && turnstileSiteKey && !turnstileToken) {
       setError("Please complete the verification step below.");
       return;
@@ -142,8 +148,16 @@ export function LoginPage() {
         data.user.hasTeamMembership;
       const fallback = hasSubscription ? "/spaces" : "/billing";
       navigate(isSafeInternalPath(next) ? next : fallback);
-    } catch (err: any) {
-      setError(err.response?.data?.message || "Something went wrong");
+    } catch (err: unknown) {
+      if (isRegister && isRegisterEmailInUseError(err)) {
+        setEmailInUseError(true);
+        setError(
+          "This email is already registered. Sign in with your password, or reset it if you forgot.",
+        );
+      } else {
+        const { message } = getApiErrorPayload(err);
+        setError(message);
+      }
     } finally {
       setLoading(false);
     }
@@ -267,9 +281,19 @@ export function LoginPage() {
             id="auth-email"
             type="email"
             value={email}
-            onChange={(e) => setEmail(e.target.value)}
+            onChange={(e) => {
+              setEmail(e.target.value);
+              if (emailInUseError) {
+                setEmailInUseError(false);
+                setError("");
+              }
+            }}
             className="auth-input"
             required
+            aria-invalid={emailInUseError || undefined}
+            aria-describedby={
+              emailInUseError && error ? "auth-email-error" : undefined
+            }
           />
         </div>
         <div>
@@ -363,9 +387,46 @@ export function LoginPage() {
         )}
 
         {error && (
-          <p className="text-[13px] font-medium" style={{ color: "#dc2626" }}>
-            {error}
-          </p>
+          <div
+            id={emailInUseError ? "auth-email-error" : "auth-form-error"}
+            role="alert"
+            className="text-[13px] font-medium rounded-lg px-3 py-2.5"
+            style={{
+              color: "#dc2626",
+              backgroundColor: "rgba(220, 38, 38, 0.08)",
+              wordBreak: "break-word",
+            }}
+          >
+            <p className="m-0">{error}</p>
+            {emailInUseError && isRegister ? (
+              <p
+                className="m-0 mt-2 text-[12px] font-normal leading-relaxed"
+                style={{ color: "var(--text-secondary)" }}
+              >
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsRegister(false);
+                    setError("");
+                    setEmailInUseError(false);
+                    setTurnstileToken(null);
+                  }}
+                  className="cursor-pointer font-medium underline-offset-2 hover:underline p-0 border-0 bg-transparent"
+                  style={{ color: "var(--accent)" }}
+                >
+                  Sign in with this email
+                </button>
+                <span aria-hidden="true"> · </span>
+                <Link
+                  to="/login/forgot-password"
+                  className="font-medium underline-offset-2 hover:underline"
+                  style={{ color: "var(--accent)" }}
+                >
+                  Forgot password?
+                </Link>
+              </p>
+            ) : null}
+          </div>
         )}
 
         {isRegister && turnstileSiteKey ? (
@@ -402,6 +463,7 @@ export function LoginPage() {
           onClick={() => {
             setIsRegister(!isRegister);
             setError("");
+            setEmailInUseError(false);
             setTurnstileToken(null);
             setAcceptTerms(false);
             setAcceptPrivacy(false);

@@ -4,6 +4,10 @@ import { isAxiosError } from "axios";
 export const API_ERROR_AGENT_RUN_QUOTA_EXCEEDED =
   "AGENT_RUN_QUOTA_EXCEEDED" as const;
 
+/** Must match backend register conflict `code` when email is already taken. */
+export const API_ERROR_EMAIL_ALREADY_REGISTERED =
+  "EMAIL_ALREADY_REGISTERED" as const;
+
 export function getApiErrorPayload(error: unknown): {
   status?: number;
   message: string;
@@ -25,6 +29,24 @@ export function getApiErrorPayload(error: unknown): {
     return { message: error.message };
   }
   return { message: "Something went wrong" };
+}
+
+/** True when signup failed because the email is already registered. */
+export function isRegisterEmailInUseError(error: unknown): boolean {
+  const { status, message, code } = getApiErrorPayload(error);
+  if (code === API_ERROR_EMAIL_ALREADY_REGISTERED) {
+    return true;
+  }
+  if (status !== 409) {
+    return false;
+  }
+  const m = message.toLowerCase();
+  return (
+    m.includes("email") &&
+    (m.includes("already") ||
+      m.includes("registered") ||
+      m.includes("in use"))
+  );
 }
 
 export function isAgentRunQuotaError(error: unknown): boolean {

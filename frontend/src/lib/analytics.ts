@@ -8,7 +8,6 @@ function normalizeServerUrl(url: string): string {
 
 export function initAnalytics(): void {
   const appKey = import.meta.env.VITE_COUNTLY_APP_KEY;
-  console.log(appKey);
   const url = import.meta.env.VITE_COUNTLY_SERVER_URL;
   if (!appKey || !url || initialized) return;
 

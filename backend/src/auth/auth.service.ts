@@ -89,7 +89,12 @@ export class AuthService {
     await this.turnstile.assertValidToken(turnstileToken, remoteIp);
 
     const existing = await this.userRepo.findOneBy({ email });
-    if (existing) throw new ConflictException("Email already registered");
+    if (existing) {
+      throw new ConflictException({
+        message: "An account with this email already exists.",
+        code: "EMAIL_ALREADY_REGISTERED",
+      });
+    }
 
     const hashedPassword = await bcrypt.hash(password, 10);
     const now = new Date();
