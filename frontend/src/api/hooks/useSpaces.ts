@@ -101,8 +101,10 @@ export function useDeleteSpace() {
   return useMutation({
     mutationFn: async (id: string) => {
       await api.delete(`/spaces/${id}`);
+      return id;
     },
-    onSuccess: () => {
+    onSuccess: (deletedId) => {
+      queryClient.removeQueries({ queryKey: ["spaces", deletedId] });
       queryClient.invalidateQueries({ queryKey: ["spaces"] });
       success("Space deleted");
     },

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { useNavigate, useParams } from "react-router-dom";
+import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import {
   DndContext,
   closestCenter,
@@ -19,6 +19,7 @@ import { CSS } from "@dnd-kit/utilities";
 import { useAuth } from "@/contexts/AuthContext";
 import { useSpaces, useReorderSpaces } from "@/api/hooks/useSpaces";
 import { OnboardingWizard } from "@/features/onboarding/OnboardingWizard";
+import { SpaceUpsellModal } from "@/components/SpaceUpsellModal";
 import {
   FiCreditCard,
   FiLogOut,
@@ -143,13 +144,39 @@ function SortableSpaceButton({
 export function SpaceSidebar() {
   const { spaceId } = useParams();
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const { user, logout } = useAuth();
   const { data: spaces, isLoading: spacesLoading } = useSpaces();
   const reorderSpaces = useReorderSpaces();
   const [showCreate, setShowCreate] = useState(false);
+  const [showUpsell, setShowUpsell] = useState(false);
   const [showUserMenu, setShowUserMenu] = useState(false);
   const [showFeedback, setShowFeedback] = useState(false);
   const userMenuRef = useRef<HTMLDivElement>(null);
+
+  const spaceCount = spaces?.length ?? 0;
+  const isSubscribed =
+    user?.subscriptionStatus === "active" ||
+    user?.subscriptionStatus === "trialing";
+
+  // Check if returning from Stripe portal after confirming add space
+  useEffect(() => {
+    if (searchParams.get("add_space") === "confirmed") {
+      setShowCreate(true);
+      // Clear the param from URL
+      searchParams.delete("add_space");
+      setSearchParams(searchParams, { replace: true });
+    }
+  }, [searchParams, setSearchParams]);
+
+  const handleAddSpaceClick = () => {
+    // Show upsell if user has at least one space and is subscribed
+    if (spaceCount > 0 && isSubscribed) {
+      setShowUpsell(true);
+    } else {
+      setShowCreate(true);
+    }
+  };
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
@@ -329,7 +356,7 @@ export function SpaceSidebar() {
             <RailTooltip label="New space">
               <button
                 type="button"
-                onClick={() => setShowCreate(true)}
+                onClick={handleAddSpaceClick}
                 className="cursor-pointer flex h-10 w-10 items-center justify-center rounded-xl border border-dashed border-gray-300 bg-transparent text-gray-500 transition-colors hover:border-primary-400 hover:text-primary-500 dark:border-gray-700 dark:text-gray-400"
                 aria-label="Create new space"
                 title="New space"
@@ -337,6 +364,18 @@ export function SpaceSidebar() {
                 <FiPlus />
               </button>
             </RailTooltip>
+            {showUpsell &&
+              createPortal(
+                <SpaceUpsellModal
+                  currentSpaceCount={spaceCount}
+                  onClose={() => setShowUpsell(false)}
+                  onConfirmed={() => {
+                    setShowUpsell(false);
+                    setShowCreate(true);
+                  }}
+                />,
+                document.body,
+              )}
             {showCreate &&
               createPortal(
                 <OnboardingWizard onClose={() => setShowCreate(false)} />,

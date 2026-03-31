@@ -2,9 +2,11 @@ import { useCallback, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useParams } from "react-router-dom";
 import { FiPlus } from "react-icons/fi";
+import { useAuth } from "@/contexts/AuthContext";
 import { useAgents } from "@/api/hooks/useAgents";
 import { AgentInspector } from "@/features/agents/AgentInspector";
 import { CustomAgentsPanel } from "@/features/agents/CustomAgentsPanel";
+import { CustomAgentUpsellModal } from "@/components/CustomAgentUpsellModal";
 import { cn } from "@/lib/cn";
 import { getStatusRingClass, getAvatarSrc } from "@/lib/avatars";
 import { AgentPanelSkeleton } from "@/components/Skeleton";
@@ -131,9 +133,21 @@ export function AgentBadge({
 
 export function AgentPanel() {
   const { spaceId } = useParams();
+  const { user } = useAuth();
   const { data: agents, isLoading: agentsLoading } = useAgents(spaceId || null);
   const [inspectedAgent, setInspectedAgent] = useState<Agent | null>(null);
   const [showCustomAgents, setShowCustomAgents] = useState(false);
+  const [showUpsell, setShowUpsell] = useState(false);
+
+  const canUseCustomAgents = user?.planTier !== "starter";
+
+  const handleCustomAgentsClick = () => {
+    if (canUseCustomAgents) {
+      setShowCustomAgents(true);
+    } else {
+      setShowUpsell(true);
+    }
+  };
 
   if (!spaceId) return null;
 
@@ -152,10 +166,14 @@ export function AgentPanel() {
               />
             ))
           )}
-          <RailTooltip label="Custom agents">
+          <RailTooltip
+            label={
+              canUseCustomAgents ? "Custom agents" : "Custom agents (Team plan)"
+            }
+          >
             <button
               type="button"
-              onClick={() => setShowCustomAgents(true)}
+              onClick={handleCustomAgentsClick}
               className="cursor-pointer flex h-9 w-9 items-center justify-center rounded-full border border-dashed border-gray-300 bg-transparent text-gray-500 transition-colors hover:border-primary-400 hover:text-primary-500 dark:border-gray-700 dark:text-gray-400"
               aria-label="Custom agents"
               title="Custom agents"
@@ -176,6 +194,9 @@ export function AgentPanel() {
           spaceId={spaceId}
           onClose={() => setShowCustomAgents(false)}
         />
+      )}
+      {showUpsell && (
+        <CustomAgentUpsellModal onClose={() => setShowUpsell(false)} />
       )}
     </>
   );

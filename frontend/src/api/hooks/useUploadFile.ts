@@ -6,11 +6,27 @@ interface UploadFileResponse {
   key: string;
 }
 
+interface UploadFileParams {
+  file: File;
+  spaceId?: string;
+  entityType?: string;
+  entityId?: string;
+}
+
 export function useUploadFile() {
-  return useMutation<UploadFileResponse, Error, File>({
-    mutationFn: async (file: File) => {
+  return useMutation<UploadFileResponse, Error, UploadFileParams | File>({
+    mutationFn: async (input) => {
       const formData = new FormData();
-      formData.append("file", file);
+
+      if (input instanceof File) {
+        formData.append("file", input);
+      } else {
+        formData.append("file", input.file);
+        if (input.spaceId) formData.append("spaceId", input.spaceId);
+        if (input.entityType) formData.append("entityType", input.entityType);
+        if (input.entityId) formData.append("entityId", input.entityId);
+      }
+
       const { data } = await api.post<UploadFileResponse>(
         "/files/upload",
         formData,

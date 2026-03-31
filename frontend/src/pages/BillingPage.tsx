@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
 import { useSearchParams } from "react-router-dom";
+import { useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/contexts/AuthContext";
+import { Button } from "@/components/Button";
 import {
   useBillingUsage,
   useBillingInvoices,
@@ -8,6 +10,8 @@ import {
   useBillingPortal,
   useCreditsBalance,
   useCreditTopUp,
+  useVerifyCheckoutSession,
+  useVerifyTopUpSession,
 } from "@/api/hooks/useBilling";
 import type { PlanTier } from "@/types";
 
@@ -33,7 +37,7 @@ const PLANS = [
     monthlyPrice: 46,
     annualPrice: 39,
     features: [
-      "Unlimited agent runs",
+      "50 AI agent runs / day",
       "Full pipeline automation",
       "Custom agent rules",
       "Priority support",
@@ -77,6 +81,7 @@ export function BillingPage({ onboarding = false }: { onboarding?: boolean }) {
   const { user, refreshUser, logout } = useAuth();
   const [searchParams] = useSearchParams();
   const [annual, setAnnual] = useState(true);
+  const queryClient = useQueryClient();
 
   const { data: usage } = useBillingUsage();
   const hasStripeCustomer = Boolean(user?.hasStripeCustomer);
@@ -86,16 +91,36 @@ export function BillingPage({ onboarding = false }: { onboarding?: boolean }) {
   const portalMutation = useBillingPortal();
   const { data: creditsData } = useCreditsBalance();
   const topUpMutation = useCreditTopUp();
+  const verifySessionMutation = useVerifyCheckoutSession();
+  const verifyTopUpMutation = useVerifyTopUpSession();
   const [topUpAmount, setTopUpAmount] = useState(5);
 
   useEffect(() => {
-    if (searchParams.get("session_id")) {
-      void refreshUser();
+    const sessionId = searchParams.get("session_id");
+    const topupSessionId = searchParams.get("topup_session_id");
+
+    if (sessionId) {
+      verifySessionMutation
+        .mutateAsync(sessionId)
+        .then(() => {
+          void refreshUser();
+        })
+        .catch(console.error);
     }
-    if (searchParams.get("topup") === "success") {
-      void refreshUser();
+
+    if (topupSessionId) {
+      verifyTopUpMutation
+        .mutateAsync(topupSessionId)
+        .then(() => {
+          void refreshUser();
+          void queryClient.invalidateQueries({
+            queryKey: ["billing", "credits"],
+          });
+        })
+        .catch(console.error);
     }
-  }, [searchParams, refreshUser]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams, refreshUser, queryClient]);
 
   const currentPlan = user?.planTier ?? "starter";
   const isActive =
@@ -202,9 +227,21 @@ export function BillingPage({ onboarding = false }: { onboarding?: boolean }) {
                   </span>
                 )}
             </p>
-            {user?.currentPeriodEnd && isActive && (
+            {user?.cancelAtPeriodEnd && user?.currentPeriodEnd && isActive && (
+              <p className="text-xs text-amber-600 dark:text-amber-400 mt-0.5">
+                Cancels on{" "}
+                {new Date(user.currentPeriodEnd).toLocaleDateString()}
+              </p>
+            )}
+            {!user?.cancelAtPeriodEnd && user?.currentPeriodEnd && isActive && (
               <p className="text-xs text-gray-400 mt-0.5">
                 Renews {new Date(user.currentPeriodEnd).toLocaleDateString()}
+              </p>
+            )}
+            {user?.subscriptionStatus === "canceled" && (
+              <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                Your subscription has been canceled. Choose a plan to
+                resubscribe.
               </p>
             )}
           </div>
@@ -295,7 +332,7 @@ export function BillingPage({ onboarding = false }: { onboarding?: boolean }) {
             </div>
           </div>
 
-          {searchParams.get("topup") === "success" && (
+          {searchParams.get("topup_session_id") && (
             <div
               className="rounded-lg border border-emerald-200 dark:border-emerald-900/50 bg-emerald-50 dark:bg-emerald-950/30 px-3 py-2 mb-4 text-sm text-emerald-800 dark:text-emerald-200"
               role="status"
@@ -515,14 +552,13 @@ export function BillingPage({ onboarding = false }: { onboarding?: boolean }) {
             Download PDF copies of your Stripe invoices. You can also manage
             payment methods from{" "}
             {showManageBilling ? (
-              <button
-                type="button"
+              <Button
+                variant="link"
                 onClick={handleManageBilling}
                 disabled={portalMutation.isPending}
-                className="text-indigo-600 dark:text-indigo-400 hover:underline disabled:opacity-50"
               >
                 Manage billing
-              </button>
+              </Button>
             ) : (
               "Manage billing"
             )}{" "}

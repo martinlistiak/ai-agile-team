@@ -651,6 +651,7 @@ export class AuthService {
       planTier: user.planTier,
       subscriptionStatus: user.subscriptionStatus,
       currentPeriodEnd: user.currentPeriodEnd,
+      cancelAtPeriodEnd: user.cancelAtPeriodEnd,
       createdAt: user.createdAt,
       emailVerified: !!user.emailVerifiedAt,
       hasPassword: !!user.hashedPassword,
@@ -746,7 +747,7 @@ export class AuthService {
       ext,
     );
     const appUrl = this.configService
-      .get("APP_URL", "http://localhost:3001")
+      .get("APP_URL", "https://runa-app.com")
       .replace(/\/$/, "");
     user.avatarUrl = `${appUrl}/api/files/${key}`;
     await this.userRepo.save(user);

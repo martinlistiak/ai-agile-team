@@ -71,7 +71,7 @@ const plans = [
     monthlyPrice: 46,
     annualPrice: 39,
     features: [
-      "Unlimited agent runs",
+      "50 AI agent runs / day",
       "Full pipeline automation",
       "Custom agents & rules",
       "Code review agent",

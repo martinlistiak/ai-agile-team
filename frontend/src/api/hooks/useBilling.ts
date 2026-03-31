@@ -91,3 +91,37 @@ export function useCreditTopUp() {
     },
   });
 }
+
+export function useVerifyCheckoutSession() {
+  return useMutation({
+    mutationFn: async (sessionId: string) => {
+      const { data } = await api.post<{ success: boolean }>(
+        "/billing/verify-session",
+        { sessionId },
+      );
+      return data;
+    },
+  });
+}
+
+export function useVerifyTopUpSession() {
+  return useMutation({
+    mutationFn: async (sessionId: string) => {
+      const { data } = await api.post<{
+        success: boolean;
+        creditsAdded: number;
+      }>("/billing/verify-topup", { sessionId });
+      return data;
+    },
+  });
+}
+
+export function useAddSpaceCheckout() {
+  return useMutation({
+    mutationFn: async () => {
+      const { data } = await api.post<{ url: string }>("/billing/add-space");
+      trackEvent("billing_add_space_started", {});
+      return data;
+    },
+  });
+}

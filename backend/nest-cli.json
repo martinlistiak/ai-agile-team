@@ -11,6 +11,11 @@
           "introspectComments": true
         }
       }
-    ]
+    ],
+    "watchAssets": true
+  },
+  "watchOptions": {
+    "watchPolling": true,
+    "poll": 1000
   }
 }

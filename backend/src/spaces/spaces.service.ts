@@ -107,7 +107,44 @@ export class SpacesService {
   }
 
   async delete(id: string): Promise<void> {
-    await this.spaceRepo.delete(id);
+    await this.dataSource.transaction(async (manager) => {
+      // Get agent IDs for this space
+      const agents: { id: string }[] = await manager.query(
+        `SELECT id FROM agents WHERE "spaceId" = $1`,
+        [id],
+      );
+      const agentIds = agents.map((a) => a.id);
+
+      // Get ticket IDs for this space
+      const tickets: { id: string }[] = await manager.query(
+        `SELECT id FROM tickets WHERE "spaceId" = $1`,
+        [id],
+      );
+      const ticketIds = tickets.map((t) => t.id);
+
+      // Delete executions (FK to agents and tickets)
+      if (agentIds.length > 0) {
+        await manager.query(
+          `DELETE FROM executions WHERE "agentId" = ANY($1)`,
+          [agentIds],
+        );
+      }
+      if (ticketIds.length > 0) {
+        await manager.query(
+          `DELETE FROM executions WHERE "ticketId" = ANY($1)`,
+          [ticketIds],
+        );
+      }
+
+      // Delete tickets (FK to agents via assigneeAgentId)
+      await manager.query(`DELETE FROM tickets WHERE "spaceId" = $1`, [id]);
+
+      // Delete agents
+      await manager.query(`DELETE FROM agents WHERE "spaceId" = $1`, [id]);
+
+      // Delete space (cascades to chat_messages, rules, suggested_rules via DB)
+      await manager.query(`DELETE FROM spaces WHERE id = $1`, [id]);
+    });
   }
 
   async reorder(userId: string, orderedIds: string[]): Promise<void> {

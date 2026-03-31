@@ -72,6 +72,46 @@ export class BillingController {
     return this.billingService.createPortalSession((req.user as any).id);
   }
 
+  @Post("verify-session")
+  @UseGuards(JwtOrApiKeyGuard)
+  @ApiBearerAuth("bearer")
+  @ApiOperation({ summary: "Verify a completed checkout session" })
+  @ApiBody({
+    schema: {
+      type: "object",
+      properties: {
+        sessionId: { type: "string" },
+      },
+      required: ["sessionId"],
+    },
+  })
+  @ApiResponse({ status: 200, description: "Session verification result" })
+  async verifySession(
+    @Req() req: Request,
+    @Body() body: { sessionId: string },
+  ) {
+    return this.billingService.verifyCheckoutSession(
+      (req.user as any).id,
+      body.sessionId,
+    );
+  }
+
+  @Post("add-space")
+  @UseGuards(JwtOrApiKeyGuard)
+  @ApiBearerAuth("bearer")
+  @ApiOperation({
+    summary: "Create a billing portal session to add a space to subscription",
+  })
+  @ApiResponse({
+    status: 201,
+    description: "Portal session URL for subscription update",
+  })
+  async createAddSpaceSession(@Req() req: Request) {
+    return this.billingService.createAddSpaceCheckoutSession(
+      (req.user as any).id,
+    );
+  }
+
   @Get("subscription")
   @UseGuards(JwtOrApiKeyGuard)
   @ApiBearerAuth("bearer")
@@ -129,6 +169,27 @@ export class BillingController {
     return this.billingService.createTopUpSession(
       (req.user as any).id,
       body.amount,
+    );
+  }
+
+  @Post("verify-topup")
+  @UseGuards(JwtOrApiKeyGuard)
+  @ApiBearerAuth("bearer")
+  @ApiOperation({ summary: "Verify a completed top-up checkout session" })
+  @ApiBody({
+    schema: {
+      type: "object",
+      properties: {
+        sessionId: { type: "string" },
+      },
+      required: ["sessionId"],
+    },
+  })
+  @ApiResponse({ status: 200, description: "Top-up verification result" })
+  async verifyTopUp(@Req() req: Request, @Body() body: { sessionId: string }) {
+    return this.billingService.verifyTopUpSession(
+      (req.user as any).id,
+      body.sessionId,
     );
   }
 

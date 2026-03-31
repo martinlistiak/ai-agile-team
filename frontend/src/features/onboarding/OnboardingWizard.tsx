@@ -22,15 +22,14 @@ const PIPELINE_STAGES = [
 
 /**
  * Pure step-advancement logic extracted for testability.
- * Returns the next step after completing or skipping the current step.
+ * Returns the next step after completing.
  * Returns null if the wizard is complete (step 3 completed).
  */
 export function getNextStep(
   currentStep: WizardStep,
-  action: "complete" | "skip",
+  action: "complete",
 ): WizardStep | null {
   if (currentStep === 3 && action === "complete") return null;
-  if (currentStep === 3 && action === "skip") return null;
   return (currentStep + 1) as WizardStep;
 }
 
@@ -64,9 +63,8 @@ export function OnboardingWizard({ onClose }: OnboardingWizardProps = {}) {
     if (next) setStep(next);
   };
 
-  const handleSkip = () => {
-    const next = getNextStep(step, "skip");
-    if (next) setStep(next);
+  const handleBack = () => {
+    if (step > 1) setStep((step - 1) as WizardStep);
   };
 
   const handleComplete = async () => {
@@ -121,17 +119,20 @@ export function OnboardingWizard({ onClose }: OnboardingWizardProps = {}) {
       <div className="flex items-center gap-2 mb-6">
         {[1, 2, 3].map((s) => (
           <div key={s} className="flex items-center gap-2">
-            <div
-              className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium ${
+            <button
+              type="button"
+              onClick={() => s < step && setStep(s as WizardStep)}
+              disabled={s >= step}
+              className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium transition-colors ${
                 s === step
                   ? "bg-primary-500 text-white"
                   : s < step
-                    ? "bg-primary-100 text-primary-600 dark:bg-primary-900 dark:text-primary-300"
-                    : "bg-gray-100 text-gray-400 dark:bg-gray-700 dark:text-gray-500"
+                    ? "bg-primary-100 text-primary-600 dark:bg-primary-900 dark:text-primary-300 cursor-pointer hover:bg-primary-200 dark:hover:bg-primary-800"
+                    : "bg-gray-100 text-gray-400 dark:bg-gray-700 dark:text-gray-500 cursor-default"
               }`}
             >
               {s}
-            </div>
+            </button>
             {s < 3 && (
               <div
                 className={`w-12 h-0.5 ${
@@ -182,7 +183,6 @@ export function OnboardingWizard({ onClose }: OnboardingWizardProps = {}) {
           </h2>
           <p className="text-gray-500 dark:text-gray-400 mb-6">
             Link a repo so agents can read code and create pull/merge requests.
-            You can skip this and connect later.
           </p>
 
           {/* Source toggle */}
@@ -285,10 +285,10 @@ export function OnboardingWizard({ onClose }: OnboardingWizardProps = {}) {
           )}
           <div className="flex gap-3">
             <button
-              onClick={handleSkip}
+              onClick={handleBack}
               className="cursor-pointer flex-1 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 rounded-lg px-4 py-3 font-medium hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
             >
-              Skip
+              Back
             </button>
             <button
               onClick={handleNext}
@@ -328,13 +328,21 @@ export function OnboardingWizard({ onClose }: OnboardingWizardProps = {}) {
               </label>
             ))}
           </div>
-          <button
-            onClick={handleComplete}
-            disabled={createSpace.isPending}
-            className="cursor-pointer w-full bg-primary-500 text-white rounded-lg px-4 py-3 font-medium hover:bg-primary-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            {createSpace.isPending ? "Creating space..." : "Create space"}
-          </button>
+          <div className="flex gap-3">
+            <button
+              onClick={handleBack}
+              className="cursor-pointer flex-1 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 rounded-lg px-4 py-3 font-medium hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+            >
+              Back
+            </button>
+            <button
+              onClick={handleComplete}
+              disabled={createSpace.isPending}
+              className="cursor-pointer flex-1 bg-primary-500 text-white rounded-lg px-4 py-3 font-medium hover:bg-primary-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {createSpace.isPending ? "Creating space..." : "Create space"}
+            </button>
+          </div>
         </div>
       )}
     </div>

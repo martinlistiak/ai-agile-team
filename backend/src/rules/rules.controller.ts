@@ -17,6 +17,7 @@ import {
 } from "@nestjs/swagger";
 import { JwtOrApiKeyGuard } from "../auth/jwt-or-apikey.guard";
 import { SubscriptionActiveGuard } from "../common/subscription-active.guard";
+import { PlanGuard, RequirePlan } from "../billing/plan.guard";
 import { RulesService } from "./rules.service";
 import { SuggestedRulesService } from "./suggested-rules.service";
 import { CreateRuleDto } from "./dto/create-rule.dto";
@@ -41,9 +42,12 @@ export class RulesController {
   }
 
   @Post("spaces/:spaceId/rules")
+  @UseGuards(PlanGuard)
+  @RequirePlan("team", "enterprise")
   @ApiOperation({ summary: "Create a new rule" })
   @ApiParam({ name: "spaceId", format: "uuid" })
   @ApiResponse({ status: 201, description: "Created rule" })
+  @ApiResponse({ status: 403, description: "Plan upgrade required" })
   async createRule(
     @Param("spaceId") spaceId: string,
     @Body() body: CreateRuleDto,
@@ -57,17 +61,23 @@ export class RulesController {
   }
 
   @Patch("rules/:id")
+  @UseGuards(PlanGuard)
+  @RequirePlan("team", "enterprise")
   @ApiOperation({ summary: "Update a rule" })
   @ApiParam({ name: "id", format: "uuid" })
   @ApiResponse({ status: 200, description: "Updated rule" })
+  @ApiResponse({ status: 403, description: "Plan upgrade required" })
   async updateRule(@Param("id") id: string, @Body() body: UpdateRuleDto) {
     return this.rulesService.update(id, body);
   }
 
   @Delete("rules/:id")
+  @UseGuards(PlanGuard)
+  @RequirePlan("team", "enterprise")
   @ApiOperation({ summary: "Delete a rule" })
   @ApiParam({ name: "id", format: "uuid" })
   @ApiResponse({ status: 200, description: "Rule deleted" })
+  @ApiResponse({ status: 403, description: "Plan upgrade required" })
   async deleteRule(@Param("id") id: string) {
     await this.rulesService.delete(id);
     return { success: true };
@@ -82,9 +92,12 @@ export class RulesController {
   }
 
   @Post("suggested-rules/:id/accept")
+  @UseGuards(PlanGuard)
+  @RequirePlan("team", "enterprise")
   @ApiOperation({ summary: "Accept a suggested rule" })
   @ApiParam({ name: "id", format: "uuid" })
   @ApiResponse({ status: 201, description: "Rule accepted and created" })
+  @ApiResponse({ status: 403, description: "Plan upgrade required" })
   async acceptSuggestion(@Param("id") id: string) {
     return this.suggestedRulesService.accept(id);
   }

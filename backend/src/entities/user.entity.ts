@@ -60,6 +60,10 @@ export class User {
   @Column({ type: "timestamptz", nullable: true })
   currentPeriodEnd: Date;
 
+  /** True if the subscription is set to cancel at the end of the current period */
+  @Column({ type: "boolean", default: false })
+  cancelAtPeriodEnd: boolean;
+
   /** Usage credits balance in cents. Topped up via one-time payments. */
   @Column({ type: "int", default: 0 })
   creditsBalance: number;

@@ -69,16 +69,80 @@ export class BillingService {
       customer: customerId,
       mode: "subscription",
       line_items: [{ price: priceId, quantity }],
-      success_url: `${this.getAppUrl()}/spaces?session_id={CHECKOUT_SESSION_ID}`,
+      success_url: `${this.getAppUrl()}/billing?session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: `${this.getAppUrl()}/billing`,
       subscription_data: {
         trial_period_days: TRIAL_PERIOD_DAYS,
         metadata: { userId: user.id, plan },
       },
-      allow_promotion_codes: true,
+      // Checkout options from configuration
+      automatic_tax: { enabled: true },
+      billing_address_collection: "required",
+      customer_update: {
+        name: "auto",
+        address: "auto",
+      },
+      tax_id_collection: { enabled: true },
+      payment_method_collection: "always",
+      saved_payment_method_options: {
+        payment_method_save: "enabled",
+      },
+      custom_text: {
+        submit: { message: "Subscribe" },
+      },
     });
 
     return { url: session.url! };
+  }
+
+  async verifyCheckoutSession(
+    userId: string,
+    sessionId: string,
+  ): Promise<{ success: boolean }> {
+    const user = await this.userRepo.findOneBy({ id: userId });
+    if (!user) throw new NotFoundException("User not found");
+
+    const session = await this.stripe.checkout.sessions.retrieve(sessionId);
+
+    // Verify the session belongs to this user's customer
+    const customerId =
+      typeof session.customer === "string"
+        ? session.customer
+        : session.customer?.id;
+    if (customerId !== user.stripeCustomerId) {
+      throw new BadRequestException("Session does not belong to this user");
+    }
+
+    if (session.status !== "complete") {
+      return { success: false };
+    }
+
+    // If subscription mode, update user's subscription info
+    if (session.mode === "subscription" && session.subscription) {
+      const subscriptionId =
+        typeof session.subscription === "string"
+          ? session.subscription
+          : session.subscription.id;
+
+      const subscription =
+        await this.stripe.subscriptions.retrieve(subscriptionId);
+
+      user.stripeSubscriptionId = subscription.id;
+      user.subscriptionStatus = this.mapStatus(subscription.status);
+      user.planTier = this.extractPlanTier(subscription);
+
+      const firstItem = subscription.items?.data?.[0];
+      if (firstItem?.current_period_end) {
+        user.currentPeriodEnd = new Date(firstItem.current_period_end * 1000);
+      }
+
+      await this.userRepo.save(user);
+      this.logger.log(
+        `Verified checkout session for user ${user.id}: ${user.planTier} (${user.subscriptionStatus})`,
+      );
+    }
+
+    return { success: true };
   }
 
   async createPortalSession(userId: string): Promise<{ url: string }> {
@@ -102,6 +166,7 @@ export class BillingService {
       planTier: user.planTier,
       subscriptionStatus: user.subscriptionStatus,
       currentPeriodEnd: user.currentPeriodEnd,
+      cancelAtPeriodEnd: user.cancelAtPeriodEnd,
       stripeCustomerId: user.stripeCustomerId,
     };
   }
@@ -193,6 +258,7 @@ export class BillingService {
     user.stripeSubscriptionId = subscription.id;
     user.subscriptionStatus = this.mapStatus(subscription.status);
     user.planTier = this.extractPlanTier(subscription);
+    user.cancelAtPeriodEnd = subscription.cancel_at_period_end;
 
     // Get period end from the first subscription item
     const firstItem = subscription.items?.data?.[0];
@@ -202,7 +268,7 @@ export class BillingService {
 
     await this.userRepo.save(user);
     this.logger.log(
-      `Subscription updated for user ${user.id}: ${user.planTier} (${user.subscriptionStatus})`,
+      `Subscription updated for user ${user.id}: ${user.planTier} (${user.subscriptionStatus})${user.cancelAtPeriodEnd ? " - cancels at period end" : ""}`,
     );
   }
 
@@ -216,6 +282,7 @@ export class BillingService {
     user.subscriptionStatus = "canceled";
     user.stripeSubscriptionId = null as any;
     user.currentPeriodEnd = null as any;
+    user.cancelAtPeriodEnd = false;
 
     await this.userRepo.save(user);
     this.logger.log(`Subscription canceled for user ${user.id}`);
@@ -325,6 +392,39 @@ export class BillingService {
     );
   }
 
+  async createAddSpaceCheckoutSession(
+    userId: string,
+  ): Promise<{ url: string }> {
+    const user = await this.userRepo.findOneBy({ id: userId });
+    if (!user) throw new NotFoundException("User not found");
+    if (!user.stripeSubscriptionId) {
+      throw new BadRequestException("No active subscription found");
+    }
+
+    // Update the subscription quantity directly (prorated)
+    const subscription = await this.stripe.subscriptions.retrieve(
+      user.stripeSubscriptionId,
+    );
+    const item = subscription.items.data[0];
+    if (!item) {
+      throw new BadRequestException("No subscription item found");
+    }
+
+    const newQuantity = (item.quantity ?? 1) + 1;
+
+    await this.stripe.subscriptions.update(user.stripeSubscriptionId, {
+      items: [{ id: item.id, quantity: newQuantity }],
+      proration_behavior: "always_invoice",
+    });
+
+    this.logger.log(
+      `Added space for user ${userId}: subscription quantity updated to ${newQuantity}`,
+    );
+
+    // Return the spaces page URL so the frontend can redirect and open the wizard
+    return { url: `${this.getAppUrl()}/spaces?add_space=confirmed` };
+  }
+
   private extractPlanTier(subscription: Stripe.Subscription): PlanTier {
     const metadata = subscription.metadata;
     if (metadata?.plan === "enterprise") return "enterprise";
@@ -394,11 +494,85 @@ export class BillingService {
         type: "credit_topup",
         amountCents: String(amountCents),
       },
-      success_url: `${this.getAppUrl()}/billing?topup=success`,
+      success_url: `${this.getAppUrl()}/billing?topup_session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: `${this.getAppUrl()}/billing`,
     });
 
     return { url: session.url! };
+  }
+
+  async verifyTopUpSession(
+    userId: string,
+    sessionId: string,
+  ): Promise<{ success: boolean; creditsAdded: number }> {
+    const user = await this.userRepo.findOneBy({ id: userId });
+    if (!user) throw new NotFoundException("User not found");
+
+    const session = await this.stripe.checkout.sessions.retrieve(sessionId);
+
+    // Verify the session belongs to this user's customer
+    const customerId =
+      typeof session.customer === "string"
+        ? session.customer
+        : session.customer?.id;
+    if (customerId !== user.stripeCustomerId) {
+      throw new BadRequestException("Session does not belong to this user");
+    }
+
+    if (session.status !== "complete") {
+      return { success: false, creditsAdded: 0 };
+    }
+
+    // Check if this is a credit top-up session
+    if (session.metadata?.type !== "credit_topup") {
+      throw new BadRequestException("This is not a credit top-up session");
+    }
+
+    const amountCents = parseInt(session.metadata.amountCents, 10);
+    if (isNaN(amountCents) || amountCents <= 0) {
+      throw new BadRequestException("Invalid amount in session metadata");
+    }
+
+    // Check if we already processed this session (avoid double-crediting)
+    const paymentIntentId =
+      typeof session.payment_intent === "string"
+        ? session.payment_intent
+        : session.payment_intent?.id;
+
+    if (paymentIntentId) {
+      const paymentIntent =
+        await this.stripe.paymentIntents.retrieve(paymentIntentId);
+      // If already marked as credited, skip
+      if (paymentIntent.metadata?.credited === "true") {
+        this.logger.log(
+          `Top-up session ${sessionId} already credited, skipping`,
+        );
+        return { success: true, creditsAdded: 0 };
+      }
+
+      // Add credits
+      await this.userRepo.increment(
+        { id: userId },
+        "creditsBalance",
+        amountCents,
+      );
+
+      // Mark as credited to prevent double-crediting
+      await this.stripe.paymentIntents.update(paymentIntentId, {
+        metadata: { ...paymentIntent.metadata, credited: "true" },
+      });
+
+      this.logger.log(
+        `Verified top-up session for user ${user.id}: added ${amountCents} cents`,
+      );
+      this.countly.record(userId, "credits_topup_verified", {
+        amountCents: String(amountCents),
+      });
+
+      return { success: true, creditsAdded: amountCents };
+    }
+
+    return { success: false, creditsAdded: 0 };
   }
 
   private async handleTopUpCompleted(

@@ -1,0 +1,18 @@
+FROM oven/bun:latest
+
+# Install system dependencies including Node.js (required for nest CLI)
+RUN apt-get update && apt-get install -y git curl && \
+    curl -fsSL https://deb.nodesource.com/setup_22.x | bash - && \
+    apt-get install -y nodejs && \
+    rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# Copy package files first for better caching
+COPY package.json bun.lock ./
+RUN bun install
+
+# Don't copy source - it will be mounted as a volume
+
+EXPOSE 3001
+CMD ["bun", "run", "start:dev"]

@@ -5,9 +5,12 @@ import {
   FiChevronUp,
   FiClock,
   FiEdit,
+  FiLock,
   FiPlus,
   FiZap,
 } from "react-icons/fi";
+import { useAuth } from "@/contexts/AuthContext";
+import { AuditUpsellModal } from "@/components/AuditUpsellModal";
 import { getSocket } from "@/lib/socket";
 import type { AgentType } from "@/types";
 
@@ -77,9 +80,21 @@ function buildSummary(
 }
 
 export function AuditToolbar({ spaceId }: { spaceId: string }) {
+  const { user } = useAuth();
   const [events, setEvents] = useState<AuditEvent[]>([]);
   const [isOpen, setIsOpen] = useState(false);
+  const [showUpsell, setShowUpsell] = useState(false);
   const listRef = useRef<HTMLDivElement>(null);
+
+  const canUseAuditLog = user?.planTier !== "starter";
+
+  const handleToggle = () => {
+    if (!isOpen && !canUseAuditLog) {
+      setShowUpsell(true);
+    } else {
+      setIsOpen(!isOpen);
+    }
+  };
 
   const addEvent = useCallback(
     (type: AuditEventType, payload: Record<string, unknown>) => {
@@ -127,16 +142,24 @@ export function AuditToolbar({ spaceId }: { spaceId: string }) {
 
   if (!isOpen) {
     return (
-      <button
-        type="button"
-        onClick={() => setIsOpen(true)}
-        className="cursor-pointer flex items-center gap-1 border-t border-gray-200 bg-gray-50 px-4 py-1.5 text-xs text-gray-500 hover:bg-gray-100 dark:border-gray-800 dark:bg-gray-900 dark:text-gray-400 dark:hover:bg-gray-800"
-        aria-label="Open audit toolbar"
-      >
-        <FiChevronUp size={12} />
-        <FiActivity size={12} />
-        <span>Audit Log</span>
-      </button>
+      <>
+        <button
+          type="button"
+          onClick={handleToggle}
+          className="cursor-pointer flex items-center gap-1 border-t border-gray-200 bg-gray-50 px-4 py-1.5 text-xs text-gray-500 hover:bg-gray-100 dark:border-gray-800 dark:bg-gray-900 dark:text-gray-400 dark:hover:bg-gray-800"
+          aria-label="Open audit toolbar"
+        >
+          <FiChevronUp size={12} />
+          <FiActivity size={12} />
+          <span>Audit Log</span>
+          {!canUseAuditLog && (
+            <FiLock size={10} className="ml-1 text-amber-500" />
+          )}
+        </button>
+        {showUpsell && (
+          <AuditUpsellModal onClose={() => setShowUpsell(false)} />
+        )}
+      </>
     );
   }
 

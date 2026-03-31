@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { FiZap, FiBook, FiPlus, FiEdit2, FiTrash2 } from "react-icons/fi";
+import { useAuth } from "@/contexts/AuthContext";
 import {
   useSpace,
   useUpdateSpace,
@@ -13,6 +14,8 @@ import { ChatBubble } from "@/features/chat/ChatBubble";
 import { ChatModal } from "@/features/chat/ChatModal";
 import { PipelineSettings } from "@/features/pipeline/PipelineSettings";
 import { RulesPanel } from "@/features/rules/RulesPanel";
+import { RulesUpsellModal } from "@/components/RulesUpsellModal";
+import { PipelineUpsellModal } from "@/components/PipelineUpsellModal";
 import { SuggestedRulesBar } from "@/features/rules/SuggestedRulesBar";
 import { PipelineToast } from "@/components/PipelinePrompt";
 import { TicketDetailPanel } from "./TicketDetailPanel";
@@ -27,17 +30,38 @@ import {
 export function BoardPage() {
   const { spaceId } = useParams();
   const navigate = useNavigate();
+  const { user } = useAuth();
   const { data: space } = useSpace(spaceId || null);
   const updateSpace = useUpdateSpace();
   const deleteSpace = useDeleteSpace();
   const [showPipeline, setShowPipeline] = useState(false);
+  const [showPipelineUpsell, setShowPipelineUpsell] = useState(false);
   const [showRules, setShowRules] = useState(false);
+  const [showRulesUpsell, setShowRulesUpsell] = useState(false);
   const [showCreateTicket, setShowCreateTicket] = useState(false);
   const [showEdit, setShowEdit] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [editName, setEditName] = useState("");
   const [editColor, setEditColor] = useState<string | null>(null);
   const editRef = useRef<HTMLDivElement>(null);
+
+  const canUseTeamFeatures = user?.planTier !== "starter";
+
+  const handleRulesClick = () => {
+    if (canUseTeamFeatures) {
+      setShowRules(true);
+    } else {
+      setShowRulesUpsell(true);
+    }
+  };
+
+  const handlePipelineClick = () => {
+    if (canUseTeamFeatures) {
+      setShowPipeline(true);
+    } else {
+      setShowPipelineUpsell(true);
+    }
+  };
 
   useEffect(() => {
     if (!showEdit) return;
@@ -72,7 +96,10 @@ export function BoardPage() {
     deleteSpace.mutate(spaceId, {
       onSuccess: () => {
         setShowEdit(false);
-        navigate("/spaces");
+        navigate("/spaces", { replace: true });
+      },
+      onError: () => {
+        // error toast is handled by the hook
       },
     });
   };
@@ -266,7 +293,7 @@ export function BoardPage() {
             {/* Secondary actions — hidden labels on mobile */}
             <button
               type="button"
-              onClick={() => setShowRules(true)}
+              onClick={handleRulesClick}
               className="group/btn cursor-pointer flex items-center gap-1.5 rounded-lg px-2 py-1.5 md:px-3 text-xs font-medium text-gray-500 transition-all duration-150 hover:bg-gray-100/80 active:scale-[0.97] dark:text-gray-400 dark:hover:bg-gray-800/60"
               aria-label="Rules"
             >
@@ -278,7 +305,7 @@ export function BoardPage() {
             </button>
             <button
               type="button"
-              onClick={() => setShowPipeline(true)}
+              onClick={handlePipelineClick}
               className="group/btn cursor-pointer flex items-center gap-1.5 rounded-lg px-2 py-1.5 md:px-3 text-xs font-medium text-gray-500 transition-all duration-150 hover:bg-gray-100/80 active:scale-[0.97] dark:text-gray-400 dark:hover:bg-gray-800/60"
               aria-label="Pipeline"
             >
@@ -333,8 +360,14 @@ export function BoardPage() {
           onClose={() => setShowPipeline(false)}
         />
       )}
+      {showPipelineUpsell && (
+        <PipelineUpsellModal onClose={() => setShowPipelineUpsell(false)} />
+      )}
       {showRules && (
         <RulesPanel spaceId={spaceId} onClose={() => setShowRules(false)} />
+      )}
+      {showRulesUpsell && (
+        <RulesUpsellModal onClose={() => setShowRulesUpsell(false)} />
       )}
       <PipelineToast spaceId={spaceId} />
       {showCreateTicket && (

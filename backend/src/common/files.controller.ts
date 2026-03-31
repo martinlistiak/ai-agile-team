@@ -57,19 +57,17 @@ export class FilesController {
       throw new BadRequestException("No file provided");
     }
 
-    if (!spaceId || !entityType || !entityId) {
-      throw new BadRequestException(
-        "spaceId, entityType, and entityId are required",
-      );
-    }
+    const resolvedSpaceId = spaceId || "general";
+    const resolvedEntityType = entityType || "upload";
+    const resolvedEntityId = entityId || Date.now().toString();
 
     const extension =
       file.originalname.split(".").pop()?.toLowerCase() || "bin";
 
     const result = await this.fileStorageService.upload(file.buffer, {
-      spaceId,
-      entityType,
-      entityId,
+      spaceId: resolvedSpaceId,
+      entityType: resolvedEntityType,
+      entityId: resolvedEntityId,
       extension,
     });
 

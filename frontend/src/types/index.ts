@@ -28,6 +28,7 @@ export interface User {
   planTier: PlanTier;
   subscriptionStatus: SubscriptionStatus;
   currentPeriodEnd: string | null;
+  cancelAtPeriodEnd?: boolean;
   hasGithub?: boolean;
   hasGitlab?: boolean;
   /** True if user is a member of at least one team (access without own subscription). */

@@ -23,6 +23,7 @@ import { useSpaces } from "@/api/hooks/useSpaces";
 import { useAgents } from "@/api/hooks/useAgents";
 import { AgentInspector } from "@/features/agents/AgentInspector";
 import { OnboardingWizard } from "@/features/onboarding/OnboardingWizard";
+import { SpaceUpsellModal } from "@/components/SpaceUpsellModal";
 import { cn } from "@/lib/cn";
 import { getSpaceColor } from "@/lib/spaceColor";
 import { getStatusRingClass, getAvatarSrc } from "@/lib/avatars";
@@ -113,8 +114,23 @@ export function MobileNav() {
     "spaces" | "agents" | "profile" | null
   >(null);
   const [showCreate, setShowCreate] = useState(false);
+  const [showUpsell, setShowUpsell] = useState(false);
   const [inspectedAgent, setInspectedAgent] = useState<Agent | null>(null);
   const [showFeedback, setShowFeedback] = useState(false);
+
+  const spaceCount = spaces?.length ?? 0;
+  const isSubscribed =
+    user?.subscriptionStatus === "active" ||
+    user?.subscriptionStatus === "trialing";
+
+  const handleAddSpaceClick = () => {
+    closeSheet();
+    if (spaceCount > 0 && isSubscribed) {
+      setShowUpsell(true);
+    } else {
+      setShowCreate(true);
+    }
+  };
 
   const closeSheet = () => setActiveSheet(null);
 
@@ -255,10 +271,7 @@ export function MobileNav() {
             })}
             <button
               type="button"
-              onClick={() => {
-                closeSheet();
-                setShowCreate(true);
-              }}
+              onClick={handleAddSpaceClick}
               className="flex cursor-pointer flex-col items-center gap-2"
             >
               <div className="flex h-13 w-13 items-center justify-center rounded-[0.85rem_1.1rem_0.9rem_1rem] border border-dashed border-[oklch(0.72_0.02_264)] text-[oklch(0.48_0.02_264)] dark:border-[oklch(0.4_0.02_264)] dark:text-[oklch(0.55_0.02_264)]">
@@ -445,6 +458,18 @@ export function MobileNav() {
         </MobileSheet>
       )}
 
+      {showUpsell &&
+        createPortal(
+          <SpaceUpsellModal
+            currentSpaceCount={spaceCount}
+            onClose={() => setShowUpsell(false)}
+            onConfirmed={() => {
+              setShowUpsell(false);
+              setShowCreate(true);
+            }}
+          />,
+          document.body,
+        )}
       {showCreate &&
         createPortal(
           <OnboardingWizard onClose={() => setShowCreate(false)} />,

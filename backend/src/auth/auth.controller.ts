@@ -64,7 +64,8 @@ export class AuthController {
   })
   @ApiResponse({
     status: 409,
-    description: "Email already registered (body includes code EMAIL_ALREADY_REGISTERED)",
+    description:
+      "Email already registered (body includes code EMAIL_ALREADY_REGISTERED)",
   })
   async register(
     @Req() req: Request,
@@ -284,6 +285,7 @@ export class AuthController {
       planTier: user.planTier,
       subscriptionStatus: user.subscriptionStatus,
       currentPeriodEnd: user.currentPeriodEnd,
+      cancelAtPeriodEnd: user.cancelAtPeriodEnd,
       createdAt: user.createdAt,
       hasGithub: !!user.githubId,
       hasGitlab: !!user.gitlabId,

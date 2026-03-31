@@ -22,6 +22,7 @@ import {
 import { Request } from "express";
 import { JwtOrApiKeyGuard } from "../auth/jwt-or-apikey.guard";
 import { SubscriptionActiveGuard } from "../common/subscription-active.guard";
+import { PlanGuard, RequirePlan } from "../billing/plan.guard";
 import { CountlyService } from "../common/countly.service";
 import { AgentsService } from "./agents.service";
 import { DeveloperAgentService } from "./developer-agent.service";
@@ -168,6 +169,8 @@ export class AgentsController {
   }
 
   @Post("spaces/:spaceId/agents/custom")
+  @UseGuards(PlanGuard)
+  @RequirePlan("team", "enterprise")
   @ApiOperation({ summary: "Create a custom agent in a space" })
   @ApiParam({ name: "spaceId", format: "uuid" })
   @ApiBody({
@@ -182,6 +185,7 @@ export class AgentsController {
     },
   })
   @ApiResponse({ status: 201, description: "Created custom agent" })
+  @ApiResponse({ status: 403, description: "Plan upgrade required" })
   async createCustomAgent(
     @Req() req: Request,
     @Param("spaceId") spaceId: string,
@@ -196,6 +200,8 @@ export class AgentsController {
   }
 
   @Patch("agents/:id/custom")
+  @UseGuards(PlanGuard)
+  @RequirePlan("team", "enterprise")
   @ApiOperation({ summary: "Update a custom agent" })
   @ApiParam({ name: "id", format: "uuid" })
   @ApiBody({
@@ -209,6 +215,7 @@ export class AgentsController {
     },
   })
   @ApiResponse({ status: 200, description: "Updated custom agent" })
+  @ApiResponse({ status: 403, description: "Plan upgrade required" })
   async updateCustomAgent(
     @Param("id") id: string,
     @Body()
@@ -218,9 +225,12 @@ export class AgentsController {
   }
 
   @Delete("agents/:id/custom")
+  @UseGuards(PlanGuard)
+  @RequirePlan("team", "enterprise")
   @ApiOperation({ summary: "Delete a custom agent" })
   @ApiParam({ name: "id", format: "uuid" })
   @ApiResponse({ status: 200, description: "Deletion result" })
+  @ApiResponse({ status: 403, description: "Plan upgrade required" })
   async deleteCustomAgent(@Param("id") id: string) {
     const deleted = await this.agentsService.deleteCustomAgent(id);
     return { deleted };
