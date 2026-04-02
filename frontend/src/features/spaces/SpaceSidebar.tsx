@@ -34,6 +34,7 @@ import { cn } from "@/lib/cn";
 import { getSpaceColor } from "@/lib/spaceColor";
 import { SpaceSidebarSkeleton } from "@/components/Skeleton";
 import { FeedbackModal } from "@/components/FeedbackModal";
+import { UsageMeter } from "@/components/UsageMeter";
 import type { Space } from "@/types";
 
 function RailTooltip({
@@ -385,6 +386,11 @@ export function SpaceSidebar() {
         </div>
       </div>
       {showFeedback && <FeedbackModal onClose={() => setShowFeedback(false)} />}
+
+      {/* Usage meter at bottom */}
+      <div className="border-t border-gray-200 dark:border-gray-800 px-3 py-3 flex justify-center">
+        <UsageMeter />
+      </div>
     </div>
   );
 }

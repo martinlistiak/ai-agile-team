@@ -9,8 +9,8 @@ import { RulesService } from "../rules/rules.service";
 import { EventsGateway } from "../chat/events.gateway";
 import { ExecutionRegistry } from "./execution-registry";
 import { AgentRunQuotaService } from "../common/agent-run-quota.service";
-
-const DEFAULT_MODEL = "claude-sonnet-4-20250514";
+import { ModelRouterService } from "./model-router.service";
+import { AgentMemoryService } from "./agent-memory.service";
 
 @Injectable()
 export class CustomAgentService {
@@ -26,6 +26,8 @@ export class CustomAgentService {
     @InjectRepository(Execution) private executionRepo: Repository<Execution>,
     private executionRegistry: ExecutionRegistry,
     private agentRunQuota: AgentRunQuotaService,
+    private modelRouter: ModelRouterService,
+    private agentMemory: AgentMemoryService,
   ) {
     this.client = new Anthropic({
       apiKey: this.configService.get("ANTHROPIC_API_KEY", ""),
@@ -60,21 +62,32 @@ export class CustomAgentService {
         agent.systemPrompt ||
         `You are a helpful AI assistant named "${agent.name || "Custom Agent"}".${agent.description ? ` ${agent.description}` : ""} Answer questions and help the user.`;
 
-      const compiledRules = await this.rulesService.compileRulesForAgent(
-        spaceId,
-        agent.id,
-      );
-      const systemPrompt = compiledRules
-        ? `${basePrompt}\n\n# Active Rules\n${compiledRules}`
-        : basePrompt;
+      const [compiledRules, compiledMemories] = await Promise.all([
+        this.rulesService.compileRulesForAgent(spaceId, agent.id),
+        this.agentMemory.compileMemoriesForAgent(spaceId, agent.id),
+      ]);
+      let systemPrompt = basePrompt;
+      if (compiledRules) {
+        systemPrompt += `\n\n# Active Rules\n${compiledRules}`;
+      }
+      if (compiledMemories) {
+        systemPrompt += `\n\n# Learned Patterns\nApply these lessons from past executions:\n${compiledMemories}`;
+      }
 
-      const model =
-        this.configService.get("ANTHROPIC_MODEL") || DEFAULT_MODEL;
+      const { model } = this.modelRouter.routeModel("custom", userMessage, {
+        envModel: this.configService.get("ANTHROPIC_MODEL"),
+      });
 
       const response = await this.client.messages.create({
         model,
         max_tokens: 4096,
-        system: systemPrompt,
+        system: [
+          {
+            type: "text",
+            text: systemPrompt,
+            cache_control: { type: "ephemeral" },
+          },
+        ],
         messages: [{ role: "user", content: userMessage }],
       });
 
@@ -84,6 +97,18 @@ export class CustomAgentService {
           finalText += block.text;
         }
       }
+
+      // Store token usage on execution
+      execution.inputTokens = response.usage?.input_tokens ?? 0;
+      execution.outputTokens = response.usage?.output_tokens ?? 0;
+      execution.cacheReadTokens =
+        (response.usage as any)?.cache_read_input_tokens ?? 0;
+      execution.cacheCreationTokens =
+        (response.usage as any)?.cache_creation_input_tokens ?? 0;
+      execution.tokensUsed =
+        (response.usage?.input_tokens ?? 0) +
+        (response.usage?.output_tokens ?? 0);
+      execution.modelUsed = model;
 
       this.executionRegistry.remove(execution.id);
       execution.status = "completed";

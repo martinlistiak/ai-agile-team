@@ -6,10 +6,12 @@ import {
   Body,
   Req,
   Res,
+  Param,
   UseGuards,
   UseInterceptors,
   UploadedFile,
   BadRequestException,
+  ForbiddenException,
 } from "@nestjs/common";
 import { AuthGuard } from "@nestjs/passport";
 import { Throttle } from "@nestjs/throttler";
@@ -20,6 +22,7 @@ import {
   ApiBearerAuth,
   ApiBody,
   ApiConsumes,
+  ApiParam,
 } from "@nestjs/swagger";
 import { FileInterceptor } from "@nestjs/platform-express";
 import "multer";
@@ -272,7 +275,8 @@ export class AuthController {
   @ApiOperation({ summary: "Get the current authenticated user" })
   @ApiResponse({ status: 200, description: "Current user profile" })
   async me(@Req() req: Request) {
-    const user = await this.authService.findById((req.user as any).id);
+    const jwtPayload = req.user as any;
+    const user = await this.authService.findById(jwtPayload.id);
     if (!user) return null;
     const hasTeamMembership = await this.teamsService.hasTeamMembership(
       user.id,
@@ -294,6 +298,9 @@ export class AuthController {
       creditsBalance: user.creditsBalance,
       emailVerified: !!user.emailVerifiedAt,
       hasPassword: !!user.hashedPassword,
+      isSuperAdmin: user.isSuperAdmin,
+      isImpersonating: !!jwtPayload.impersonatorId,
+      isReadOnly: !!jwtPayload.readOnly,
     };
   }
 
@@ -358,5 +365,51 @@ export class AuthController {
   @ApiResponse({ status: 201, description: "Account deleted" })
   async deleteAccount(@Req() req: Request, @Body() body: DeleteAccountDto) {
     return this.authService.deleteAccount((req.user as any).id, body);
+  }
+
+  @Post("impersonate/:userId")
+  @UseGuards(AuthGuard("jwt"))
+  @ApiBearerAuth("bearer")
+  @ApiOperation({
+    summary: "Impersonate a user (superadmin only, read-only access)",
+  })
+  @ApiParam({ name: "userId", format: "uuid" })
+  @ApiResponse({ status: 201, description: "Returns impersonation token" })
+  @ApiResponse({ status: 403, description: "Not a superadmin" })
+  async impersonate(@Req() req: Request, @Param("userId") userId: string) {
+    const actor = await this.authService.findById((req.user as any).id);
+    if (!actor?.isSuperAdmin) {
+      throw new ForbiddenException("Superadmin access required");
+    }
+    return this.authService.createImpersonationToken(actor.id, userId);
+  }
+
+  @Get("admin/users")
+  @UseGuards(AuthGuard("jwt"))
+  @ApiBearerAuth("bearer")
+  @ApiOperation({ summary: "List all users (superadmin only)" })
+  @ApiResponse({ status: 200, description: "Array of users" })
+  @ApiResponse({ status: 403, description: "Not a superadmin" })
+  async listUsers(@Req() req: Request) {
+    const actor = await this.authService.findById((req.user as any).id);
+    if (!actor?.isSuperAdmin) {
+      throw new ForbiddenException("Superadmin access required");
+    }
+    return this.authService.listAllUsers();
+  }
+
+  @Post("stop-impersonation")
+  @UseGuards(AuthGuard("jwt"))
+  @ApiBearerAuth("bearer")
+  @ApiOperation({
+    summary: "Stop impersonating and return to original session",
+  })
+  @ApiResponse({ status: 201, description: "Returns original user token" })
+  async stopImpersonation(@Req() req: Request) {
+    const jwtPayload = req.user as any;
+    if (!jwtPayload.impersonatorId) {
+      throw new BadRequestException("Not currently impersonating");
+    }
+    return this.authService.stopImpersonation(jwtPayload.impersonatorId);
   }
 }

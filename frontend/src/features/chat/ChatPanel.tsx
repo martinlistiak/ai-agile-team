@@ -14,10 +14,9 @@ import type { ChatAttachment, ChatMessage, Ticket, Agent } from "@/types";
 import api from "@/api/client";
 import { useTickets } from "@/api/hooks/useTickets";
 import { useAgents } from "@/api/hooks/useAgents";
-import {
-  useChatMessages,
-  useSendChatMessage,
-} from "@/api/hooks/useChat";
+import { useSpace } from "@/api/hooks/useSpaces";
+import { getSpaceColor } from "@/lib/spaceColor";
+import { useChatMessages, useSendChatMessage } from "@/api/hooks/useChat";
 import { AgentRunLimitUpsell } from "@/components/AgentRunLimitUpsell";
 
 interface AgentOption {
@@ -203,12 +202,15 @@ const AGENT_BADGE: Record<string, { label: string; color: string }> = {
   },
 };
 
-function getAgentBadge(agentType: string): { label: string; color: string } | null {
+function getAgentBadge(
+  agentType: string,
+): { label: string; color: string } | null {
   if (AGENT_BADGE[agentType]) return AGENT_BADGE[agentType];
   if (agentType.startsWith("custom:")) {
     return {
       label: "Custom",
-      color: "bg-violet-100 text-violet-700 dark:bg-violet-900 dark:text-violet-300",
+      color:
+        "bg-violet-100 text-violet-700 dark:bg-violet-900 dark:text-violet-300",
     };
   }
   return null;
@@ -218,10 +220,12 @@ function ChatBubble({
   message,
   createdTickets,
   onTicketClick,
+  spaceColor,
 }: {
   message: ChatMessage;
   createdTickets?: CreatedTicketInfo[];
   onTicketClick: (ticketId: string) => void;
+  spaceColor?: string;
 }) {
   const isUser = message.role === "user";
   const agentBadge =
@@ -232,10 +236,14 @@ function ChatBubble({
       <div
         className={cn(
           "max-w-[85%] space-y-2 rounded-2xl px-4 py-3 text-sm shadow-sm",
-          isUser
-            ? "bg-primary-500 text-white"
-            : "bg-gray-100 text-gray-900 dark:bg-gray-800 dark:text-gray-100",
+          !isUser &&
+            "bg-gray-100 text-gray-900 dark:bg-gray-800 dark:text-gray-100",
         )}
+        style={
+          isUser
+            ? { backgroundColor: spaceColor || "#6366f1", color: "white" }
+            : undefined
+        }
       >
         {agentBadge && message.agentType && (
           <span
@@ -287,6 +295,8 @@ import { TicketDetailPanel } from "../board/TicketDetailPanel";
 export function ChatPanel() {
   const { spaceId } = useParams();
   const { data: agentsList = [] } = useAgents(spaceId || null);
+  const { data: space } = useSpace(spaceId || null);
+  const spaceColor = space ? getSpaceColor(space.name, space.color) : undefined;
   const [selectedAgent, setSelectedAgent] = useState<string>("pm");
   const { data: messages = [], isLoading } = useChatMessages(
     spaceId || null,
@@ -295,7 +305,10 @@ export function ChatPanel() {
   const sendMessage = useSendChatMessage(spaceId || null);
   const { data: tickets = [] } = useTickets(spaceId || null);
   const [input, setInput] = useState("");
-  const AGENT_OPTIONS = useMemo(() => buildAgentOptions(agentsList), [agentsList]);
+  const AGENT_OPTIONS = useMemo(
+    () => buildAgentOptions(agentsList),
+    [agentsList],
+  );
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const [filePreviews, setFilePreviews] = useState<
     Array<{ file: File; url: string | null }>
@@ -430,6 +443,7 @@ export function ChatPanel() {
                 message={message}
                 createdTickets={ticketsByMessage.get(message.id)}
                 onTicketClick={handleTicketClick}
+                spaceColor={spaceColor}
               />
             ))}
             {sendMessage.isPending && (

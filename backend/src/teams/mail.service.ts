@@ -174,11 +174,15 @@ export class MailService {
     title: string;
     message: string;
     relatedEntityId?: string;
+    relatedEntityType?: string;
+    spaceId?: string;
   }): Promise<void> {
     const subject = `${params.title} — Runa`;
     const actionUrl = this.getNotificationActionUrl(
       params.type,
       params.relatedEntityId,
+      params.relatedEntityType,
+      params.spaceId,
     );
     const actionLabel = this.getNotificationActionLabel(params.type);
 
@@ -227,19 +231,31 @@ export class MailService {
   private getNotificationActionUrl(
     type: string,
     relatedEntityId?: string,
+    relatedEntityType?: string,
+    spaceId?: string,
   ): string | null {
-    if (!relatedEntityId) return null;
+    if (!relatedEntityId || !spaceId) return this.appUrl;
+
+    // All links go to the space page with a query param to open the drawer
+    const baseUrl = `${this.appUrl}/spaces/${spaceId}`;
+
+    // If we have a ticket, always link to the ticket
+    if (relatedEntityType === "ticket") {
+      return `${baseUrl}?ticket=${relatedEntityId}`;
+    }
+
     switch (type) {
       case "agent_completed":
       case "agent_failed":
-        return `${this.appUrl}/executions/${relatedEntityId}`;
+        // Fallback to space if no ticket (shouldn't happen normally)
+        return baseUrl;
       case "pipeline_stage_changed":
       case "ticket_assigned":
       case "ticket_commented":
       case "pr_created":
-        return `${this.appUrl}/tickets/${relatedEntityId}`;
+        return `${baseUrl}?ticket=${relatedEntityId}`;
       default:
-        return this.appUrl;
+        return baseUrl;
     }
   }
 

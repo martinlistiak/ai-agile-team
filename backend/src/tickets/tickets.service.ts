@@ -69,7 +69,11 @@ export class TicketsService {
     return saved;
   }
 
-  async update(id: string, data: TicketUpdateData): Promise<Ticket> {
+  async update(
+    id: string,
+    data: TicketUpdateData,
+    actor?: { id: string; name: string; type: "user" | "agent" },
+  ): Promise<Ticket> {
     const ticket = await this.findById(id);
 
     // Assigning to agent clears user assignee and vice versa
@@ -87,6 +91,9 @@ export class TicketsService {
         to: data.status,
         timestamp: new Date().toISOString(),
         trigger: "user" as const,
+        actorId: actor?.id,
+        actorName: actor?.name,
+        actorType: actor?.type,
       };
       data.statusHistory = [...(ticket.statusHistory || []), entry];
     }
@@ -100,7 +107,8 @@ export class TicketsService {
   async moveTicket(
     id: string,
     status: string,
-    trigger: "user" | "agent" | "pipeline" = "user",
+    trigger: "user" | "agent" | "pipeline" | "mention" = "user",
+    actor?: { id: string; name: string; type: "user" | "agent" },
   ): Promise<Ticket> {
     const ticket = await this.findById(id);
     const previousStatus = ticket.status;
@@ -111,6 +119,9 @@ export class TicketsService {
         to: status,
         timestamp: new Date().toISOString(),
         trigger,
+        actorId: actor?.id,
+        actorName: actor?.name,
+        actorType: actor?.type,
       };
       ticket.statusHistory = [...(ticket.statusHistory || []), entry];
     }
@@ -176,6 +187,7 @@ export class TicketsService {
     content: string,
     authorType: string,
     authorId: string,
+    commenterName?: string,
   ): Promise<Ticket> {
     const ticket = await this.findById(ticketId);
     const comment = {
@@ -187,7 +199,47 @@ export class TicketsService {
     };
     ticket.comments = [...(ticket.comments || []), comment];
     const saved = await this.ticketRepo.save(ticket);
-    this.eventEmitter.emit("ticket.commented", saved);
+
+    this.eventEmitter.emit("ticket.commented", {
+      spaceId: ticket.spaceId,
+      ticketId: ticket.id,
+      ticketTitle: ticket.title,
+      commenterId: authorId,
+      commenterName:
+        commenterName || (authorType === "agent" ? authorId : "User"),
+    });
+
+    // Parse mentions and emit events for agent triggers
+    const mentions = this.parseMentions(content);
+    if (mentions.length > 0) {
+      this.eventEmitter.emit("ticket.comment.mentions", {
+        spaceId: ticket.spaceId,
+        ticketId: ticket.id,
+        ticketTitle: ticket.title,
+        content,
+        mentions,
+        commenterId: authorId,
+        commenterName:
+          commenterName || (authorType === "agent" ? authorId : "User"),
+      });
+    }
+
     return saved;
+  }
+
+  /**
+   * Parse @mentions from comment content.
+   * Supports: @developer, @pm, @tester, @reviewer, @dev
+   */
+  private parseMentions(content: string): string[] {
+    const mentionPattern = /@(developer|dev|pm|tester|reviewer)\b/gi;
+    const matches = content.match(mentionPattern) || [];
+    const normalized = matches.map((m) => {
+      const name = m.slice(1).toLowerCase();
+      // Normalize @dev to @developer
+      return name === "dev" ? "developer" : name;
+    });
+    // Return unique mentions
+    return [...new Set(normalized)];
   }
 }

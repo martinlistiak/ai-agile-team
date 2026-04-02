@@ -227,6 +227,8 @@ export class NotificationsService {
         title: payload.title,
         message: payload.message,
         relatedEntityId: payload.relatedEntityId,
+        relatedEntityType: payload.relatedEntityType,
+        spaceId: payload.spaceId,
       });
     } catch (err) {
       this.logger.error(

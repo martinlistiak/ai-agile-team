@@ -45,7 +45,10 @@ export class Ticket {
     from: string;
     to: string;
     timestamp: string;
-    trigger: "user" | "agent" | "pipeline";
+    trigger: "user" | "agent" | "pipeline" | "mention";
+    actorId?: string;
+    actorName?: string;
+    actorType?: "user" | "agent";
   }>;
 
   @Column({ type: "text", nullable: true })

@@ -33,7 +33,7 @@ export class GithubService {
 
   /**
    * Returns the local path to a cloned repo for a space.
-   * Clones if not already cloned, pulls latest if already present.
+   * Clones if not already cloned. Does NOT reset to origin/HEAD to preserve local branches.
    */
   async getRepoPath(spaceId: string): Promise<string> {
     const space = await this.spaceRepo.findOne({
@@ -48,16 +48,16 @@ export class GithubService {
     const repoDir = join(this.workspacesRoot, spaceId);
 
     if (existsSync(join(repoDir, ".git"))) {
-      // Pull latest changes on main/default branch
+      // Fetch latest from remote but don't reset (preserve local branches)
       try {
-        execSync("git fetch origin && git reset --hard origin/HEAD", {
+        execSync("git fetch origin", {
           cwd: repoDir,
           timeout: 60000,
           stdio: "pipe",
         });
-        this.logger.log(`Pulled latest for space ${spaceId}`);
+        this.logger.log(`Fetched latest for space ${spaceId}`);
       } catch (e) {
-        this.logger.warn(`Failed to pull latest: ${e}`);
+        this.logger.warn(`Failed to fetch latest: ${e}`);
       }
       return repoDir;
     }
@@ -96,16 +96,158 @@ export class GithubService {
   }
 
   /**
-   * Create a new branch from the default branch.
+   * Checkout or create a branch. If the branch exists locally or remotely, checks it out.
+   * Otherwise creates a new branch from the default branch.
    */
-  async createBranch(spaceId: string, branchName: string): Promise<string> {
+  async checkoutBranch(spaceId: string, branchName: string): Promise<string> {
     const repoDir = await this.getRepoPath(spaceId);
-    execSync(`git checkout -b "${branchName}"`, {
-      cwd: repoDir,
-      timeout: 10000,
-      stdio: "pipe",
+
+    try {
+      // Check if branch exists locally
+      const localBranches = execSync("git branch --list", {
+        cwd: repoDir,
+        timeout: 10000,
+        encoding: "utf-8",
+      });
+
+      if (localBranches.includes(branchName)) {
+        execSync(`git checkout "${branchName}"`, {
+          cwd: repoDir,
+          timeout: 10000,
+          stdio: "pipe",
+        });
+        this.logger.log(`Checked out existing local branch ${branchName}`);
+        return repoDir;
+      }
+
+      // Check if branch exists on remote
+      const remoteBranches = execSync("git branch -r --list", {
+        cwd: repoDir,
+        timeout: 10000,
+        encoding: "utf-8",
+      });
+
+      if (remoteBranches.includes(`origin/${branchName}`)) {
+        execSync(`git checkout -b "${branchName}" "origin/${branchName}"`, {
+          cwd: repoDir,
+          timeout: 10000,
+          stdio: "pipe",
+        });
+        this.logger.log(`Checked out remote branch ${branchName}`);
+        return repoDir;
+      }
+
+      // Branch doesn't exist, create it from default branch
+      execSync(`git checkout -b "${branchName}"`, {
+        cwd: repoDir,
+        timeout: 10000,
+        stdio: "pipe",
+      });
+      this.logger.log(`Created new branch ${branchName}`);
+      return repoDir;
+    } catch (e) {
+      this.logger.error(`Failed to checkout branch ${branchName}: ${e}`);
+      throw new Error(`Failed to checkout branch: ${e}`);
+    }
+  }
+
+  /**
+   * Push a branch to the remote repository.
+   * Ensures the branch is checked out and commits any uncommitted changes first.
+   */
+  async pushBranch(spaceId: string, branchName: string): Promise<void> {
+    const space = await this.spaceRepo.findOne({
+      where: { id: spaceId },
+      relations: { user: true },
     });
-    return repoDir;
+    if (!space || !space.githubRepoUrl) {
+      throw new Error("Space has no connected GitHub repository");
+    }
+
+    const user = await this.userRepo.findOneBy({ id: space.userId });
+    const repoDir = join(this.workspacesRoot, spaceId);
+
+    if (!existsSync(join(repoDir, ".git"))) {
+      throw new Error("Repository not cloned");
+    }
+
+    // Build authenticated remote URL for push
+    const decryptedToken = user?.githubTokenEncrypted
+      ? this.tokenEncryptionService.decrypt(user.githubTokenEncrypted)
+      : undefined;
+
+    if (!decryptedToken) {
+      throw new Error("No GitHub token available for push");
+    }
+
+    const pushUrl = this.buildAuthenticatedUrl(
+      space.githubRepoUrl,
+      decryptedToken,
+    );
+
+    try {
+      // Ensure we're on the correct branch
+      const currentBranch = execSync("git rev-parse --abbrev-ref HEAD", {
+        cwd: repoDir,
+        timeout: 10000,
+        encoding: "utf-8",
+      }).trim();
+
+      if (currentBranch !== branchName) {
+        // Try to checkout the branch
+        await this.checkoutBranch(spaceId, branchName);
+      }
+
+      // Check if there are uncommitted changes and commit them
+      const status = execSync("git status --porcelain", {
+        cwd: repoDir,
+        timeout: 10000,
+        encoding: "utf-8",
+      });
+
+      if (status.trim()) {
+        this.logger.log(
+          `Committing uncommitted changes for branch ${branchName}`,
+        );
+        execSync("git add -A", {
+          cwd: repoDir,
+          timeout: 10000,
+          stdio: "pipe",
+        });
+        execSync(`git commit -m "feat: implement changes for ${branchName}"`, {
+          cwd: repoDir,
+          timeout: 30000,
+          stdio: "pipe",
+        });
+      }
+
+      // Check if there are any commits to push
+      const commits = execSync("git log --oneline -1", {
+        cwd: repoDir,
+        timeout: 10000,
+        encoding: "utf-8",
+      }).trim();
+
+      if (!commits) {
+        throw new Error("No commits to push - branch has no changes");
+      }
+
+      // Set the remote URL with auth and push
+      execSync(`git remote set-url origin "${pushUrl}"`, {
+        cwd: repoDir,
+        timeout: 10000,
+        stdio: "pipe",
+      });
+      execSync(`git push -u origin "${branchName}" --force`, {
+        cwd: repoDir,
+        timeout: 120000,
+        stdio: "pipe",
+      });
+      this.logger.log(`Pushed branch ${branchName} for space ${spaceId}`);
+    } catch (e) {
+      this.logger.error(`Failed to push branch ${branchName}: ${e}`);
+      throw new Error(`Failed to push branch to GitHub: ${e}`);
+    }
   }
 
   /**
@@ -172,13 +314,15 @@ export class GithubService {
 
   /**
    * Create a pull request on GitHub for a given branch.
+   * Pushes the branch first if it hasn't been pushed yet.
+   * If a PR already exists for the branch, returns the existing PR.
    */
   async createPullRequest(
     spaceId: string,
     branchName: string,
     ticketId: string,
     agentSummary?: string,
-  ): Promise<{ url: string }> {
+  ): Promise<{ url: string; number: number }> {
     const space = await this.spaceRepo.findOneBy({ id: spaceId });
     if (!space || !space.githubRepoUrl) {
       throw new Error("Space has no connected GitHub repository");
@@ -195,6 +339,24 @@ export class GithubService {
     }
 
     const { owner, repo } = this.getOwnerRepo(space.githubRepoUrl);
+
+    // Check if a PR already exists for this branch
+    const existingPr = await this.findExistingPr(
+      owner,
+      repo,
+      branchName,
+      token,
+    );
+    if (existingPr) {
+      this.logger.log(
+        `PR already exists for branch ${branchName}: ${existingPr.url}`,
+      );
+      return existingPr;
+    }
+
+    // Push the branch to remote before creating PR
+    await this.pushBranch(spaceId, branchName);
+
     const appBaseUrl = this.configService.get(
       "APP_BASE_URL",
       "https://runa-app.com",
@@ -206,6 +368,9 @@ export class GithubService {
       agentSummary || "",
       appBaseUrl,
     );
+
+    // Get the default branch name
+    const defaultBranch = await this.getDefaultBranch(owner, repo, token);
 
     const response = await fetch(
       `https://api.github.com/repos/${owner}/${repo}/pulls`,
@@ -220,7 +385,7 @@ export class GithubService {
           title,
           body,
           head: branchName,
-          base: "main",
+          base: defaultBranch,
         }),
       },
     );
@@ -233,7 +398,66 @@ export class GithubService {
     }
 
     const data = await response.json();
-    return { url: data.html_url };
+    return { url: data.html_url, number: data.number };
+  }
+
+  /**
+   * Find an existing open PR for a branch.
+   */
+  private async findExistingPr(
+    owner: string,
+    repo: string,
+    branchName: string,
+    token: string,
+  ): Promise<{ url: string; number: number } | null> {
+    try {
+      const response = await fetch(
+        `https://api.github.com/repos/${owner}/${repo}/pulls?head=${owner}:${branchName}&state=open`,
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+            Accept: "application/vnd.github+json",
+          },
+        },
+      );
+      if (response.ok) {
+        const prs = await response.json();
+        if (prs.length > 0) {
+          return { url: prs[0].html_url, number: prs[0].number };
+        }
+      }
+    } catch (e) {
+      this.logger.warn(`Failed to check for existing PR: ${e}`);
+    }
+    return null;
+  }
+
+  /**
+   * Get the default branch name for a repository.
+   */
+  private async getDefaultBranch(
+    owner: string,
+    repo: string,
+    token: string,
+  ): Promise<string> {
+    try {
+      const response = await fetch(
+        `https://api.github.com/repos/${owner}/${repo}`,
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+            Accept: "application/vnd.github+json",
+          },
+        },
+      );
+      if (response.ok) {
+        const data = await response.json();
+        return data.default_branch || "main";
+      }
+    } catch (e) {
+      this.logger.warn(`Failed to get default branch, using 'main': ${e}`);
+    }
+    return "main";
   }
 
   /**

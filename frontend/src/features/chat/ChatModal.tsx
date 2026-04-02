@@ -4,10 +4,13 @@ import { useParams } from "react-router-dom";
 import { FiImage, FiSend, FiX } from "react-icons/fi";
 import { cn } from "@/lib/cn";
 import { getAvatarSrc } from "@/lib/avatars";
+import { renderMarkdown } from "@/lib/markdown";
 import { useChatContext } from "@/contexts/ChatContext";
 import { AgentSelectorDropdown } from "./AgentSelectorDropdown";
 import { TypingIndicator } from "./TypingIndicator";
 import { useChatMessages, useSendChatMessage } from "@/api/hooks/useChat";
+import { useSpace } from "@/api/hooks/useSpaces";
+import { getSpaceColor } from "@/lib/spaceColor";
 import { Modal } from "@/components/Modal";
 import { AgentRunLimitUpsell } from "@/components/AgentRunLimitUpsell";
 import type { ChatAttachment, ChatMessage } from "@/types";
@@ -94,7 +97,13 @@ function getAgentBadge(
   return null;
 }
 
-function ChatBubble({ message }: { message: ChatMessage }) {
+function ChatBubble({
+  message,
+  spaceColor,
+}: {
+  message: ChatMessage;
+  spaceColor?: string;
+}) {
   const isUser = message.role === "user";
   const agentBadge =
     !isUser && message.agentType ? getAgentBadge(message.agentType) : null;
@@ -111,10 +120,17 @@ function ChatBubble({ message }: { message: ChatMessage }) {
       <div
         className={cn(
           "max-w-[80%] space-y-2 rounded-2xl px-4 py-3 text-sm shadow-sm",
-          isUser
-            ? "bg-primary-500 text-white"
-            : "bg-gray-100 text-gray-900 dark:bg-gray-800 dark:text-gray-100",
+          !isUser &&
+            "bg-gray-100 text-gray-900 dark:bg-gray-800 dark:text-gray-100",
         )}
+        style={
+          isUser
+            ? {
+                backgroundColor: spaceColor || "#6366f1",
+                color: "white",
+              }
+            : undefined
+        }
       >
         {agentBadge && message.agentType && (
           <span
@@ -127,7 +143,19 @@ function ChatBubble({ message }: { message: ChatMessage }) {
           </span>
         )}
         {message.content && (
-          <p className="whitespace-pre-wrap">{message.content}</p>
+          <div
+            className="prose prose-sm dark:prose-invert max-w-none wrap-break-word"
+            style={
+              isUser
+                ? {
+                    color: "white",
+                  }
+                : {}
+            }
+            dangerouslySetInnerHTML={{
+              __html: renderMarkdown(message.content),
+            }}
+          />
         )}
         {message.attachments.length > 0 && (
           <div className="grid gap-2">
@@ -158,6 +186,8 @@ export function ChatModal() {
     isOpen ? spaceId || null : null,
     selectedAgent,
   );
+  const { data: space } = useSpace(isOpen ? spaceId || null : null);
+  const spaceColor = space ? getSpaceColor(space.name, space.color) : undefined;
   const sendMessage = useSendChatMessage(spaceId || null);
 
   const [input, setInput] = useState("");
@@ -258,7 +288,11 @@ export function ChatModal() {
         ) : (
           <div className="space-y-3">
             {messages.map((message) => (
-              <ChatBubble key={message.id} message={message} />
+              <ChatBubble
+                key={message.id}
+                message={message}
+                spaceColor={spaceColor}
+              />
             ))}
             {sendMessage.isPending && (
               <TypingIndicator agentType={selectedAgent} />

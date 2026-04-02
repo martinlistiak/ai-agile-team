@@ -1,8 +1,7 @@
 import { isAxiosError } from "axios";
 
-/** Must match backend `API_ERROR_AGENT_RUN_QUOTA_EXCEEDED`. */
-export const API_ERROR_AGENT_RUN_QUOTA_EXCEEDED =
-  "AGENT_RUN_QUOTA_EXCEEDED" as const;
+/** Must match backend `API_ERROR_TOKEN_QUOTA_EXCEEDED`. */
+export const API_ERROR_TOKEN_QUOTA_EXCEEDED = "TOKEN_QUOTA_EXCEEDED" as const;
 
 /** Must match backend register conflict `code` when email is already taken. */
 export const API_ERROR_EMAIL_ALREADY_REGISTERED =
@@ -43,21 +42,19 @@ export function isRegisterEmailInUseError(error: unknown): boolean {
   const m = message.toLowerCase();
   return (
     m.includes("email") &&
-    (m.includes("already") ||
-      m.includes("registered") ||
-      m.includes("in use"))
+    (m.includes("already") || m.includes("registered") || m.includes("in use"))
   );
 }
 
-export function isAgentRunQuotaError(error: unknown): boolean {
+export function isTokenQuotaError(error: unknown): boolean {
   const { code, message, status } = getApiErrorPayload(error);
-  if (code === API_ERROR_AGENT_RUN_QUOTA_EXCEEDED) {
+  if (code === API_ERROR_TOKEN_QUOTA_EXCEEDED) {
     return true;
   }
   if (
     status === 403 &&
     typeof message === "string" &&
-    message.includes("AI agent runs")
+    message.includes("tokens")
   ) {
     return true;
   }

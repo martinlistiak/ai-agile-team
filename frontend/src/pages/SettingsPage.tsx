@@ -210,7 +210,7 @@ export function SettingsPage() {
                   onClick={() => setShowRemoveAvatarConfirm(true)}
                   className="cursor-pointer text-left text-sm font-medium text-gray-600 transition-colors hover:text-red-600 disabled:cursor-not-allowed disabled:opacity-50 dark:text-gray-400 dark:hover:text-red-400"
                 >
-                  Remove photo…
+                  Remove photo
                 </button>
               ) : null}
             </div>

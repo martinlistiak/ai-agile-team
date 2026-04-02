@@ -35,6 +35,21 @@ export class Execution {
   @Column({ type: "int", default: 0 })
   tokensUsed: number;
 
+  @Column({ type: "int", default: 0 })
+  inputTokens: number;
+
+  @Column({ type: "int", default: 0 })
+  outputTokens: number;
+
+  @Column({ type: "int", default: 0 })
+  cacheReadTokens: number;
+
+  @Column({ type: "int", default: 0 })
+  cacheCreationTokens: number;
+
+  @Column({ type: "varchar", nullable: true })
+  modelUsed: string;
+
   @CreateDateColumn()
   createdAt: Date;
 

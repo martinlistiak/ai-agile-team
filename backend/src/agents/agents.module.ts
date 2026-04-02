@@ -19,10 +19,15 @@ import { RulesModule } from "../rules/rules.module";
 import { ChatModule } from "../chat/chat.module";
 
 import { ExecutionRegistry } from "./execution-registry";
+import { ModelRouterService } from "./model-router.service";
+import { AgentMemoryService } from "./agent-memory.service";
+import { AgentBoosterService } from "./agent-booster.service";
+import { AgentCoordinatorService } from "./agent-coordinator.service";
+import { AgentMemory } from "../entities/agent-memory.entity";
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([Agent, Ticket, Execution, Space, User]),
+    TypeOrmModule.forFeature([Agent, Ticket, Execution, Space, User, AgentMemory]),
     forwardRef(() => TicketsModule),
     forwardRef(() => ChatModule),
     RulesModule,
@@ -38,6 +43,10 @@ import { ExecutionRegistry } from "./execution-registry";
     GithubService,
     GitlabService,
     ExecutionRegistry,
+    ModelRouterService,
+    AgentMemoryService,
+    AgentBoosterService,
+    AgentCoordinatorService,
   ],
   exports: [
     AgentsService,
@@ -49,6 +58,7 @@ import { ExecutionRegistry } from "./execution-registry";
     GithubService,
     GitlabService,
     ExecutionRegistry,
+    AgentCoordinatorService,
   ],
 })
 export class AgentsModule {}

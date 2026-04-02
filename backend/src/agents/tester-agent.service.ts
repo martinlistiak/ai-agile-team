@@ -14,9 +14,12 @@ import { RulesService } from "../rules/rules.service";
 import { SuggestedRulesService } from "../rules/suggested-rules.service";
 import { EventsGateway } from "../chat/events.gateway";
 import { formatAgentExecutionLog } from "../common/structured-logger";
-import { getModelForAgent } from "./agent-models.config";
 import { ExecutionRegistry } from "./execution-registry";
 import { AgentRunQuotaService } from "../common/agent-run-quota.service";
+import { ModelRouterService } from "./model-router.service";
+import { AgentMemoryService } from "./agent-memory.service";
+import { AgentBoosterService } from "./agent-booster.service";
+import { execSync } from "child_process";
 const TESTER_SYSTEM_PROMPT = `You are a Tester AI agent in an agile software development team.
 Your role is to write and execute tests for the project, ensuring code quality and correctness.
 
@@ -65,6 +68,9 @@ export class TesterAgentService {
     @InjectRepository(Space) private spaceRepo: Repository<Space>,
     private executionRegistry: ExecutionRegistry,
     private agentRunQuota: AgentRunQuotaService,
+    private modelRouter: ModelRouterService,
+    private agentMemory: AgentMemoryService,
+    private agentBooster: AgentBoosterService,
   ) {}
   /**
    * Run the tester agent — either on a specific ticket or a freeform testing instruction.
@@ -129,10 +135,37 @@ export class TesterAgentService {
         ? await this.gitlabService.getRepoPath(spaceId)
         : await this.githubService.getRepoPath(spaceId);
 
+      // Check for booster fast path (no LLM needed)
+      const fastPath = this.agentBooster.classify("tester", userMessage);
+      if (fastPath && !ticketId) {
+        const boosterResult = this.executeFastPath(fastPath, repoPath);
+        if (boosterResult) {
+          this.executionRegistry.remove(execution.id);
+          execution.status = "completed";
+          execution.endTime = new Date();
+          execution.tokensUsed = 0;
+          execution.modelUsed = "booster";
+          execution.actionLog = [
+            {
+              tool: "booster",
+              input: { fastPath, message: userMessage },
+              result: boosterResult,
+              timestamp: new Date().toISOString(),
+            },
+          ];
+          await this.executionRepo.save(execution);
+          await this.agentRepo.update(agent.id, { status: "idle" });
+          this.eventsGateway.emitAgentStatus(spaceId, agent.id, "idle");
+          return boosterResult;
+        }
+      }
+
       // Build prompt
       let prompt = userMessage;
+      let ticketPriority: string | undefined;
       if (ticketId) {
         const ticket = await this.ticketsService.findById(ticketId);
+        ticketPriority = ticket.priority;
         prompt = `## Ticket to test
 
 **Title:** ${ticket.title}
@@ -148,18 +181,26 @@ ${ticket.description}
 ${userMessage ? `**Additional instructions from the user:** ${userMessage}` : "Write and run tests for this ticket based on its acceptance criteria."}`;
 
         // Move ticket to testing
-        await this.ticketsService.moveTicket(ticketId, "testing", "agent");
+        await this.ticketsService.moveTicket(ticketId, "testing", "agent", {
+          id: agent.id,
+          name: "Tester",
+          type: "agent",
+        });
       }
 
-      // Compile 3-tier rules for this agent
-      const compiledRules = await this.rulesService.compileRulesForAgent(
-        spaceId,
-        agent.id,
-      );
-      const rulesSection = compiledRules
-        ? `\n\n# Active Rules\n${compiledRules}`
-        : "";
-      const fullPrompt = `${TESTER_SYSTEM_PROMPT}${rulesSection}\n\n---\n\n${prompt}`;
+      // Compile 3-tier rules and episodic memories for this agent
+      const [compiledRules, compiledMemories] = await Promise.all([
+        this.rulesService.compileRulesForAgent(spaceId, agent.id),
+        this.agentMemory.compileMemoriesForAgent(spaceId, agent.id),
+      ]);
+      let systemSuffix = "";
+      if (compiledRules) {
+        systemSuffix += `\n\n# Active Rules\n${compiledRules}`;
+      }
+      if (compiledMemories) {
+        systemSuffix += `\n\n# Learned Patterns\nApply these lessons from past executions:\n${compiledMemories}`;
+      }
+      const fullPrompt = `${TESTER_SYSTEM_PROMPT}${systemSuffix}\n\n---\n\n${prompt}`;
 
       // Run the Claude Agent SDK with Playwright MCP (connects to Lightpanda over CDP)
       const playwrightCdpEndpoint = this.configService.get<string>(
@@ -170,11 +211,16 @@ ${userMessage ? `**Additional instructions from the user:** ${userMessage}` : "W
       const actionLog: any[] = [];
       let lastScreenshotTime = 0;
       const SCREENSHOT_MIN_INTERVAL_MS = 500; // ~2fps cap
+      let sdkUsage: any = null;
+      const { model } = this.modelRouter.routeModel("tester", userMessage, {
+        ticketId,
+        ticketPriority,
+      });
 
       for await (const message of query({
         prompt: fullPrompt,
         options: {
-          model: getModelForAgent("tester"),
+          model,
           allowedTools: ["Read", "Write", "Edit", "Bash", "Glob", "Grep"],
           cwd: repoPath,
           permissionMode: "bypassPermissions",
@@ -268,8 +314,21 @@ ${userMessage ? `**Additional instructions from the user:** ${userMessage}` : "W
 
         if ("result" in message) {
           finalResult = (message as any).result;
+          sdkUsage = (message as any).usage;
         }
       }
+
+      // Store token usage from SDK result
+      if (sdkUsage) {
+        execution.inputTokens = sdkUsage.input_tokens ?? 0;
+        execution.outputTokens = sdkUsage.output_tokens ?? 0;
+        execution.cacheReadTokens = sdkUsage.cache_read_input_tokens ?? 0;
+        execution.cacheCreationTokens =
+          sdkUsage.cache_creation_input_tokens ?? 0;
+        execution.tokensUsed =
+          (sdkUsage.input_tokens ?? 0) + (sdkUsage.output_tokens ?? 0);
+      }
+      execution.modelUsed = model;
 
       // Emit browser session end if a session was active
       if (browserSessionActive) {
@@ -281,7 +340,11 @@ ${userMessage ? `**Additional instructions from the user:** ${userMessage}` : "W
 
       // If all tests pass and ticket was in testing, move to staged
       if (ticketId && finalResult.toLowerCase().includes("all tests pass")) {
-        await this.ticketsService.moveTicket(ticketId, "staged", "agent");
+        await this.ticketsService.moveTicket(ticketId, "staged", "agent", {
+          id: agent.id,
+          name: "Tester",
+          type: "agent",
+        });
       }
 
       this.executionRegistry.remove(execution.id);
@@ -292,12 +355,20 @@ ${userMessage ? `**Additional instructions from the user:** ${userMessage}` : "W
       await this.agentRepo.update(agent.id, { status: "idle" });
       this.eventsGateway.emitAgentStatus(spaceId, agent.id, "idle");
 
-      // Trigger learning loop — analyze execution for rule suggestions
+      // Trigger learning loops — rule suggestions + episodic memory extraction
       this.suggestedRulesService
         .analyzeExecution(execution.id)
         .catch((err) =>
           this.logger.warn(
-            `Learning loop analysis failed for execution ${execution.id}:`,
+            `Rule suggestion analysis failed for execution ${execution.id}:`,
+            err,
+          ),
+        );
+      this.agentMemory
+        .analyzeExecution(execution.id)
+        .catch((err) =>
+          this.logger.warn(
+            `Memory extraction failed for execution ${execution.id}:`,
             err,
           ),
         );
@@ -343,6 +414,34 @@ ${userMessage ? `**Additional instructions from the user:** ${userMessage}` : "W
       await this.agentRepo.update(agent.id, { status: "error" });
       this.eventsGateway.emitAgentStatus(spaceId, agent.id, "error");
       throw error;
+    }
+  }
+
+  /**
+   * Execute a tester fast-path operation without LLM.
+   */
+  private executeFastPath(fastPath: string, repoPath: string): string | null {
+    try {
+      const opts = {
+        cwd: repoPath,
+        timeout: 120_000,
+        encoding: "utf-8" as const,
+      };
+      switch (fastPath) {
+        case "tester:run_tests": {
+          const output = execSync(
+            "npm test 2>&1 || npx jest 2>&1 || npx vitest run 2>&1 || true",
+            opts,
+          );
+          const text = output.toString().trim();
+          return `## Test Results\n\n\`\`\`\n${text.slice(0, 5000)}\n\`\`\``;
+        }
+        default:
+          return null;
+      }
+    } catch (err: any) {
+      this.logger.warn(`Tester booster fast path ${fastPath} failed:`, err);
+      return null;
     }
   }
 }

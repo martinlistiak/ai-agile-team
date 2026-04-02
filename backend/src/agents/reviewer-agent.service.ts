@@ -12,10 +12,12 @@ import { RulesService } from "../rules/rules.service";
 import { SuggestedRulesService } from "../rules/suggested-rules.service";
 import { EventsGateway } from "../chat/events.gateway";
 import { formatAgentExecutionLog } from "../common/structured-logger";
-import { getModelForAgent } from "./agent-models.config";
-
 import { ExecutionRegistry } from "./execution-registry";
 import { AgentRunQuotaService } from "../common/agent-run-quota.service";
+import { ModelRouterService } from "./model-router.service";
+import { AgentMemoryService } from "./agent-memory.service";
+import { AgentBoosterService } from "./agent-booster.service";
+import { execSync } from "child_process";
 
 const REVIEWER_SYSTEM_PROMPT = `You are a Code Reviewer AI agent in an agile software development team.
 Your role is to review pull requests, identify issues, and provide constructive feedback.
@@ -76,6 +78,9 @@ export class ReviewerAgentService {
     @InjectRepository(Space) private spaceRepo: Repository<Space>,
     private executionRegistry: ExecutionRegistry,
     private agentRunQuota: AgentRunQuotaService,
+    private modelRouter: ModelRouterService,
+    private agentMemory: AgentMemoryService,
+    private agentBooster: AgentBoosterService,
   ) {}
 
   /**
@@ -143,6 +148,31 @@ export class ReviewerAgentService {
         ? await this.gitlabService.getRepoPath(spaceId)
         : await this.githubService.getRepoPath(spaceId);
 
+      // Check for booster fast path (no LLM needed)
+      const fastPath = this.agentBooster.classify("reviewer", userMessage);
+      if (fastPath && !ticketId) {
+        const boosterResult = this.executeFastPath(fastPath, repoPath);
+        if (boosterResult) {
+          this.executionRegistry.remove(execution.id);
+          execution.status = "completed";
+          execution.endTime = new Date();
+          execution.tokensUsed = 0;
+          execution.modelUsed = "booster";
+          execution.actionLog = [
+            {
+              tool: "booster",
+              input: { fastPath, message: userMessage },
+              result: boosterResult,
+              timestamp: new Date().toISOString(),
+            },
+          ];
+          await this.executionRepo.save(execution);
+          await this.agentRepo.update(agent.id, { status: "idle" });
+          this.eventsGateway.emitAgentStatus(spaceId, agent.id, "idle");
+          return boosterResult;
+        }
+      }
+
       // Build the prompt
       let prompt = userMessage;
       let ticket:
@@ -180,27 +210,40 @@ Use \`git diff main...runa/${ticketId}\` to see the changes.
 ${userMessage ? `**Additional instructions from the user:** ${userMessage}` : "Review this PR according to the ticket requirements and code quality standards."}`;
 
         // Move ticket to review status
-        await this.ticketsService.moveTicket(ticketId, "review", "agent");
+        await this.ticketsService.moveTicket(ticketId, "review", "agent", {
+          id: agent.id,
+          name: "Reviewer",
+          type: "agent",
+        });
       }
 
-      // Compile rules
-      const compiledRules = await this.rulesService.compileRulesForAgent(
-        spaceId,
-        agent.id,
-      );
-      const rulesSection = compiledRules
-        ? `\n\n# Active Rules\n${compiledRules}`
-        : "";
-      const fullPrompt = `${REVIEWER_SYSTEM_PROMPT}${rulesSection}\n\n---\n\n${prompt}`;
+      // Compile rules and episodic memories
+      const [compiledRules, compiledMemories] = await Promise.all([
+        this.rulesService.compileRulesForAgent(spaceId, agent.id),
+        this.agentMemory.compileMemoriesForAgent(spaceId, agent.id),
+      ]);
+      let systemSuffix = "";
+      if (compiledRules) {
+        systemSuffix += `\n\n# Active Rules\n${compiledRules}`;
+      }
+      if (compiledMemories) {
+        systemSuffix += `\n\n# Learned Patterns\nApply these lessons from past executions:\n${compiledMemories}`;
+      }
+      const fullPrompt = `${REVIEWER_SYSTEM_PROMPT}${systemSuffix}\n\n---\n\n${prompt}`;
 
       // Run the Claude Agent SDK
       let finalResult = "";
       const actionLog: any[] = [];
+      let sdkUsage: any = null;
+      const { model } = this.modelRouter.routeModel("reviewer", userMessage, {
+        ticketId,
+        ticketPriority: ticket?.priority,
+      });
 
       for await (const message of query({
         prompt: fullPrompt,
         options: {
-          model: getModelForAgent("reviewer"),
+          model,
           allowedTools: ["Read", "Bash", "Glob", "Grep"],
           cwd: repoPath,
           permissionMode: "bypassPermissions",
@@ -242,8 +285,21 @@ ${userMessage ? `**Additional instructions from the user:** ${userMessage}` : "R
         }
         if ("result" in message) {
           finalResult = (message as any).result;
+          sdkUsage = (message as any).usage;
         }
       }
+
+      // Store token usage from SDK result
+      if (sdkUsage) {
+        execution.inputTokens = sdkUsage.input_tokens ?? 0;
+        execution.outputTokens = sdkUsage.output_tokens ?? 0;
+        execution.cacheReadTokens = sdkUsage.cache_read_input_tokens ?? 0;
+        execution.cacheCreationTokens =
+          sdkUsage.cache_creation_input_tokens ?? 0;
+        execution.tokensUsed =
+          (sdkUsage.input_tokens ?? 0) + (sdkUsage.output_tokens ?? 0);
+      }
+      execution.modelUsed = model;
 
       // Post review comments on GitHub PR and summary on ticket
       if (ticketId && ticket) {
@@ -271,6 +327,7 @@ ${userMessage ? `**Additional instructions from the user:** ${userMessage}` : "R
           summaryComment,
           "agent",
           agent.id,
+          "Reviewer",
         );
 
         // If approved, advance to testing; if changes requested, move back to development
@@ -279,7 +336,11 @@ ${userMessage ? `**Additional instructions from the user:** ${userMessage}` : "R
           lowerResult.includes("verdict: approve") ||
           lowerResult.includes("verdict:**approve")
         ) {
-          await this.ticketsService.moveTicket(ticketId, "testing", "agent");
+          await this.ticketsService.moveTicket(ticketId, "testing", "agent", {
+            id: agent.id,
+            name: "Reviewer",
+            type: "agent",
+          });
         } else if (
           lowerResult.includes("verdict: request_changes") ||
           lowerResult.includes("verdict:**request_changes")
@@ -288,6 +349,11 @@ ${userMessage ? `**Additional instructions from the user:** ${userMessage}` : "R
             ticketId,
             "development",
             "agent",
+            {
+              id: agent.id,
+              name: "Reviewer",
+              type: "agent",
+            },
           );
         }
       }
@@ -299,12 +365,20 @@ ${userMessage ? `**Additional instructions from the user:** ${userMessage}` : "R
       execution.actionLog = actionLog;
       await this.executionRepo.save(execution);
 
-      // Trigger learning loop
+      // Trigger learning loops — rule suggestions + episodic memory extraction
+      this.agentMemory
+        .analyzeExecution(execution.id)
+        .catch((err) =>
+          this.logger.warn(
+            `Memory extraction failed for execution ${execution.id}:`,
+            err,
+          ),
+        );
       this.suggestedRulesService
         .analyzeExecution(execution.id)
         .catch((err) =>
           this.logger.warn(
-            `Learning loop analysis failed for execution ${execution.id}:`,
+            `Rule suggestion analysis failed for execution ${execution.id}:`,
             err,
           ),
         )
@@ -346,6 +420,40 @@ ${userMessage ? `**Additional instructions from the user:** ${userMessage}` : "R
       await this.agentRepo.update(agent.id, { status: "error" });
       this.eventsGateway.emitAgentStatus(spaceId, agent.id, "error");
       throw error;
+    }
+  }
+
+  /**
+   * Execute a reviewer fast-path operation without LLM.
+   */
+  private executeFastPath(fastPath: string, repoPath: string): string | null {
+    try {
+      const opts = {
+        cwd: repoPath,
+        timeout: 60_000,
+        encoding: "utf-8" as const,
+      };
+      switch (fastPath) {
+        case "reviewer:typecheck": {
+          const output = execSync("npx tsc --noEmit 2>&1 || true", opts);
+          const text = output.toString().trim();
+          return text
+            ? `## Type Check Results\n\n\`\`\`\n${text.slice(0, 3000)}\n\`\`\``
+            : "## Type Check Results\n\nNo type errors found.";
+        }
+        case "reviewer:lint": {
+          const output = execSync("npx eslint . 2>&1 || true", opts);
+          const text = output.toString().trim();
+          return text
+            ? `## Lint Results\n\n\`\`\`\n${text.slice(0, 3000)}\n\`\`\``
+            : "## Lint Results\n\nNo lint issues found.";
+        }
+        default:
+          return null;
+      }
+    } catch (err: any) {
+      this.logger.warn(`Reviewer booster fast path ${fastPath} failed:`, err);
+      return null;
     }
   }
 }

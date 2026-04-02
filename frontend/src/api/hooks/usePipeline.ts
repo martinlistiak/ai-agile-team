@@ -1,7 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import api from "@/api/client";
 import { useToast } from "@/components/Toast";
-import { getApiErrorPayload, isAgentRunQuotaError } from "@/lib/api-errors";
+import { getApiErrorPayload, isTokenQuotaError } from "@/lib/api-errors";
 
 export function usePipelineConfig(spaceId: string | null) {
   return useQuery<Record<string, boolean>>({
@@ -60,7 +60,7 @@ export function useAdvanceTicket() {
       success("Ticket advanced to next stage");
     },
     onError: (err: unknown) => {
-      if (isAgentRunQuotaError(err)) {
+      if (isTokenQuotaError(err)) {
         agentRunLimit(getApiErrorPayload(err).message);
         return;
       }
@@ -89,7 +89,7 @@ export function useRunPipeline() {
       success("Pipeline started");
     },
     onError: (err: unknown) => {
-      if (isAgentRunQuotaError(err)) {
+      if (isTokenQuotaError(err)) {
         agentRunLimit(getApiErrorPayload(err).message);
         return;
       }

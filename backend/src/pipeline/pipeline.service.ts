@@ -9,6 +9,7 @@ import { DeveloperAgentService } from "../agents/developer-agent.service";
 import { TesterAgentService } from "../agents/tester-agent.service";
 import { ReviewerAgentService } from "../agents/reviewer-agent.service";
 import { SuggestedRulesService } from "../rules/suggested-rules.service";
+import { AgentCoordinatorService } from "../agents/agent-coordinator.service";
 import { EventsGateway } from "../chat/events.gateway";
 import { CountlyService } from "../common/countly.service";
 
@@ -71,6 +72,7 @@ export class PipelineService {
     private testerAgentService: TesterAgentService,
     private reviewerAgentService: ReviewerAgentService,
     private suggestedRulesService: SuggestedRulesService,
+    private agentCoordinator: AgentCoordinatorService,
     private eventsGateway: EventsGateway,
     private countly: CountlyService,
     private eventEmitter: EventEmitter2,
@@ -125,13 +127,57 @@ export class PipelineService {
     });
 
     try {
+      // Build context from prior pipeline stages for this ticket
+      const context = await this.agentCoordinator.buildContextForTicket(
+        ticket.id,
+      );
+      const contextPrompt =
+        this.agentCoordinator.formatContextForPrompt(context);
+
       let result: string;
       if (agentType === "developer") {
-        result = await this.developerAgentService.run(spaceId, "", ticket.id);
+        result = await this.developerAgentService.run(
+          spaceId,
+          contextPrompt,
+          ticket.id,
+        );
       } else if (agentType === "reviewer") {
-        result = await this.reviewerAgentService.run(spaceId, "", ticket.id);
+        result = await this.reviewerAgentService.run(
+          spaceId,
+          contextPrompt,
+          ticket.id,
+        );
       } else {
-        result = await this.testerAgentService.run(spaceId, "", ticket.id);
+        result = await this.testerAgentService.run(
+          spaceId,
+          contextPrompt,
+          ticket.id,
+        );
+      }
+
+      // Check for review feedback loop (reviewer → developer auto-fix)
+      if (agentType === "reviewer") {
+        const feedbackPrompt =
+          await this.agentCoordinator.checkReviewFeedbackLoop(
+            ticket.id,
+            result,
+          );
+        if (feedbackPrompt) {
+          this.logger.log(
+            `Review feedback loop triggered for ticket ${ticket.id} — auto-fixing`,
+          );
+          this.eventsGateway.emitPipelineEvent(spaceId, {
+            ticketId: ticket.id,
+            stage: "development",
+            agentType: "developer",
+            action: "started",
+          });
+          await this.developerAgentService.run(
+            spaceId,
+            feedbackPrompt,
+            ticket.id,
+          );
+        }
       }
 
       this.eventsGateway.emitPipelineEvent(spaceId, {
@@ -332,6 +378,8 @@ export class PipelineService {
         to: nextStage,
         timestamp: new Date().toISOString(),
         trigger: "pipeline" as const,
+        actorType: "agent" as const,
+        actorName: "Pipeline",
       },
     ];
     await this.ticketRepo.update(ticketId, {
@@ -425,6 +473,8 @@ export class PipelineService {
           to: nextStage,
           timestamp: new Date().toISOString(),
           trigger: "pipeline" as const,
+          actorType: "agent" as const,
+          actorName: "Pipeline",
         },
       ];
       await this.ticketRepo.update(ticketId, {

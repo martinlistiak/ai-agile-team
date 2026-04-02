@@ -6,6 +6,7 @@ import { EventEmitterModule } from "@nestjs/event-emitter";
 import { ThrottlerModule, ThrottlerGuard } from "@nestjs/throttler";
 import { APP_GUARD } from "@nestjs/core";
 import { AuthModule } from "./auth/auth.module";
+import { ReadOnlyGuard } from "./auth/read-only.guard";
 import { RequestLoggingMiddleware } from "./common/request-logging.middleware";
 import { RequestIdMiddleware } from "./common/request-id.middleware";
 import { SpacesModule } from "./spaces/spaces.module";
@@ -47,6 +48,7 @@ import { EnterpriseModule } from "./enterprise/enterprise.module";
 import { NotificationsModule } from "./notifications/notifications.module";
 import { Notification } from "./entities/notification.entity";
 import { NotificationPreference } from "./entities/notification-preference.entity";
+import { AgentMemory } from "./entities/agent-memory.entity";
 
 @Module({
   imports: [
@@ -90,6 +92,7 @@ import { NotificationPreference } from "./entities/notification-preference.entit
           AnalyticsEvent,
           Notification,
           NotificationPreference,
+          AgentMemory,
         ],
         synchronize: config.get("NODE_ENV") !== "production",
         migrations: [__dirname + "/migrations/*{.ts,.js}"],
@@ -123,6 +126,10 @@ import { NotificationPreference } from "./entities/notification-preference.entit
     {
       provide: APP_GUARD,
       useClass: ThrottlerGuard,
+    },
+    {
+      provide: APP_GUARD,
+      useClass: ReadOnlyGuard,
     },
   ],
 })

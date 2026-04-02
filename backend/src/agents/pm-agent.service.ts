@@ -8,7 +8,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { Agent } from "../entities/agent.entity";
 import { Ticket } from "../entities/ticket.entity";
 import { Execution } from "../entities/execution.entity";
-import { getModelForAgent } from "./agent-models.config";
+import { ModelRouterService } from "./model-router.service";
 import { Space } from "../entities/space.entity";
 import { TicketsService } from "../tickets/tickets.service";
 import { RulesService } from "../rules/rules.service";
@@ -18,6 +18,8 @@ import { GitlabService } from "./gitlab.service";
 import { EventsGateway } from "../chat/events.gateway";
 import { ExecutionRegistry } from "./execution-registry";
 import { AgentRunQuotaService } from "../common/agent-run-quota.service";
+import { AgentMemoryService } from "./agent-memory.service";
+import { AgentBoosterService } from "./agent-booster.service";
 
 const TOOLS: Anthropic.Tool[] = [
   {
@@ -83,6 +85,22 @@ const TOOLS: Anthropic.Tool[] = [
     },
   },
   {
+    name: "list_tickets",
+    description:
+      "List all tickets in the current space. Returns ticket id, title, status, and priority for each ticket. Use this to look up ticket IDs before updating or deleting tickets.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        status: {
+          type: "string",
+          enum: ["backlog", "planning", "in_progress", "review", "done"],
+          description: "Optional: filter tickets by status column",
+        },
+      },
+      required: [],
+    },
+  },
+  {
     name: "list_files",
     description:
       "List files and directories at a given path in the connected repository. Returns names with a trailing / for directories.",
@@ -123,6 +141,8 @@ const SYSTEM_PROMPT = `You are a Product Manager AI agent in an agile software d
 5. Browse the connected codebase to understand existing implementation, suggest next steps, and identify gaps in requirements
 
 You can also delete tickets when the user asks to remove, discard, or clean up tasks that are no longer needed.
+
+IMPORTANT: When the user refers to an existing ticket by name, status, or description (e.g. "the Test ticket in backlog"), you MUST use the list_tickets tool to look up the ticket ID yourself. NEVER ask the user for a ticket ID — always resolve it on your own by listing tickets and matching by title or status.
 
 When creating tickets:
 - Use clear, concise titles that describe the work item
@@ -194,6 +214,9 @@ export class PmAgentService {
     @InjectRepository(Space) private spaceRepo: Repository<Space>,
     private executionRegistry: ExecutionRegistry,
     private agentRunQuota: AgentRunQuotaService,
+    private modelRouter: ModelRouterService,
+    private agentMemory: AgentMemoryService,
+    private agentBooster: AgentBoosterService,
   ) {
     this.client = new Anthropic({
       apiKey: this.configService.get("ANTHROPIC_API_KEY", ""),
@@ -236,6 +259,35 @@ export class PmAgentService {
     this.executionRegistry.register(execution.id);
 
     try {
+      // Check for booster fast path (no LLM needed)
+      const fastPath = this.agentBooster.classify("pm", userMessage);
+      if (fastPath && attachments.length === 0) {
+        const boosterResult = await this.executeFastPath(
+          fastPath,
+          userMessage,
+          spaceId,
+        );
+        if (boosterResult) {
+          this.executionRegistry.remove(execution.id);
+          execution.status = "completed";
+          execution.endTime = new Date();
+          execution.tokensUsed = 0;
+          execution.modelUsed = "booster";
+          execution.actionLog = [
+            {
+              tool: "booster",
+              input: { fastPath, message: userMessage },
+              result: boosterResult,
+              timestamp: new Date().toISOString(),
+            },
+          ];
+          await this.executionRepo.save(execution);
+          await this.agentRepo.update(agent.id, { status: "idle" });
+          this.eventsGateway.emitAgentStatus(spaceId, agent.id, "idle");
+          return boosterResult;
+        }
+      }
+
       const userContent: any[] = [];
       if (userMessage.trim()) {
         userContent.push({ type: "text", text: userMessage.trim() });
@@ -270,26 +322,50 @@ export class PmAgentService {
       let finalText = "";
 
       // Compile 3-tier rules for this agent
-      const compiledRules = await this.rulesService.compileRulesForAgent(
-        spaceId,
-        agent.id,
-      );
-      const systemPrompt = compiledRules
-        ? `${SYSTEM_PROMPT}\n\n# Active Rules\n${compiledRules}`
-        : SYSTEM_PROMPT;
+      const [compiledRules, compiledMemories] = await Promise.all([
+        this.rulesService.compileRulesForAgent(spaceId, agent.id),
+        this.agentMemory.compileMemoriesForAgent(spaceId, agent.id),
+      ]);
+      let systemPrompt = SYSTEM_PROMPT;
+      if (compiledRules) {
+        systemPrompt += `\n\n# Active Rules\n${compiledRules}`;
+      }
+      if (compiledMemories) {
+        systemPrompt += `\n\n# Learned Patterns\nApply these lessons from past executions:\n${compiledMemories}`;
+      }
+
+      // Token tracking accumulators
+      let totalInputTokens = 0;
+      let totalOutputTokens = 0;
+      let totalCacheReadTokens = 0;
+      let totalCacheCreationTokens = 0;
+      const { model } = this.modelRouter.routeModel("pm", userMessage, {
+        envModel: this.configService.get("ANTHROPIC_MODEL"),
+      });
 
       // Agent tool-use loop
       while (true) {
         const response = await this.client.messages.create({
-          model: getModelForAgent(
-            "pm",
-            this.configService.get("ANTHROPIC_MODEL"),
-          ),
+          model,
           max_tokens: 4096,
-          system: systemPrompt,
+          system: [
+            {
+              type: "text",
+              text: systemPrompt,
+              cache_control: { type: "ephemeral" },
+            },
+          ],
           tools: TOOLS,
           messages,
         });
+
+        // Accumulate token usage
+        totalInputTokens += response.usage?.input_tokens ?? 0;
+        totalOutputTokens += response.usage?.output_tokens ?? 0;
+        totalCacheReadTokens +=
+          (response.usage as any)?.cache_read_input_tokens ?? 0;
+        totalCacheCreationTokens +=
+          (response.usage as any)?.cache_creation_input_tokens ?? 0;
 
         if (response.stop_reason === "tool_use") {
           // Execute tools
@@ -332,6 +408,14 @@ export class PmAgentService {
         }
       }
 
+      // Store token usage on execution
+      execution.inputTokens = totalInputTokens;
+      execution.outputTokens = totalOutputTokens;
+      execution.cacheReadTokens = totalCacheReadTokens;
+      execution.cacheCreationTokens = totalCacheCreationTokens;
+      execution.tokensUsed = totalInputTokens + totalOutputTokens;
+      execution.modelUsed = model;
+
       // Update execution and agent status
       this.executionRegistry.remove(execution.id);
       execution.status = "completed";
@@ -340,12 +424,20 @@ export class PmAgentService {
       await this.agentRepo.update(agent.id, { status: "idle" });
       this.eventsGateway.emitAgentStatus(spaceId, agent.id, "idle");
 
-      // Trigger learning loop — analyze execution for rule suggestions
+      // Trigger learning loops — rule suggestions + episodic memory extraction
       this.suggestedRulesService
         .analyzeExecution(execution.id)
         .catch((err) =>
           this.logger.warn(
-            `Learning loop analysis failed for execution ${execution.id}:`,
+            `Rule suggestion analysis failed for execution ${execution.id}:`,
+            err,
+          ),
+        );
+      this.agentMemory
+        .analyzeExecution(execution.id)
+        .catch((err) =>
+          this.logger.warn(
+            `Memory extraction failed for execution ${execution.id}:`,
             err,
           ),
         );
@@ -396,6 +488,20 @@ export class PmAgentService {
         await this.ticketsService.delete(input.ticket_id);
         return { success: true, ticketId: input.ticket_id };
       }
+      case "list_tickets": {
+        const tickets = await this.ticketsService.findBySpace(spaceId);
+        const filtered = input.status
+          ? tickets.filter((t) => t.status === input.status)
+          : tickets;
+        return {
+          tickets: filtered.map((t) => ({
+            id: t.id,
+            title: t.title,
+            status: t.status,
+            priority: t.priority,
+          })),
+        };
+      }
       case "list_files": {
         try {
           const repoPath = await this.getRepoPathForSpace(spaceId);
@@ -432,6 +538,61 @@ export class PmAgentService {
       }
       default:
         return { error: `Unknown tool: ${name}` };
+    }
+  }
+
+  /**
+   * Execute a fast-path operation without LLM.
+   * Returns the response string, or null if the fast path couldn't be executed.
+   */
+  private async executeFastPath(
+    fastPath: string,
+    userMessage: string,
+    spaceId: string,
+  ): Promise<string | null> {
+    try {
+      switch (fastPath) {
+        case "pm:list_tickets": {
+          const tickets = await this.ticketsService.findBySpace(spaceId);
+          if (tickets.length === 0) {
+            return "No tickets found in this space.";
+          }
+          const lines = tickets.map(
+            (t) =>
+              `- **${t.title}** (${t.status}, ${t.priority}) — \`${t.id}\``,
+          );
+          return `Found ${tickets.length} ticket(s):\n\n${lines.join("\n")}`;
+        }
+
+        case "pm:move_ticket": {
+          const match = userMessage.match(
+            /(?:move|set|change)\s+(?:ticket\s+)?([\w-]+)\s+(?:to|status)\s+(\w+)/i,
+          );
+          if (!match) return null;
+          const [, ticketId, status] = match;
+          await this.ticketsService.moveTicket(ticketId, status, "agent", {
+            id: "pm",
+            name: "PM",
+            type: "agent",
+          });
+          return `Moved ticket \`${ticketId}\` to **${status}**.`;
+        }
+
+        case "pm:delete_ticket": {
+          const match = userMessage.match(
+            /(?:delete|remove)\s+(?:ticket\s+)?([\w-]{36})/i,
+          );
+          if (!match) return null;
+          await this.ticketsService.delete(match[1]);
+          return `Deleted ticket \`${match[1]}\`.`;
+        }
+
+        default:
+          return null;
+      }
+    } catch (err: any) {
+      this.logger.warn(`Booster fast path ${fastPath} failed:`, err);
+      return null; // Fall through to normal LLM flow
     }
   }
 }

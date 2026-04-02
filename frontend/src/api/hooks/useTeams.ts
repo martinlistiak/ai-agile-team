@@ -54,6 +54,27 @@ export function useCreateTeam() {
   });
 }
 
+export function useUpdateTeam() {
+  const queryClient = useQueryClient();
+  const { success, error: showError } = useToast();
+  return useMutation({
+    mutationFn: async (payload: { teamId: string; name: string }) => {
+      const { data } = await api.patch(`/teams/${payload.teamId}`, {
+        name: payload.name,
+      });
+      return data as Team;
+    },
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: ["teams"] });
+      queryClient.invalidateQueries({ queryKey: ["teams", variables.teamId] });
+      success("Team name updated");
+    },
+    onError: (err: any) => {
+      showError(friendlyError(err, "Failed to update team name"));
+    },
+  });
+}
+
 export function useInviteMember() {
   const queryClient = useQueryClient();
   const { error: showError } = useToast();

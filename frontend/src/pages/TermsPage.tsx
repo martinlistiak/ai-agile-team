@@ -56,7 +56,7 @@ export function TermsPage() {
             className="text-[13px] mb-10"
             style={{ color: "var(--text-tertiary)" }}
           >
-            Last updated: March 14, 2026
+            Last updated: April 1, 2026
           </p>
 
           <div className="space-y-8" style={{ color: "var(--text-secondary)" }}>
@@ -200,14 +200,39 @@ export function TermsPage() {
                 className="text-base font-semibold mb-2"
                 style={{ color: "var(--text-primary)" }}
               >
-                8. Subscription and Billing
+                8. Subscription, Billing, and Usage Limits
               </h2>
-              <p className="text-[14px] leading-relaxed">
+              <p className="text-[14px] leading-relaxed mb-3">
                 Certain features of Runa require a paid subscription. Pricing is
                 as displayed on our pricing page at the time of purchase.
                 Subscriptions renew automatically unless cancelled before the
-                renewal date. We reserve the right to change pricing with 30
-                days' notice. Refunds are handled on a case-by-case basis.
+                renewal date.
+              </p>
+              <p className="text-[14px] leading-relaxed mb-3">
+                Each subscription plan includes a monthly token limit for AI
+                agent usage. Current limits are:
+              </p>
+              <ul className="list-disc pl-5 space-y-1.5 text-[14px] leading-relaxed mb-3">
+                <li>Starter: 500,000 tokens per month</li>
+                <li>Team: 1,500,000 tokens per month</li>
+                <li>
+                  Enterprise: 10,000,000 tokens per month (custom limits
+                  available)
+                </li>
+              </ul>
+              <p className="text-[14px] leading-relaxed mb-3">
+                When you exceed your plan's token limit, additional agent runs
+                will be blocked until the next billing period. You may purchase
+                additional usage credits or upgrade your plan at any time.
+              </p>
+              <p className="text-[14px] leading-relaxed font-medium">
+                We reserve the right to modify pricing, usage limits, and plan
+                features at any time. Changes to pricing will be communicated
+                with at least 30 days' notice before your next billing cycle.
+                Changes to usage limits may take effect immediately for new
+                billing periods. Continued use of Runa after such changes
+                constitutes acceptance of the modified terms. Refunds are
+                handled on a case-by-case basis.
               </p>
             </section>
 

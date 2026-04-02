@@ -1,7 +1,7 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import api from "@/api/client";
 import { useToast } from "@/components/Toast";
-import { getApiErrorPayload, isAgentRunQuotaError } from "@/lib/api-errors";
+import { getApiErrorPayload, isTokenQuotaError } from "@/lib/api-errors";
 
 interface TriggerAgentResponse {
   queued: boolean;
@@ -37,13 +37,11 @@ export function useTriggerAgent() {
       );
     },
     onError: (err: unknown) => {
-      if (isAgentRunQuotaError(err)) {
+      if (isTokenQuotaError(err)) {
         agentRunLimit(getApiErrorPayload(err).message);
         return;
       }
-      showError(
-        getApiErrorPayload(err).message || "Failed to trigger agent",
-      );
+      showError(getApiErrorPayload(err).message || "Failed to trigger agent");
     },
   });
 }

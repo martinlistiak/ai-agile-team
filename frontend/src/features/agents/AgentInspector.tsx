@@ -11,7 +11,6 @@ import { useParams } from "react-router-dom";
 import { getSocket } from "@/lib/socket";
 import { cn } from "@/lib/cn";
 import { formControlClassName } from "@/lib/formControlStyles";
-import { useChatContext } from "@/contexts/ChatContext";
 import { useStopAgent } from "@/api/hooks/useStopAgent";
 import type { Agent, Execution, Ticket } from "@/types";
 import { BrowserStreamViewer } from "./BrowserStreamViewer";
@@ -337,7 +336,6 @@ export function AgentInspector({ agent, onClose }: AgentInspectorProps) {
   const { data, isLoading } = useExecutions(agent.id, page, 20);
   const { data: tickets = [] } = useTickets(spaceId ?? null);
   const queryClient = useQueryClient();
-  const { openChat } = useChatContext();
   const stopAgent = useStopAgent();
   const updateSystemPrompt = useUpdateAgentSystemPrompt(spaceId ?? null);
 
@@ -347,11 +345,6 @@ export function AgentInspector({ agent, onClose }: AgentInspectorProps) {
   );
 
   const ticketMap = new Map(tickets.map((t) => [t.id, t]));
-
-  const handleChatClick = useCallback(() => {
-    openChat(agent.agentType);
-    onClose();
-  }, [openChat, agent.agentType, onClose]);
 
   const handleStop = useCallback(() => {
     if (!spaceId) return;
@@ -424,13 +417,6 @@ export function AgentInspector({ agent, onClose }: AgentInspectorProps) {
               {stopAgent.isPending ? "Stopping…" : "Stop"}
             </button>
           )}
-          <button
-            type="button"
-            onClick={handleChatClick}
-            className="rounded-md bg-stone-800 dark:bg-stone-200 px-3 py-1 text-[12px] font-medium text-stone-50 dark:text-stone-800 hover:bg-stone-700 dark:hover:bg-stone-300 transition-colors cursor-pointer"
-          >
-            Chat
-          </button>
           <button
             type="button"
             onClick={handleClose}

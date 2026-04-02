@@ -23,6 +23,7 @@ import { ApiKey } from "./entities/api-key.entity";
 import { OAuthClient } from "./entities/oauth-client.entity";
 import { OAuthCode } from "./entities/oauth-code.entity";
 import { OAuthToken } from "./entities/oauth-token.entity";
+import { AgentMemory } from "./entities/agent-memory.entity";
 
 export default new DataSource({
   type: "postgres",
@@ -56,6 +57,7 @@ export default new DataSource({
     AnalyticsEvent,
     Notification,
     NotificationPreference,
+    AgentMemory,
   ],
   // Must be relative to this file so CLI works from dist/ (production image has no src/)
   migrations: [__dirname + "/migrations/*{.ts,.js}"],

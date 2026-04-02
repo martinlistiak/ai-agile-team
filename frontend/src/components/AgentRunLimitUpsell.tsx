@@ -1,7 +1,7 @@
 import { Link } from "react-router-dom";
 import { FiX, FiZap } from "react-icons/fi";
 import { cn } from "@/lib/cn";
-import { getApiErrorPayload, isAgentRunQuotaError } from "@/lib/api-errors";
+import { getApiErrorPayload, isTokenQuotaError } from "@/lib/api-errors";
 
 type Props = {
   error: unknown;
@@ -10,7 +10,7 @@ type Props = {
 };
 
 export function AgentRunLimitUpsell({ error, onDismiss, className }: Props) {
-  if (!isAgentRunQuotaError(error)) {
+  if (!isTokenQuotaError(error)) {
     return null;
   }
 
@@ -28,9 +28,7 @@ export function AgentRunLimitUpsell({ error, onDismiss, className }: Props) {
         <FiZap className="h-4 w-4" aria-hidden />
       </span>
       <div className="min-w-0 flex-1 space-y-2">
-        <p className="font-medium leading-snug">
-          Daily agent run limit reached
-        </p>
+        <p className="font-medium leading-snug">Monthly token limit reached</p>
         <p className="text-[13px] leading-relaxed text-amber-900/90 dark:text-amber-100/85">
           {message}
         </p>
@@ -42,7 +40,7 @@ export function AgentRunLimitUpsell({ error, onDismiss, className }: Props) {
             Upgrade to Team
           </Link>
           <span className="text-[11px] text-amber-800/80 dark:text-amber-200/70">
-            50 agent runs / day &amp; more capacity
+            1.5M tokens / month
           </span>
         </div>
       </div>

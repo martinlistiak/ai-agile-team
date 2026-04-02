@@ -23,7 +23,8 @@ const PLANS = [
     monthlyPrice: 19,
     annualPrice: 15,
     features: [
-      "10 AI agent runs / day",
+      "500K tokens / month",
+      "Unlimited agent runs",
       "Basic kanban board",
       "Community support",
       "GitHub integration",
@@ -37,7 +38,8 @@ const PLANS = [
     monthlyPrice: 46,
     annualPrice: 39,
     features: [
-      "50 AI agent runs / day",
+      "1.5M tokens / month",
+      "Unlimited agent runs",
       "Full pipeline automation",
       "Custom agent rules",
       "Priority support",
@@ -54,6 +56,7 @@ const PLANS = [
     annualPrice: null,
     features: [
       "Everything in Team",
+      "10M tokens / month",
       "SSO & SAML",
       "Custom agent training",
       "Dedicated support",
@@ -269,7 +272,7 @@ export function BillingPage({ onboarding = false }: { onboarding?: boolean }) {
               {new Date(usage.periodEnd).toLocaleDateString()}
             </span>
           </div>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-4">
             <div className="rounded-lg bg-gray-50 dark:bg-gray-900 p-3">
               <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">
                 Total runs
@@ -294,14 +297,36 @@ export function BillingPage({ onboarding = false }: { onboarding?: boolean }) {
                 {usage.failedRuns.toLocaleString()}
               </p>
             </div>
-            <div className="rounded-lg bg-gray-50 dark:bg-gray-900 p-3">
-              <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">
-                Tokens used
+          </div>
+
+          {/* Token usage with progress bar */}
+          <div className="rounded-lg bg-gray-50 dark:bg-gray-900 p-3">
+            <div className="flex items-center justify-between mb-2">
+              <p className="text-xs text-gray-500 dark:text-gray-400">
+                Token usage this period
               </p>
-              <p className="text-xl font-semibold text-gray-900 dark:text-gray-100">
-                {usage.totalTokens.toLocaleString()}
+              <p className="text-xs text-gray-500 dark:text-gray-400">
+                {usage.totalTokens.toLocaleString()} /{" "}
+                {(usage.monthlyTokenLimit / 1000000).toFixed(1)}M
               </p>
             </div>
+            <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2">
+              <div
+                className={`h-2 rounded-full transition-all ${
+                  usage.tokenUsagePercent >= 90
+                    ? "bg-red-500"
+                    : usage.tokenUsagePercent >= 70
+                      ? "bg-amber-500"
+                      : "bg-indigo-500"
+                }`}
+                style={{
+                  width: `${Math.min(usage.tokenUsagePercent, 100)}%`,
+                }}
+              />
+            </div>
+            <p className="text-xs text-gray-400 mt-1">
+              {usage.tokenUsagePercent}% of monthly limit used
+            </p>
           </div>
         </div>
       )}

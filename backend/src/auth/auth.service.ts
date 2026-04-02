@@ -557,6 +557,32 @@ export class AuthService {
     return this.userRepo.findOneBy({ id });
   }
 
+  async listAllUsers(): Promise<
+    {
+      id: string;
+      email: string;
+      name: string;
+      avatarUrl: string | null;
+      planTier: string;
+      subscriptionStatus: string;
+      createdAt: Date;
+    }[]
+  > {
+    const users = await this.userRepo.find({
+      order: { createdAt: "DESC" },
+      take: 500,
+    });
+    return users.map((u) => ({
+      id: u.id,
+      email: u.email,
+      name: u.name,
+      avatarUrl: u.avatarUrl,
+      planTier: u.planTier,
+      subscriptionStatus: u.subscriptionStatus,
+      createdAt: u.createdAt,
+    }));
+  }
+
   async verifyEmailWithToken(token: string) {
     const trimmedToken = token?.trim() ?? "";
     if (!trimmedToken) {
@@ -640,6 +666,44 @@ export class AuthService {
 
   private createToken(user: User): string {
     return this.jwtService.sign({ sub: user.id, email: user.email });
+  }
+
+  createImpersonationToken(
+    impersonatorId: string,
+    targetUserId: string,
+  ): Promise<{
+    accessToken: string;
+    user: ReturnType<typeof this.sanitizeUser>;
+    isImpersonating: boolean;
+  }> {
+    return this.userRepo.findOneBy({ id: targetUserId }).then((targetUser) => {
+      if (!targetUser) {
+        throw new BadRequestException("User not found");
+      }
+      const token = this.jwtService.sign({
+        sub: targetUser.id,
+        email: targetUser.email,
+        impersonatorId,
+        readOnly: true,
+      });
+      return {
+        accessToken: token,
+        user: this.sanitizeUser(targetUser),
+        isImpersonating: true,
+      };
+    });
+  }
+
+  async stopImpersonation(impersonatorId: string): Promise<{
+    accessToken: string;
+    user: ReturnType<typeof this.sanitizeUser>;
+  }> {
+    const impersonator = await this.userRepo.findOneBy({ id: impersonatorId });
+    if (!impersonator) {
+      throw new BadRequestException("Original user not found");
+    }
+    const token = this.createToken(impersonator);
+    return { accessToken: token, user: this.sanitizeUser(impersonator) };
   }
 
   private sanitizeUser(user: User) {

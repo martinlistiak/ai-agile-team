@@ -83,6 +83,9 @@ export class User {
   @Column({ type: "timestamptz", nullable: true })
   privacyAcceptedAt: Date | null;
 
+  @Column({ type: "boolean", default: false })
+  isSuperAdmin: boolean;
+
   @CreateDateColumn()
   createdAt: Date;
 

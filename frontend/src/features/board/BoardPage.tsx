@@ -1,7 +1,15 @@
 import { useState, useEffect, useRef } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { FiZap, FiBook, FiPlus, FiEdit2, FiTrash2 } from "react-icons/fi";
+import {
+  FiZap,
+  FiBook,
+  FiPlus,
+  FiEdit2,
+  FiTrash2,
+  FiMessageCircle,
+} from "react-icons/fi";
 import { useAuth } from "@/contexts/AuthContext";
+import { useChatContext } from "@/contexts/ChatContext";
 import {
   useSpace,
   useUpdateSpace,
@@ -10,8 +18,6 @@ import {
 import { useSocketEvents } from "@/hooks/useSocketEvents";
 import { KanbanBoard } from "./KanbanBoard";
 import { AuditToolbar } from "./AuditToolbar";
-import { ChatBubble } from "@/features/chat/ChatBubble";
-import { ChatModal } from "@/features/chat/ChatModal";
 import { PipelineSettings } from "@/features/pipeline/PipelineSettings";
 import { RulesPanel } from "@/features/rules/RulesPanel";
 import { RulesUpsellModal } from "@/components/RulesUpsellModal";
@@ -31,6 +37,7 @@ export function BoardPage() {
   const { spaceId } = useParams();
   const navigate = useNavigate();
   const { user } = useAuth();
+  const { isOpen: isChatOpen, openChat, closeChat } = useChatContext();
   const { data: space } = useSpace(spaceId || null);
   const updateSpace = useUpdateSpace();
   const deleteSpace = useDeleteSpace();
@@ -290,6 +297,24 @@ export function BoardPage() {
             )}
           </div>
           <div className="flex items-center gap-1 md:gap-1.5 shrink-0">
+            {/* Chat toggle */}
+            <button
+              type="button"
+              onClick={() => (isChatOpen ? closeChat() : openChat())}
+              className={cn(
+                "group/btn cursor-pointer flex items-center gap-1.5 rounded-lg px-2 py-1.5 md:px-3 text-xs font-medium transition-all duration-150 active:scale-[0.97]",
+                isChatOpen
+                  ? "bg-primary-100 text-primary-700 dark:bg-primary-900/30 dark:text-primary-300"
+                  : "text-gray-500 hover:bg-gray-100/80 dark:text-gray-400 dark:hover:bg-gray-800/60",
+              )}
+              aria-label="Chat"
+            >
+              <FiMessageCircle
+                size={13}
+                className="transition-transform duration-150 group-hover/btn:scale-110"
+              />
+              <span className="hidden md:inline">Chat</span>
+            </button>
             {/* Secondary actions — hidden labels on mobile */}
             <button
               type="button"
@@ -377,8 +402,6 @@ export function BoardPage() {
           onCreate={() => setShowCreateTicket(false)}
         />
       )}
-      <ChatBubble />
-      <ChatModal />
     </div>
   );
 }

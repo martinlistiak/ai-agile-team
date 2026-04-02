@@ -87,9 +87,18 @@ export class TicketsController {
   @ApiOperation({ summary: "Update ticket fields" })
   @ApiParam({ name: "id", format: "uuid" })
   @ApiResponse({ status: 200, description: "Updated ticket" })
-  async update(@Param("id") id: string, @Body() body: UpdateTicketDto) {
+  async update(
+    @Param("id") id: string,
+    @Body() body: UpdateTicketDto,
+    @Req() req: any,
+  ) {
     const { startWorking, ...updateData } = body;
-    let updated = await this.ticketsService.update(id, updateData);
+    const actor = {
+      id: req.user.id,
+      name: req.user.name,
+      type: "user" as const,
+    };
+    let updated = await this.ticketsService.update(id, updateData, actor);
     if (startWorking && body.assigneeAgentId) {
       const agent = await this.agentsService.findById(body.assigneeAgentId);
       const defaultStatus =
@@ -102,6 +111,7 @@ export class TicketsController {
           updated.id,
           defaultStatus,
           "user",
+          actor,
         );
         await this.pipelineService.triggerAgentForTicket(updated.id);
       }
@@ -113,8 +123,17 @@ export class TicketsController {
   @ApiOperation({ summary: "Move a ticket to a different status column" })
   @ApiParam({ name: "id", format: "uuid" })
   @ApiResponse({ status: 200, description: "Moved ticket" })
-  async move(@Param("id") id: string, @Body() body: MoveTicketDto) {
-    return this.ticketsService.moveTicket(id, body.status, "user");
+  async move(
+    @Param("id") id: string,
+    @Body() body: MoveTicketDto,
+    @Req() req: any,
+  ) {
+    const actor = {
+      id: req.user.id,
+      name: req.user.name,
+      type: "user" as const,
+    };
+    return this.ticketsService.moveTicket(id, body.status, "user", actor);
   }
 
   @Patch("spaces/:spaceId/tickets/reorder")
@@ -147,6 +166,7 @@ export class TicketsController {
       body.content,
       "user",
       req.user.id,
+      req.user.name,
     );
   }
 

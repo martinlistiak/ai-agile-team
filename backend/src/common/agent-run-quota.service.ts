@@ -7,17 +7,25 @@ import { InjectRepository } from "@nestjs/typeorm";
 import { Repository } from "typeorm";
 import { Execution } from "../entities/execution.entity";
 import { Space } from "../entities/space.entity";
-import { User } from "../entities/user.entity";
+import { User, PlanTier } from "../entities/user.entity";
 import {
-  API_ERROR_AGENT_RUN_QUOTA_EXCEEDED,
-  STARTER_DAILY_AGENT_RUNS,
-  TEAM_DAILY_AGENT_RUNS,
+  API_ERROR_TOKEN_QUOTA_EXCEEDED,
+  STARTER_MONTHLY_TOKENS,
+  TEAM_MONTHLY_TOKENS,
+  ENTERPRISE_MONTHLY_TOKENS,
 } from "./subscription.constants";
 
-function startOfUtcDay(d: Date): Date {
-  return new Date(
-    Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), 0, 0, 0, 0),
-  );
+/** Get the monthly token limit for a plan tier */
+export function getMonthlyTokenLimit(planTier: PlanTier): number {
+  switch (planTier) {
+    case "enterprise":
+      return ENTERPRISE_MONTHLY_TOKENS;
+    case "team":
+      return TEAM_MONTHLY_TOKENS;
+    case "starter":
+    default:
+      return STARTER_MONTHLY_TOKENS;
+  }
 }
 
 @Injectable()
@@ -29,8 +37,10 @@ export class AgentRunQuotaService {
   ) {}
 
   /**
-   * Enforces daily agent run limits for the space owner.
-   * Starter: 10/day, Team: 50/day, Enterprise: unlimited.
+   * Enforces monthly token limits for the space owner.
+   * Starter: 500K tokens/month
+   * Team: 1.5M tokens/month
+   * Enterprise: 10M tokens/month
    */
   async assertCanStartRunForSpace(spaceId: string): Promise<void> {
     const space = await this.spaceRepo.findOneBy({ id: spaceId });
@@ -43,11 +53,6 @@ export class AgentRunQuotaService {
       throw new NotFoundException("User not found");
     }
 
-    // Enterprise is unlimited
-    if (user.planTier === "enterprise") {
-      return;
-    }
-
     const isActive =
       user.subscriptionStatus === "active" ||
       user.subscriptionStatus === "trialing";
@@ -55,27 +60,85 @@ export class AgentRunQuotaService {
       return;
     }
 
-    const dayStart = startOfUtcDay(new Date());
-    const count = await this.executionRepo
+    await this.checkMonthlyTokenLimit(user);
+  }
+
+  private async checkMonthlyTokenLimit(user: User): Promise<void> {
+    const now = new Date();
+    let periodStart: Date;
+
+    if (user.currentPeriodEnd) {
+      periodStart = new Date(user.currentPeriodEnd);
+      periodStart.setDate(periodStart.getDate() - 30);
+    } else {
+      periodStart = new Date(
+        Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1),
+      );
+    }
+
+    const monthlyLimit = getMonthlyTokenLimit(user.planTier);
+
+    const result = await this.executionRepo
       .createQueryBuilder("e")
       .innerJoin("e.agent", "agent")
       .innerJoin("agent.space", "space")
-      .where("space.userId = :userId", { userId: space.userId })
-      .andWhere("e.startTime >= :dayStart", { dayStart })
-      .getCount();
+      .where("space.userId = :userId", { userId: user.id })
+      .andWhere("e.startTime >= :periodStart", { periodStart })
+      .select('COALESCE(SUM(e."tokensUsed"), 0)::int', "totalTokens")
+      .getRawOne();
 
-    if (user.planTier === "starter" && count >= STARTER_DAILY_AGENT_RUNS) {
+    const totalTokens = result?.totalTokens ?? 0;
+
+    if (totalTokens >= monthlyLimit) {
+      const upgradeHint =
+        user.planTier === "starter"
+          ? "Upgrade to Team for higher token limits, or top up usage credits."
+          : user.planTier === "team"
+            ? "Upgrade to Enterprise for higher limits, or top up usage credits."
+            : "Contact support if you need higher limits.";
+
       throw new ForbiddenException({
-        code: API_ERROR_AGENT_RUN_QUOTA_EXCEEDED,
-        message: `You've reached your Starter plan limit of ${STARTER_DAILY_AGENT_RUNS} AI agent runs today (UTC). Upgrade to Team for higher usage.`,
+        code: API_ERROR_TOKEN_QUOTA_EXCEEDED,
+        message: `You've reached your ${user.planTier} plan limit of ${(monthlyLimit / 1_000_000).toFixed(1)}M tokens this billing period. ${upgradeHint}`,
       });
     }
+  }
 
-    if (user.planTier === "team" && count >= TEAM_DAILY_AGENT_RUNS) {
-      throw new ForbiddenException({
-        code: API_ERROR_AGENT_RUN_QUOTA_EXCEEDED,
-        message: `You've reached your Team plan limit of ${TEAM_DAILY_AGENT_RUNS} AI agent runs today (UTC). Upgrade to Enterprise for unlimited runs.`,
-      });
+  /**
+   * Get current token usage for a user
+   */
+  async getUsageForUser(userId: string): Promise<{
+    tokensThisPeriod: number;
+    monthlyTokenLimit: number;
+  }> {
+    const user = await this.userRepo.findOneBy({ id: userId });
+    if (!user) {
+      throw new NotFoundException("User not found");
     }
+
+    const now = new Date();
+    let periodStart: Date;
+    if (user.currentPeriodEnd) {
+      periodStart = new Date(user.currentPeriodEnd);
+      periodStart.setDate(periodStart.getDate() - 30);
+    } else {
+      periodStart = new Date(
+        Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1),
+      );
+    }
+
+    const result = await this.executionRepo
+      .createQueryBuilder("e")
+      .innerJoin("e.agent", "agent")
+      .innerJoin("agent.space", "space")
+      .where("space.userId = :userId", { userId })
+      .andWhere("e.startTime >= :periodStart", { periodStart })
+      .select('COALESCE(SUM(e."tokensUsed"), 0)::int AS "tokensThisPeriod"')
+      .getRawOne();
+
+    return {
+      tokensThisPeriod: result?.tokensThisPeriod ?? 0,
+      monthlyTokenLimit: getMonthlyTokenLimit(user.planTier),
+    };
   }
 }

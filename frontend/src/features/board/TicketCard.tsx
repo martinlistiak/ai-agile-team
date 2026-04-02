@@ -2,14 +2,14 @@ import { useState, useEffect, useCallback } from "react";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { cn } from "@/lib/cn";
-import { FiPlay } from "react-icons/fi";
+import { FiPlay, FiLoader } from "react-icons/fi";
 import { useTriggerAgent } from "@/api/hooks/useTriggerAgent";
+import { useUpdateTicket } from "@/api/hooks/useTickets";
 import { getSocket } from "@/lib/socket";
 import { getAvatarSrc } from "@/lib/avatars";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import RotatingBorder from "@/components/RotatingBorder";
 import type { Agent, Ticket, TicketStatus } from "@/types";
-import { AgentBadge } from "../agents/AgentPanel";
 
 const AGENT_BORDER_COLORS: Record<string, string> = {
   pm: "#3b82f6",
@@ -66,8 +66,10 @@ export function TicketCard({
     isDragging: isSortDragging,
   } = useSortable({ id: ticket.id });
   const triggerAgent = useTriggerAgent();
+  const updateTicket = useUpdateTicket();
   const [agentActive, setAgentActive] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [showAssigneeDropdown, setShowAssigneeDropdown] = useState(false);
 
   const isDisabled = !PLAY_ENABLED_STATUSES.has(ticket.status);
   const isLoading = triggerAgent.isPending || agentActive;
@@ -119,6 +121,32 @@ export function TicketCard({
     setShowDeleteConfirm(false);
     onDelete?.(ticket.id);
   }, [onDelete, ticket.id]);
+
+  const handleAssigneeClick = useCallback((e: React.MouseEvent) => {
+    e.stopPropagation();
+    setShowAssigneeDropdown((prev) => !prev);
+  }, []);
+
+  const handleReassign = useCallback(
+    (agentId: string | null) => {
+      if (!spaceId) return;
+      updateTicket.mutate({
+        ticketId: ticket.id,
+        spaceId,
+        assigneeAgentId: agentId,
+      });
+      setShowAssigneeDropdown(false);
+    },
+    [spaceId, ticket.id, updateTicket],
+  );
+
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    if (!showAssigneeDropdown) return;
+    const handleClickOutside = () => setShowAssigneeDropdown(false);
+    document.addEventListener("click", handleClickOutside);
+    return () => document.removeEventListener("click", handleClickOutside);
+  }, [showAssigneeDropdown]);
 
   const style = {
     transform: CSS.Transform.toString(transform),
@@ -176,19 +204,81 @@ export function TicketCard({
           {ticket.priority}
         </span>
         <div className="flex items-center gap-1.5">
-          {assignedAgent && (
-            <RotatingBorder
-              active={assignedAgent.status === "active"}
-              color={AGENT_BORDER_COLORS[assignedAgent.agentType] ?? "#8b5cf6"}
-              borderRadius={9999}
+          {/* Assignee avatar - clickable to reassign */}
+          <div className="relative">
+            <button
+              type="button"
+              onClick={handleAssigneeClick}
+              className="cursor-pointer rounded-full hover:ring-2 hover:ring-primary-300 transition-all"
+              title={
+                assignedAgent
+                  ? `Assigned to ${assignedAgent.agentType}`
+                  : "Unassigned - click to assign"
+              }
             >
-              <img
-                src={getAvatarSrc(assignedAgent.agentType)}
-                alt={`${assignedAgent.agentType} agent`}
-                className="h-5 w-5 rounded-full pixelated"
-              />
-            </RotatingBorder>
-          )}
+              {assignedAgent ? (
+                <RotatingBorder
+                  active={assignedAgent.status === "active"}
+                  color={
+                    AGENT_BORDER_COLORS[assignedAgent.agentType] ?? "#8b5cf6"
+                  }
+                  borderRadius={9999}
+                >
+                  <img
+                    src={getAvatarSrc(assignedAgent.agentType)}
+                    alt={`${assignedAgent.agentType} agent`}
+                    className="h-6 w-6 rounded-full pixelated"
+                  />
+                </RotatingBorder>
+              ) : (
+                <div className="h-6 w-6 rounded-full bg-gray-200 dark:bg-gray-600 flex items-center justify-center">
+                  <span className="text-[10px] text-gray-400">?</span>
+                </div>
+              )}
+            </button>
+
+            {/* Reassign dropdown */}
+            {showAssigneeDropdown && (
+              <div
+                className="absolute right-0 top-full mt-1 z-20 w-40 rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-800 shadow-lg py-1"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <p className="px-3 py-1 text-[10px] font-medium text-gray-400 uppercase">
+                  Assign to
+                </p>
+                {agents.map((agent) => (
+                  <button
+                    key={agent.id}
+                    type="button"
+                    onClick={() => handleReassign(agent.id)}
+                    className={cn(
+                      "cursor-pointer w-full flex items-center gap-2 px-3 py-1.5 text-xs text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700",
+                      ticket.assigneeAgentId === agent.id &&
+                        "bg-primary-50 dark:bg-primary-900/20",
+                    )}
+                  >
+                    <img
+                      src={getAvatarSrc(agent.agentType)}
+                      alt={agent.agentType}
+                      className="h-5 w-5 rounded-full pixelated"
+                    />
+                    <span className="capitalize">{agent.agentType}</span>
+                  </button>
+                ))}
+                {ticket.assigneeAgentId && (
+                  <button
+                    type="button"
+                    onClick={() => handleReassign(null)}
+                    className="cursor-pointer w-full flex items-center gap-2 px-3 py-1.5 text-xs text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700 border-t border-gray-100 dark:border-gray-700 mt-1"
+                  >
+                    Unassign
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* Play button */}
           {!isDisabled && (
             <button
               onClick={handlePlay}
@@ -202,8 +292,7 @@ export function TicketCard({
               )}
             >
               {isLoading ? (
-                // agent avatar
-                <AgentBadge agent={assignedAgent!} onClick={() => {}} />
+                <FiLoader className="text-sm animate-spin" />
               ) : (
                 <FiPlay className="text-sm" />
               )}

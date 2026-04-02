@@ -1,4 +1,4 @@
-type AgentType = "pm" | "developer" | "tester" | "reviewer" | "custom";
+export type AgentType = "pm" | "developer" | "tester" | "reviewer" | "custom";
 
 /**
  * Per-agent model configuration.
@@ -32,4 +32,20 @@ export function getModelForAgent(
   envModel?: string,
 ): string {
   return AGENT_MODELS[agentType] ?? envModel ?? DEFAULT_MODEL;
+}
+
+/**
+ * Tiered model routing configuration.
+ * Tier 1 (fast/cheap) → Tier 2 (balanced) → Tier 3 (powerful)
+ */
+export type ModelTier = 1 | 2 | 3;
+
+export const MODEL_TIERS: Record<ModelTier, string> = {
+  1: "claude-haiku-4-5-20251001",
+  2: "claude-sonnet-4-20250514",
+  3: "claude-opus-4-20250514",
+};
+
+export function getModelForTier(tier: ModelTier): string {
+  return MODEL_TIERS[tier];
 }

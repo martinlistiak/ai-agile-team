@@ -6,11 +6,26 @@ RUN apt-get update && apt-get install -y git curl && \
     apt-get install -y nodejs && \
     rm -rf /var/lib/apt/lists/*
 
+# Create a non-root user (Claude SDK refuses --dangerously-skip-permissions as root)
+# UID 1000 may already exist in the base image, so use -o to allow non-unique UID
+RUN useradd -m -s /bin/bash -o -u 1000 runaagent
+
+# Pre-accept Claude Code terms for the non-root user
+RUN mkdir -p /home/runaagent/.claude && \
+    echo '{"ackTosVersion": "2025-02-24", "hasCompletedOnboarding": true}' > /home/runaagent/.claude/settings.json && \
+    chown -R runaagent:runaagent /home/runaagent/.claude
+
 WORKDIR /app
 
 # Copy package files first for better caching
 COPY package.json bun.lock ./
 RUN bun install
+
+# Ensure the non-root user owns the workspace for git clones and volume mounts
+RUN mkdir -p /tmp/runa-workspaces && chown runaagent:runaagent /tmp/runa-workspaces
+RUN chown -R runaagent:runaagent /app
+
+USER runaagent
 
 # Don't copy source - it will be mounted as a volume
 

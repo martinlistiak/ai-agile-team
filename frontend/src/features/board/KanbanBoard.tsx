@@ -1,4 +1,5 @@
-import { useState, useMemo, useCallback } from "react";
+import { useState, useMemo, useCallback, useEffect } from "react";
+import { useSearchParams } from "react-router-dom";
 import {
   DndContext,
   DragOverlay,
@@ -36,6 +37,7 @@ const COLUMNS: { id: TicketStatus; label: string; color: string }[] = [
 ];
 
 export function KanbanBoard({ spaceId }: { spaceId: string }) {
+  const [searchParams, setSearchParams] = useSearchParams();
   const { data: tickets = [], isLoading: ticketsLoading } = useTickets(spaceId);
   const { data: agents = [] } = useAgents(spaceId);
   const moveTicket = useMoveTicket();
@@ -45,6 +47,20 @@ export function KanbanBoard({ spaceId }: { spaceId: string }) {
   const [activeTicket, setActiveTicket] = useState<Ticket | null>(null);
   const [selectedTicketId, setSelectedTicketId] = useState<string | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+
+  // Handle ticket query param from email links
+  useEffect(() => {
+    const ticketParam = searchParams.get("ticket");
+    if (ticketParam && tickets.length > 0) {
+      const ticketExists = tickets.some((t) => t.id === ticketParam);
+      if (ticketExists) {
+        setSelectedTicketId(ticketParam);
+      }
+      // Clear the query param after processing
+      searchParams.delete("ticket");
+      setSearchParams(searchParams, { replace: true });
+    }
+  }, [searchParams, setSearchParams, tickets]);
 
   const selectionMode = selectedIds.size > 0;
 

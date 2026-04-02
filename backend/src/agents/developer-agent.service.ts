@@ -13,9 +13,12 @@ import { RulesService } from "../rules/rules.service";
 import { SuggestedRulesService } from "../rules/suggested-rules.service";
 import { EventsGateway } from "../chat/events.gateway";
 import { formatAgentExecutionLog } from "../common/structured-logger";
-import { getModelForAgent } from "./agent-models.config";
 import { ExecutionRegistry } from "./execution-registry";
 import { AgentRunQuotaService } from "../common/agent-run-quota.service";
+import { ModelRouterService } from "./model-router.service";
+import { AgentMemoryService } from "./agent-memory.service";
+import { AgentBoosterService } from "./agent-booster.service";
+import { execSync } from "child_process";
 
 const DEVELOPER_SYSTEM_PROMPT = `You are a Senior Developer AI agent in an agile software development team.
 Your role is to implement code changes for assigned tickets.
@@ -29,6 +32,12 @@ When given a ticket to work on, you should:
 6. Commit your changes with a clear, conventional commit message
 7. Push the branch to origin
 8. Report back with a summary of what you implemented, files changed, and the branch name
+
+When asked to create a PR for a ticket in code review:
+1. Check the tickets in the "review" status column (provided in context below)
+2. Identify the ticket and its associated branch (runa/<ticket-id>)
+3. Checkout the branch
+4. Create a pull request to the main branch on GitHub/GitLab
 
 IMPORTANT RULES:
 - Always create a feature branch before making changes — NEVER commit to main/master
@@ -56,6 +65,9 @@ export class DeveloperAgentService {
     private executionRegistry: ExecutionRegistry,
     private agentRunQuota: AgentRunQuotaService,
     private eventEmitter: EventEmitter2,
+    private modelRouter: ModelRouterService,
+    private agentMemory: AgentMemoryService,
+    private agentBooster: AgentBoosterService,
   ) {}
   /**
    * Run the developer agent on a ticket via a chat message.
@@ -123,10 +135,37 @@ export class DeveloperAgentService {
         ? await this.gitlabService.getRepoPath(spaceId)
         : await this.githubService.getRepoPath(spaceId);
 
+      // Check for booster fast path (no LLM needed)
+      const fastPath = this.agentBooster.classify("developer", userMessage);
+      if (fastPath && !ticketId) {
+        const boosterResult = this.executeFastPath(fastPath, repoPath);
+        if (boosterResult) {
+          this.executionRegistry.remove(execution.id);
+          execution.status = "completed";
+          execution.endTime = new Date();
+          execution.tokensUsed = 0;
+          execution.modelUsed = "booster";
+          execution.actionLog = [
+            {
+              tool: "booster",
+              input: { fastPath, message: userMessage },
+              result: boosterResult,
+              timestamp: new Date().toISOString(),
+            },
+          ];
+          await this.executionRepo.save(execution);
+          await this.agentRepo.update(agent.id, { status: "idle" });
+          this.eventsGateway.emitAgentStatus(spaceId, agent.id, "idle");
+          return boosterResult;
+        }
+      }
+
       // Build the prompt
       let prompt = userMessage;
+      let ticketPriority: string | undefined;
       if (ticketId) {
         const ticket = await this.ticketsService.findById(ticketId);
+        ticketPriority = ticket.priority;
         prompt = `## Ticket to implement
 
 **Title:** ${ticket.title}
@@ -142,27 +181,65 @@ ${ticket.description}
 ${userMessage ? `**Additional instructions from the user:** ${userMessage}` : "Implement this ticket according to its description and acceptance criteria."}`;
 
         // Move ticket to development
-        await this.ticketsService.moveTicket(ticketId, "development", "agent");
+        await this.ticketsService.moveTicket(ticketId, "development", "agent", {
+          id: agent.id,
+          name: "Developer",
+          type: "agent",
+        });
       }
 
-      // Compile 3-tier rules for this agent
-      const compiledRules = await this.rulesService.compileRulesForAgent(
-        spaceId,
-        agent.id,
+      // Compile 3-tier rules and episodic memories for this agent
+      const [compiledRules, compiledMemories, spaceTickets] = await Promise.all(
+        [
+          this.rulesService.compileRulesForAgent(spaceId, agent.id),
+          this.agentMemory.compileMemoriesForAgent(spaceId, agent.id),
+          this.ticketsService.findBySpace(spaceId),
+        ],
       );
-      const rulesSection = compiledRules
-        ? `\n\n# Active Rules\n${compiledRules}`
-        : "";
-      const fullPrompt = `${DEVELOPER_SYSTEM_PROMPT}${rulesSection}\n\n---\n\n${prompt}`;
+
+      // Build ticket context for the agent
+      let ticketContext = "";
+      if (spaceTickets.length > 0) {
+        const ticketsByStatus: Record<string, typeof spaceTickets> = {};
+        for (const t of spaceTickets) {
+          if (!ticketsByStatus[t.status]) ticketsByStatus[t.status] = [];
+          ticketsByStatus[t.status].push(t);
+        }
+
+        ticketContext = "\n\n# Current Tickets in Space\n";
+        for (const [status, tickets] of Object.entries(ticketsByStatus)) {
+          ticketContext += `\n## ${status.charAt(0).toUpperCase() + status.slice(1)} (${tickets.length})\n`;
+          for (const t of tickets) {
+            ticketContext += `- **${t.title}** (ID: ${t.id}, Priority: ${t.priority})`;
+            if (t.prUrl) ticketContext += ` [PR: ${t.prUrl}]`;
+            ticketContext += `\n  Branch: runa/${t.id}\n`;
+          }
+        }
+      }
+
+      let systemSuffix = "";
+      if (compiledRules) {
+        systemSuffix += `\n\n# Active Rules\n${compiledRules}`;
+      }
+      if (compiledMemories) {
+        systemSuffix += `\n\n# Learned Patterns\nApply these lessons from past executions:\n${compiledMemories}`;
+      }
+      systemSuffix += ticketContext;
+      const fullPrompt = `${DEVELOPER_SYSTEM_PROMPT}${systemSuffix}\n\n---\n\n${prompt}`;
 
       // Run the Claude Agent SDK
       let finalResult = "";
       const actionLog: any[] = [];
+      let sdkUsage: any = null;
+      const { model } = this.modelRouter.routeModel("developer", userMessage, {
+        ticketId,
+        ticketPriority,
+      });
 
       for await (const message of query({
         prompt: fullPrompt,
         options: {
-          model: getModelForAgent("developer"),
+          model,
           allowedTools: ["Read", "Write", "Edit", "Bash", "Glob", "Grep"],
           cwd: repoPath,
           permissionMode: "bypassPermissions",
@@ -249,13 +326,30 @@ ${userMessage ? `**Additional instructions from the user:** ${userMessage}` : "I
         }
         if ("result" in message) {
           finalResult = (message as any).result;
+          sdkUsage = (message as any).usage;
         }
       }
+
+      // Store token usage from SDK result
+      if (sdkUsage) {
+        execution.inputTokens = sdkUsage.input_tokens ?? 0;
+        execution.outputTokens = sdkUsage.output_tokens ?? 0;
+        execution.cacheReadTokens = sdkUsage.cache_read_input_tokens ?? 0;
+        execution.cacheCreationTokens =
+          sdkUsage.cache_creation_input_tokens ?? 0;
+        execution.tokensUsed =
+          (sdkUsage.input_tokens ?? 0) + (sdkUsage.output_tokens ?? 0);
+      }
+      execution.modelUsed = model;
 
       // Update ticket status to review after implementation
       let prFailed = false;
       if (ticketId) {
-        await this.ticketsService.moveTicket(ticketId, "review", "agent");
+        await this.ticketsService.moveTicket(ticketId, "review", "agent", {
+          id: agent.id,
+          name: "Developer",
+          type: "agent",
+        });
 
         // Create a pull request for the branch
         try {
@@ -300,6 +394,7 @@ ${userMessage ? `**Additional instructions from the user:** ${userMessage}` : "I
             `⚠️ Failed to create pull request: ${prError instanceof Error ? prError.message : String(prError)}`,
             "agent",
             agent.id,
+            "Developer",
           );
         }
       }
@@ -311,12 +406,20 @@ ${userMessage ? `**Additional instructions from the user:** ${userMessage}` : "I
       execution.actionLog = actionLog;
       await this.executionRepo.save(execution);
 
-      // Trigger learning loop — analyze execution for rule suggestions, then set agent idle
+      // Trigger learning loops — rule suggestions + episodic memory extraction, then set agent idle
+      this.agentMemory
+        .analyzeExecution(execution.id)
+        .catch((err) =>
+          this.logger.warn(
+            `Memory extraction failed for execution ${execution.id}:`,
+            err,
+          ),
+        );
       this.suggestedRulesService
         .analyzeExecution(execution.id)
         .catch((err) =>
           this.logger.warn(
-            `Learning loop analysis failed for execution ${execution.id}:`,
+            `Rule suggestion analysis failed for execution ${execution.id}:`,
             err,
           ),
         )
@@ -359,6 +462,44 @@ ${userMessage ? `**Additional instructions from the user:** ${userMessage}` : "I
       await this.agentRepo.update(agent.id, { status: "error" });
       this.eventsGateway.emitAgentStatus(spaceId, agent.id, "error");
       throw error;
+    }
+  }
+
+  /**
+   * Execute a developer fast-path operation without LLM.
+   */
+  private executeFastPath(fastPath: string, repoPath: string): string | null {
+    try {
+      const opts = {
+        cwd: repoPath,
+        timeout: 60_000,
+        encoding: "utf-8" as const,
+      };
+      switch (fastPath) {
+        case "dev:format": {
+          const output = execSync(
+            "npx prettier --write . 2>&1 || npx eslint --fix . 2>&1",
+            opts,
+          );
+          return `Code formatted successfully.\n\n\`\`\`\n${output.toString().slice(0, 2000)}\n\`\`\``;
+        }
+        case "dev:lint": {
+          const output = execSync("npx eslint . 2>&1 || true", opts);
+          return `Lint results:\n\n\`\`\`\n${output.toString().slice(0, 3000)}\n\`\`\``;
+        }
+        case "dev:install_deps": {
+          const output = execSync(
+            "npm install 2>&1 || yarn install 2>&1",
+            opts,
+          );
+          return `Dependencies installed.\n\n\`\`\`\n${output.toString().slice(0, 2000)}\n\`\`\``;
+        }
+        default:
+          return null;
+      }
+    } catch (err: any) {
+      this.logger.warn(`Developer booster fast path ${fastPath} failed:`, err);
+      return null;
     }
   }
 }

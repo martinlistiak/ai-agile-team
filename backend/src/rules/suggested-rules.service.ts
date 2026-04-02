@@ -164,10 +164,72 @@ ${existingRulesText}`,
         });
       }
 
+      // Auto-accept rules that have been suggested 3+ times across executions
+      for (const suggestion of suggestions) {
+        await this.autoAcceptIfHighConfidence(suggestion);
+      }
+
       return suggestions;
     } catch (error) {
       this.logger.warn(`Failed to analyze execution ${executionId}:`, error);
       return [];
+    }
+  }
+
+  /**
+   * Auto-accept a suggested rule if similar rules have been suggested 3+ times.
+   * This creates the actual rule and marks all similar suggestions as accepted.
+   */
+  private async autoAcceptIfHighConfidence(suggestion: SuggestedRule): Promise<void> {
+    try {
+      // Find similar pending suggestions for the same agent/space
+      const allPending = await this.suggestedRuleRepo.find({
+        where: {
+          spaceId: suggestion.spaceId,
+          agentId: suggestion.agentId ?? undefined,
+          status: 'pending',
+        },
+      });
+
+      // Simple similarity: count suggestions whose content shares significant overlap
+      const contentLower = suggestion.content.toLowerCase();
+      const contentWords = new Set(contentLower.split(/\s+/).filter(w => w.length > 3));
+
+      const similar = allPending.filter((s) => {
+        if (s.id === suggestion.id) return true; // Include self
+        const otherWords = new Set(
+          s.content.toLowerCase().split(/\s+/).filter(w => w.length > 3),
+        );
+        const intersection = [...contentWords].filter((w) => otherWords.has(w));
+        // At least 50% word overlap
+        return intersection.length >= Math.min(contentWords.size, otherWords.size) * 0.5;
+      });
+
+      if (similar.length >= 3) {
+        this.logger.log(
+          `Auto-accepting rule "${suggestion.content.substring(0, 60)}..." — suggested ${similar.length} times`,
+        );
+
+        // Accept the rule (creates the actual Rule entity)
+        await this.accept(suggestion.id);
+
+        // Mark all similar suggestions as accepted too
+        for (const s of similar) {
+          if (s.id !== suggestion.id && s.status === 'pending') {
+            s.status = 'accepted';
+            await this.suggestedRuleRepo.save(s);
+          }
+        }
+
+        // Emit auto-accept event
+        this.eventEmitter.emit('suggested_rule.auto_accepted', {
+          spaceId: suggestion.spaceId,
+          suggestion,
+          similarCount: similar.length,
+        });
+      }
+    } catch (err) {
+      this.logger.warn(`Auto-accept check failed for suggestion ${suggestion.id}:`, err);
     }
   }
 }

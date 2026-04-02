@@ -48,6 +48,22 @@ export class TeamsService {
     return team;
   }
 
+  async updateTeam(
+    teamId: string,
+    userId: string,
+    name: string,
+  ): Promise<Team> {
+    await this.assertAdminOrOwner(teamId, userId);
+
+    const team = await this.teamRepo.findOneBy({ id: teamId });
+    if (!team) throw new NotFoundException("Team not found");
+
+    team.name = name;
+    await this.teamRepo.save(team);
+
+    return team;
+  }
+
   async getTeamsForUser(userId: string): Promise<Team[]> {
     const memberships = await this.memberRepo.find({
       where: { userId },
@@ -167,20 +183,16 @@ export class TeamsService {
     const team = await this.teamRepo.findOneBy({ id: teamId });
     if (!team) throw new NotFoundException("Team not found");
 
-    // Only team and enterprise plans can invite members
-    const owner = await this.userRepo.findOneBy({ id: team.ownerId });
-    if (!owner) throw new NotFoundException("Team owner not found");
-    if (owner.planTier === "starter") {
+    // Check member limit (99 max for all plans)
+    const currentMemberCount = await this.memberRepo.count({
+      where: { teamId },
+    });
+    const pendingInviteCount = await this.invitationRepo.count({
+      where: { teamId, status: "pending" as InvitationStatus },
+    });
+    if (currentMemberCount + pendingInviteCount >= 99) {
       throw new ForbiddenException(
-        "Team invitations require a Team or Enterprise plan. Please upgrade.",
-      );
-    }
-    const isActive =
-      owner.subscriptionStatus === "active" ||
-      owner.subscriptionStatus === "trialing";
-    if (!isActive) {
-      throw new ForbiddenException(
-        "Your subscription is not active. Please update your billing to invite members.",
+        "Team has reached the maximum limit of 99 members.",
       );
     }
 

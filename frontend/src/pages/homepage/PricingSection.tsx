@@ -56,7 +56,8 @@ const plans = [
     monthlyPrice: 19,
     annualPrice: 15,
     features: [
-      "10 AI agent runs / day",
+      "500K tokens / month",
+      "Unlimited agent runs",
       "Basic kanban board",
       "Community support",
       "GitHub integration",
@@ -71,7 +72,8 @@ const plans = [
     monthlyPrice: 46,
     annualPrice: 39,
     features: [
-      "50 AI agent runs / day",
+      "1.5M tokens / month",
+      "Unlimited agent runs",
       "Full pipeline automation",
       "Custom agents & rules",
       "Code review agent",
@@ -89,6 +91,7 @@ const plans = [
     annualPrice: 89,
     features: [
       "Everything in Team",
+      "10M tokens / month",
       "SSO & SAML",
       "Custom agent training",
       "Dedicated support",

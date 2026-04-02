@@ -79,7 +79,7 @@ export function BoardColumn({
         </h3>
         <span className="text-xs text-gray-400 ml-auto">{tickets.length}</span>
       </div>
-      <div className="flex-1 overflow-y-auto px-3 pb-3 space-y-2">
+      <div className="flex-1 overflow-y-auto px-3 pt-1 pb-3 space-y-2">
         <SortableContext
           items={ticketIds}
           strategy={verticalListSortingStrategy}

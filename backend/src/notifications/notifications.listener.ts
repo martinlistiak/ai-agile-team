@@ -58,8 +58,8 @@ export class NotificationsListener {
       message: payload.ticketTitle
         ? `Agent completed work on "${payload.ticketTitle}"`
         : `Agent execution completed successfully`,
-      relatedEntityId: payload.executionId,
-      relatedEntityType: "execution",
+      relatedEntityId: payload.ticketId ?? payload.executionId,
+      relatedEntityType: payload.ticketId ? "ticket" : "execution",
       spaceId: payload.spaceId,
     });
     await this.slackService.notifyAgentCompleted(
@@ -85,8 +85,8 @@ export class NotificationsListener {
       message: payload.error
         ? `Agent failed: ${payload.error.slice(0, 200)}`
         : `Agent execution failed`,
-      relatedEntityId: payload.executionId,
-      relatedEntityType: "execution",
+      relatedEntityId: payload.ticketId ?? payload.executionId,
+      relatedEntityType: payload.ticketId ? "ticket" : "execution",
       spaceId: payload.spaceId,
     });
     await this.slackService.notifyAgentFailed(

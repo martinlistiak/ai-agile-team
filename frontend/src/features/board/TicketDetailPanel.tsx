@@ -16,8 +16,9 @@ import { useTriggerAgent } from "@/api/hooks/useTriggerAgent";
 import { useAgents } from "@/api/hooks/useAgents";
 import { useAssignableUsers } from "@/api/hooks/useAssignableUsers";
 import { RichTextEditor } from "@/components/RichTextEditor";
+import { MentionInput } from "@/components/MentionInput";
+import { ActivityTimeline } from "@/components/ActivityTimeline";
 import { PipelinePrompt } from "@/components/PipelinePrompt";
-import { TransitionTimeline } from "@/components/TransitionTimeline";
 import { getAvatarSrc } from "@/lib/avatars";
 import { useAuth } from "@/contexts/AuthContext";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
@@ -690,84 +691,15 @@ export function TicketDetailPanel({
               </div>
             </section>
 
-            {/* transition history (edit mode only) */}
+            {/* activity timeline (edit mode only) */}
             {!isCreateMode && (
-              <TransitionTimeline statusHistory={ticket!.statusHistory ?? []} />
-            )}
-
-            {/* comments */}
-            {!isCreateMode && ticket!.comments.length > 0 && (
-              <section>
-                <h3 className="text-[11px] font-semibold tracking-widest uppercase text-stone-400 dark:text-stone-500 mb-3">
-                  Thread
-                </h3>
-                <div className="space-y-3">
-                  {ticket!.comments.map((comment, i) => {
-                    const isAgent = comment.authorType === "agent";
-                    return (
-                      <div
-                        key={comment.id}
-                        className={cn("relative", "ticket-detail-comment")}
-                        style={{
-                          animationDelay: `${i * 40}ms`,
-                        }}
-                      >
-                        <div className="flex items-center gap-2 mb-1.5">
-                          {isAgent ? (
-                            <img
-                              src={getAvatarSrc(
-                                (comment.authorId ?? "pm") as AgentType,
-                              )}
-                              alt="Agent"
-                              className="h-4 w-4 rounded-full pixelated"
-                            />
-                          ) : user?.avatarUrl ? (
-                            <img
-                              src={user.avatarUrl}
-                              alt={user.name ?? "You"}
-                              className="h-4 w-4 rounded-full object-cover"
-                            />
-                          ) : (
-                            <div className="h-4 w-4 rounded-full bg-stone-300 dark:bg-stone-600" />
-                          )}
-                          <span className="text-[11px] font-medium text-stone-500 dark:text-stone-400">
-                            {isAgent
-                              ? (comment.authorId ?? "agent")
-                                  .charAt(0)
-                                  .toUpperCase() +
-                                (comment.authorId ?? "agent").slice(1)
-                              : "You"}
-                          </span>
-                          <span className="text-[11px] text-stone-400 dark:text-stone-600 tabular-nums">
-                            {new Date(comment.createdAt).toLocaleDateString(
-                              "en-US",
-                              {
-                                month: "short",
-                                day: "numeric",
-                                hour: "numeric",
-                                minute: "2-digit",
-                              },
-                            )}
-                          </span>
-                        </div>
-                        <div
-                          className={cn(
-                            "rounded-lg px-3.5 py-2.5",
-                            isAgent
-                              ? "bg-violet-50 dark:bg-violet-900/15 ml-6"
-                              : "bg-white dark:bg-stone-800 ml-6 border border-stone-200 dark:border-stone-700",
-                          )}
-                        >
-                          <RichTextEditor
-                            content={comment.content}
-                            readonly={true}
-                          />
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </section>
+              <ActivityTimeline
+                statusHistory={ticket!.statusHistory ?? []}
+                comments={ticket!.comments ?? []}
+                currentUserId={user?.id}
+                currentUserName={user?.name}
+                currentUserAvatar={user?.avatarUrl}
+              />
             )}
           </div>
         </div>
@@ -802,24 +734,25 @@ export function TicketDetailPanel({
           <div className="border-t border-stone-200 dark:border-stone-800 px-4 py-4 md:px-7 bg-stone-50 dark:bg-stone-900">
             <div
               className={cn(
-                "p-1 h-16",
+                "p-3 h-20",
                 "rounded-lg overflow-hidden bg-white dark:bg-stone-800",
                 "border border-stone-200 dark:border-stone-700",
                 "focus-within:ring-1 focus-within:ring-violet-300 dark:focus-within:ring-violet-700",
                 "transition-shadow",
               )}
             >
-              <RichTextEditor
+              <MentionInput
                 key={commentKey}
-                content={commentContent}
-                onChange={(markdown) => setCommentContent(markdown)}
-                readonly={false}
-                placeholder="Write a comment..."
+                value={commentContent}
+                onChange={setCommentContent}
+                onSubmit={handleSubmitComment}
+                placeholder="Write a comment... Use @developer, @pm, @tester, @reviewer to mention agents"
+                disabled={addComment.isPending}
               />
             </div>
             <div className="flex items-center justify-between mt-2.5">
               <span className="text-[11px] text-stone-400 dark:text-stone-500">
-                Markdown supported
+                Type @ to mention an agent
               </span>
               <button
                 onClick={handleSubmitComment}

@@ -3,8 +3,8 @@ import { createPortal } from "react-dom";
 import { useParams } from "react-router-dom";
 import { FiPlus } from "react-icons/fi";
 import { useAuth } from "@/contexts/AuthContext";
+import { useChatContext } from "@/contexts/ChatContext";
 import { useAgents } from "@/api/hooks/useAgents";
-import { AgentInspector } from "@/features/agents/AgentInspector";
 import { CustomAgentsPanel } from "@/features/agents/CustomAgentsPanel";
 import { CustomAgentUpsellModal } from "@/components/CustomAgentUpsellModal";
 import { cn } from "@/lib/cn";
@@ -134,8 +134,8 @@ export function AgentBadge({
 export function AgentPanel() {
   const { spaceId } = useParams();
   const { user } = useAuth();
+  const { openChat } = useChatContext();
   const { data: agents, isLoading: agentsLoading } = useAgents(spaceId || null);
-  const [inspectedAgent, setInspectedAgent] = useState<Agent | null>(null);
   const [showCustomAgents, setShowCustomAgents] = useState(false);
   const [showUpsell, setShowUpsell] = useState(false);
 
@@ -148,6 +148,15 @@ export function AgentPanel() {
       setShowUpsell(true);
     }
   };
+
+  const handleAgentClick = useCallback(
+    (agent: Agent) => {
+      // Always open chat drawer with this agent selected
+      const agentKey = agent.isCustom ? `custom:${agent.id}` : agent.agentType;
+      openChat(agentKey);
+    },
+    [openChat],
+  );
 
   if (!spaceId) return null;
 
@@ -162,7 +171,7 @@ export function AgentPanel() {
               <AgentBadge
                 key={agent.id}
                 agent={agent}
-                onClick={setInspectedAgent}
+                onClick={handleAgentClick}
               />
             ))
           )}
@@ -183,12 +192,6 @@ export function AgentPanel() {
           </RailTooltip>
         </div>
       </div>
-      {inspectedAgent && (
-        <AgentInspector
-          agent={inspectedAgent}
-          onClose={() => setInspectedAgent(null)}
-        />
-      )}
       {showCustomAgents && (
         <CustomAgentsPanel
           spaceId={spaceId}

@@ -1,13 +1,16 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import api from "@/api/client";
 import { useToast } from "@/components/Toast";
-import { getApiErrorPayload, isAgentRunQuotaError } from "@/lib/api-errors";
+import { getApiErrorPayload, isTokenQuotaError } from "@/lib/api-errors";
 import type { ChatMessage } from "@/types";
 
 export type AgentType = "pm" | "developer" | "tester" | "reviewer";
 export type ChatAgentType = AgentType | string;
 
-export function useChatMessages(spaceId: string | null, agentType?: ChatAgentType) {
+export function useChatMessages(
+  spaceId: string | null,
+  agentType?: ChatAgentType,
+) {
   return useQuery<ChatMessage[]>({
     queryKey: ["chatMessages", spaceId, agentType],
     queryFn: async () => {
@@ -97,13 +100,11 @@ export function useSendChatMessage(spaceId: string | null) {
           context.previous,
         );
       }
-      if (isAgentRunQuotaError(err)) {
+      if (isTokenQuotaError(err)) {
         agentRunLimit(getApiErrorPayload(err).message);
         return;
       }
-      showError(
-        getApiErrorPayload(err).message || "Failed to send message",
-      );
+      showError(getApiErrorPayload(err).message || "Failed to send message");
     },
     onSettled: (_data, _err, payload) => {
       queryClient.invalidateQueries({

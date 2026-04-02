@@ -27,6 +27,7 @@ import { ApiDocsPage } from "@/pages/ApiDocsPage";
 import { EnterprisePage } from "@/pages/EnterprisePage";
 import { SettingsPage } from "@/pages/SettingsPage";
 import { NotificationSettingsPage } from "@/pages/NotificationSettingsPage";
+import { AdminPage } from "@/pages/AdminPage";
 import { NotFoundPage } from "@/pages/NotFoundPage";
 
 function RootLayout() {
@@ -107,6 +108,7 @@ export const router = createBrowserRouter([
           { path: "/team", element: <TeamPage /> },
           { path: "/integrations", element: <IntegrationsPage /> },
           { path: "/enterprise", element: <EnterprisePage /> },
+          { path: "/admin", element: <AdminPage /> },
         ],
       },
       {

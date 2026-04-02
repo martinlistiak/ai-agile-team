@@ -1,4 +1,4 @@
-import { FiUser, FiCpu, FiZap } from "react-icons/fi";
+import { FiUser, FiCpu, FiZap, FiAtSign } from "react-icons/fi";
 import type { StatusTransition, TransitionTrigger } from "@/types";
 
 const TRIGGER_CONFIG: Record<
@@ -8,6 +8,7 @@ const TRIGGER_CONFIG: Record<
   user: { icon: FiUser, label: "User" },
   agent: { icon: FiCpu, label: "Agent" },
   pipeline: { icon: FiZap, label: "Pipeline" },
+  mention: { icon: FiAtSign, label: "Mention" },
 };
 
 const STATUS_BADGE_COLORS: Record<string, string> = {

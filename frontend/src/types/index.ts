@@ -41,6 +41,12 @@ export interface User {
   emailVerified?: boolean;
   /** True when the account can sign in with email + password. */
   hasPassword?: boolean;
+  /** True if user has superadmin privileges. */
+  isSuperAdmin?: boolean;
+  /** True when viewing as another user (impersonation mode). */
+  isImpersonating?: boolean;
+  /** True when in read-only mode (cannot make changes). */
+  isReadOnly?: boolean;
   createdAt: string;
 }
 
@@ -90,13 +96,16 @@ export interface Agent {
   createdAt: string;
 }
 
-export type TransitionTrigger = "user" | "agent" | "pipeline";
+export type TransitionTrigger = "user" | "agent" | "pipeline" | "mention";
 
 export interface StatusTransition {
   from: string;
   to: string;
   timestamp: string;
   trigger: TransitionTrigger;
+  actorId?: string;
+  actorName?: string;
+  actorType?: "user" | "agent";
 }
 
 export interface Ticket {

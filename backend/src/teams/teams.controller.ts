@@ -21,6 +21,7 @@ import { SubscriptionActiveGuard } from "../common/subscription-active.guard";
 import { Request } from "express";
 import { TeamsService } from "./teams.service";
 import { CreateTeamDto } from "./dto/create-team.dto";
+import { UpdateTeamDto } from "./dto/update-team.dto";
 import { InviteMemberDto } from "./dto/invite-member.dto";
 import { UpdateMemberRoleDto } from "./dto/update-member-role.dto";
 
@@ -51,6 +52,18 @@ export class TeamsController {
   @ApiResponse({ status: 200, description: "Team with members" })
   async findOne(@Req() req: Request, @Param("id") id: string) {
     return this.teamsService.getTeamWithMembers(id, (req.user as any).id);
+  }
+
+  @Patch(":id")
+  @ApiOperation({ summary: "Update team details" })
+  @ApiParam({ name: "id", format: "uuid" })
+  @ApiResponse({ status: 200, description: "Updated team" })
+  async update(
+    @Req() req: Request,
+    @Param("id") id: string,
+    @Body() body: UpdateTeamDto,
+  ) {
+    return this.teamsService.updateTeam(id, (req.user as any).id, body.name);
   }
 
   @Post(":id/invitations")

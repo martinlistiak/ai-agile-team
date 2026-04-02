@@ -2,13 +2,15 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import api from "@/api/client";
 import { trackEvent } from "@/lib/analytics";
 
-interface UsageStats {
+export interface UsageStats {
   periodStart: string;
   periodEnd: string;
   totalRuns: number;
   completedRuns: number;
   failedRuns: number;
   totalTokens: number;
+  monthlyTokenLimit: number;
+  tokenUsagePercent: number;
 }
 
 export interface BillingInvoice {

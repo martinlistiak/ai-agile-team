@@ -1,17 +1,18 @@
-import { Module } from '@nestjs/common';
-import { TypeOrmModule } from '@nestjs/typeorm';
-import { PipelineController } from './pipeline.controller';
-import { PipelineService } from './pipeline.service';
-import { PipelineListener } from './pipeline.listener';
-import { Space } from '../entities/space.entity';
-import { Ticket } from '../entities/ticket.entity';
-import { AgentsModule } from '../agents/agents.module';
-import { RulesModule } from '../rules/rules.module';
-import { ChatModule } from '../chat/chat.module';
+import { Module } from "@nestjs/common";
+import { TypeOrmModule } from "@nestjs/typeorm";
+import { PipelineController } from "./pipeline.controller";
+import { PipelineService } from "./pipeline.service";
+import { PipelineListener } from "./pipeline.listener";
+import { Space } from "../entities/space.entity";
+import { Ticket } from "../entities/ticket.entity";
+import { Agent } from "../entities/agent.entity";
+import { AgentsModule } from "../agents/agents.module";
+import { RulesModule } from "../rules/rules.module";
+import { ChatModule } from "../chat/chat.module";
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([Space, Ticket]),
+    TypeOrmModule.forFeature([Space, Ticket, Agent]),
     AgentsModule,
     RulesModule,
     ChatModule,

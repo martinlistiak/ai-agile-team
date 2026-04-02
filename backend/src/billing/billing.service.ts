@@ -13,6 +13,7 @@ import { Space } from "../entities/space.entity";
 import { Execution } from "../entities/execution.entity";
 import { EventEmitter2 } from "@nestjs/event-emitter";
 import { CountlyService } from "../common/countly.service";
+import { getMonthlyTokenLimit } from "../common/agent-run-quota.service";
 
 const TRIAL_PERIOD_DAYS = 7;
 
@@ -685,13 +686,21 @@ export class BillingService {
       ])
       .getRawOne();
 
+    const monthlyTokenLimit = getMonthlyTokenLimit(user.planTier);
+    const totalTokens = stats?.totalTokens ?? 0;
+
     return {
       periodStart: periodStart.toISOString(),
       periodEnd: periodEnd.toISOString(),
       totalRuns: stats?.totalRuns ?? 0,
       completedRuns: stats?.completedRuns ?? 0,
       failedRuns: stats?.failedRuns ?? 0,
-      totalTokens: stats?.totalTokens ?? 0,
+      totalTokens,
+      monthlyTokenLimit,
+      tokenUsagePercent:
+        monthlyTokenLimit > 0
+          ? Math.round((totalTokens / monthlyTokenLimit) * 100)
+          : 0,
     };
   }
 
@@ -725,6 +734,15 @@ export class BillingService {
         created: new Date(inv.created * 1000).toISOString(),
         pdfUrl: inv.invoice_pdf ?? null,
       })),
+    };
+  }
+
+  /**
+   * Get plan limits for display purposes
+   */
+  getPlanLimits(planTier: PlanTier) {
+    return {
+      monthlyTokens: getMonthlyTokenLimit(planTier),
     };
   }
 }
