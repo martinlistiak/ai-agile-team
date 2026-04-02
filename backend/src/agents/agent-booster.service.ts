@@ -31,10 +31,7 @@ export class AgentBoosterService {
    * Returns the fast-path category if applicable, or null if the task
    * requires normal LLM processing.
    */
-  classify(
-    agentType: AgentType,
-    userMessage: string,
-  ): string | null {
+  classify(agentType: AgentType, userMessage: string): string | null {
     const msg = userMessage.toLowerCase().trim();
 
     switch (agentType) {
@@ -54,14 +51,16 @@ export class AgentBoosterService {
   private classifyPm(msg: string): string | null {
     // List tickets
     if (
-      /^(list|show|get)\s+(all\s+)?(my\s+)?(tickets?|tasks?|items?)(\s+in\s+\w+)?[.?!]?$/.test(msg)
+      /^(list|show|get)\s+(all\s+)?(my\s+)?(tickets?|tasks?|items?)(\s+in\s+\w+)?[.?!]?$/.test(
+        msg,
+      )
     ) {
       return "pm:list_tickets";
     }
 
     // Move ticket to status
     if (
-      /^(move|set|change)\s+(ticket\s+)?[\w-]+\s+(to|status)\s+(backlog|planning|development|review|testing|staged|done)[.?!]?$/i.test(
+      /^(move|set|change)\s+(ticket\s+)?[\w-]+\s+(to|status)\s+(backlog|development|review|testing|staged|done)[.?!]?$/i.test(
         msg,
       )
     ) {
@@ -69,9 +68,7 @@ export class AgentBoosterService {
     }
 
     // Delete ticket
-    if (
-      /^(delete|remove)\s+(ticket\s+)?[\w-]{36}[.?!]?$/i.test(msg)
-    ) {
+    if (/^(delete|remove)\s+(ticket\s+)?[\w-]{36}[.?!]?$/i.test(msg)) {
       return "pm:delete_ticket";
     }
 
@@ -81,7 +78,9 @@ export class AgentBoosterService {
   private classifyDeveloper(msg: string): string | null {
     // Format code
     if (
-      /^(format|prettier|lint)\s+(the\s+)?(code|files?|project|codebase)[.?!]?$/i.test(msg)
+      /^(format|prettier|lint)\s+(the\s+)?(code|files?|project|codebase)[.?!]?$/i.test(
+        msg,
+      )
     ) {
       return "dev:format";
     }
@@ -92,9 +91,7 @@ export class AgentBoosterService {
     }
 
     // Install dependencies
-    if (
-      /^(install|add)\s+(deps|dependencies|packages?)[.?!]?$/i.test(msg)
-    ) {
+    if (/^(install|add)\s+(deps|dependencies|packages?)[.?!]?$/i.test(msg)) {
       return "dev:install_deps";
     }
 
@@ -103,9 +100,7 @@ export class AgentBoosterService {
 
   private classifyReviewer(msg: string): string | null {
     // Run type check
-    if (
-      /^(run\s+)?(type\s*check|tsc|typescript\s+check)[.?!]?$/i.test(msg)
-    ) {
+    if (/^(run\s+)?(type\s*check|tsc|typescript\s+check)[.?!]?$/i.test(msg)) {
       return "reviewer:typecheck";
     }
 

@@ -14,7 +14,6 @@ import { TicketsService } from "../tickets.service";
 
 const STATUSES = [
   "backlog",
-  "planning",
   "development",
   "review",
   "testing",
@@ -53,7 +52,6 @@ describe("Property 8: Status transitions are recorded with correct metadata", ()
           const existingHistory = [
             {
               from: "backlog",
-              to: "planning",
               timestamp: "2024-01-01T00:00:00.000Z",
               trigger: "user" as const,
             },
@@ -113,7 +111,6 @@ describe("Property 8: Status transitions are recorded with correct metadata", ()
           const existingHistory = [
             {
               from: "backlog",
-              to: "planning",
               timestamp: "2024-01-01T00:00:00.000Z",
               trigger: "user" as const,
             },

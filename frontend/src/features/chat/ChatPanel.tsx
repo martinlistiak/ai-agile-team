@@ -18,6 +18,7 @@ import { useSpace } from "@/api/hooks/useSpaces";
 import { getSpaceColor } from "@/lib/spaceColor";
 import { useChatMessages, useSendChatMessage } from "@/api/hooks/useChat";
 import { AgentRunLimitUpsell } from "@/components/AgentRunLimitUpsell";
+import { useAutoResize } from "@/hooks/useAutoResize";
 
 interface AgentOption {
   value: string;
@@ -305,6 +306,7 @@ export function ChatPanel() {
   const sendMessage = useSendChatMessage(spaceId || null);
   const { data: tickets = [] } = useTickets(spaceId || null);
   const [input, setInput] = useState("");
+  const [textareaRef, handleTextareaResize] = useAutoResize();
   const AGENT_OPTIONS = useMemo(
     () => buildAgentOptions(agentsList),
     [agentsList],
@@ -340,6 +342,10 @@ export function ChatPanel() {
   useEffect(() => {
     setSelectedFiles([]);
     setInput("");
+    if (textareaRef.current) {
+      textareaRef.current.style.height = "auto";
+      textareaRef.current.style.overflowY = "hidden";
+    }
   }, [spaceId, selectedAgent]);
 
   const handleTicketClick = useCallback((ticketId: string) => {
@@ -356,6 +362,10 @@ export function ChatPanel() {
     const files = [...selectedFiles];
 
     setInput("");
+    if (textareaRef.current) {
+      textareaRef.current.style.height = "auto";
+      textareaRef.current.style.overflowY = "hidden";
+    }
     setSelectedFiles([]);
     if (fileInputRef.current) fileInputRef.current.value = "";
 
@@ -514,8 +524,12 @@ export function ChatPanel() {
 
           <div className="relative flex-1">
             <textarea
+              ref={textareaRef}
               value={input}
-              onChange={(event) => setInput(event.target.value)}
+              onChange={(event) => {
+                setInput(event.target.value);
+                handleTextareaResize(event);
+              }}
               onKeyDown={(event) => {
                 if (event.key === "Enter" && !event.shiftKey) {
                   event.preventDefault();
@@ -524,7 +538,7 @@ export function ChatPanel() {
               }}
               placeholder={`Message ${currentAgent.label} agent…`}
               rows={1}
-              className="w-full resize-none rounded-xl border border-gray-200 bg-gray-50 px-4 py-2.5 text-sm text-gray-900 outline-none transition-colors placeholder:text-gray-400 focus:border-primary-300 focus:bg-white focus:ring-1 focus:ring-primary-200 dark:border-gray-700 dark:bg-gray-800/50 dark:text-gray-100 dark:placeholder:text-gray-500 dark:focus:border-primary-600 dark:focus:bg-gray-800"
+              className="w-full resize-none overflow-hidden rounded-xl border border-gray-200 bg-gray-50 px-4 py-2.5 text-sm text-gray-900 outline-none transition-colors placeholder:text-gray-400 focus:border-primary-300 focus:bg-white focus:ring-1 focus:ring-primary-200 dark:border-gray-700 dark:bg-gray-800/50 dark:text-gray-100 dark:placeholder:text-gray-500 dark:focus:border-primary-600 dark:focus:bg-gray-800"
             />
           </div>
 

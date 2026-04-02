@@ -10,27 +10,6 @@ import { cn } from "@/lib/cn";
 
 const STAGES = [
   {
-    key: "planning",
-    label: "Planning",
-    shortLabel: "Plan",
-    description: "PM agent plans tickets",
-    icon: (
-      <svg
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="1.5"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        className="w-5 h-5"
-      >
-        <path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2" />
-        <rect x="9" y="3" width="6" height="4" rx="1" />
-        <path d="M9 14l2 2 4-4" />
-      </svg>
-    ),
-  },
-  {
     key: "development",
     label: "Development",
     shortLabel: "Dev",

@@ -167,6 +167,7 @@ export class BillingService {
     let quantity = 1;
 
     // Fetch billing interval and quantity from Stripe subscription
+    // Also sync cancellation state in case webhooks were missed
     if (user.stripeSubscriptionId) {
       try {
         const subscription = await this.stripe.subscriptions.retrieve(
@@ -178,6 +179,24 @@ export class BillingService {
             item.price.recurring.interval === "year" ? "annual" : "monthly";
         }
         quantity = item?.quantity ?? 1;
+
+        // Sync cancellation/status state from Stripe (covers missed webhooks)
+        const stripeStatus = this.mapStatus(subscription.status);
+        const stripeCancelAtPeriodEnd = subscription.cancel_at_period_end;
+        if (
+          user.cancelAtPeriodEnd !== stripeCancelAtPeriodEnd ||
+          user.subscriptionStatus !== stripeStatus
+        ) {
+          user.cancelAtPeriodEnd = stripeCancelAtPeriodEnd;
+          user.subscriptionStatus = stripeStatus;
+          if (item?.current_period_end) {
+            user.currentPeriodEnd = new Date(item.current_period_end * 1000);
+          }
+          await this.userRepo.save(user);
+          this.logger.log(
+            `Synced subscription state for user ${userId}: ${stripeStatus}, cancelAtPeriodEnd=${stripeCancelAtPeriodEnd}`,
+          );
+        }
       } catch (err) {
         this.logger.warn(
           `Failed to fetch subscription details for user ${userId}:`,

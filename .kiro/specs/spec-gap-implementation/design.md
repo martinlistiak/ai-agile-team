@@ -443,15 +443,7 @@ class CreateTicketDto {
   @IsEnum(["low", "medium", "high", "critical"])
   @IsOptional()
   priority?: string;
-  @IsEnum([
-    "backlog",
-    "planning",
-    "development",
-    "review",
-    "testing",
-    "staged",
-    "done",
-  ])
+  @IsEnum(["backlog", "development", "review", "testing", "staged", "done"])
   @IsOptional()
   status?: string;
 }
@@ -467,15 +459,7 @@ class UpdateTicketDto {
 
 // MoveTicketDto
 class MoveTicketDto {
-  @IsEnum([
-    "backlog",
-    "planning",
-    "development",
-    "review",
-    "testing",
-    "staged",
-    "done",
-  ])
+  @IsEnum(["backlog", "development", "review", "testing", "staged", "done"])
   status: string;
 }
 
@@ -546,7 +530,7 @@ _A property is a characteristic or behavior that should hold true across all val
 
 ### Property 1: Status-to-agent mapping determines play button state
 
-_For any_ ticket status, the play button is enabled if and only if the status has a mapped agent in `STAGE_AGENT_MAP` (development → developer, testing → tester). For statuses without a mapping (backlog, planning, review, staged, done), the play button must be disabled.
+_For any_ ticket status, the play button is enabled if and only if the status has a mapped agent in `STAGE_AGENT_MAP` (development → developer, testing → tester). For statuses without a mapping (backlog, review, staged, done), the play button must be disabled.
 
 **Validates: Requirements 1.1, 1.4**
 

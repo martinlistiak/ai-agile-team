@@ -87,8 +87,8 @@ const plans = [
   {
     name: "Enterprise",
     description: "For organizations with advanced needs",
-    monthlyPrice: 109,
-    annualPrice: 89,
+    monthlyPrice: null,
+    annualPrice: null,
     features: [
       "Everything in Team",
       "10M tokens / month",
@@ -101,7 +101,7 @@ const plans = [
       "API access",
       "Unlimited team members",
     ],
-    cta: "Start 7-day free trial",
+    cta: "Talk to Sales",
     style: "default" as const,
   },
 ];
@@ -150,6 +150,7 @@ export function PricingSection() {
         <div className="grid md:grid-cols-3 gap-6 items-start">
           {plans.map((plan, i) => {
             const price = annual ? plan.annualPrice : plan.monthlyPrice;
+            const isContactSales = price === null;
             return (
               <Reveal key={plan.name} delay={i * 0.1}>
                 <div
@@ -171,20 +172,32 @@ export function PricingSection() {
                     {plan.description}
                   </p>
                   <div className="mb-6">
-                    <span className="font-display text-4xl tracking-tight">
-                      ${price}
-                    </span>
-                    <span
-                      className="text-[13px] ml-1"
-                      style={{ color: "var(--text-tertiary)" }}
-                    >
-                      / space / month
-                      {annual ? " (billed annually)" : ""}
-                    </span>
+                    {isContactSales ? (
+                      <span className="font-display text-4xl tracking-tight">
+                        Custom
+                      </span>
+                    ) : (
+                      <>
+                        <span className="font-display text-4xl tracking-tight">
+                          ${price}
+                        </span>
+                        <span
+                          className="text-[13px] ml-1"
+                          style={{ color: "var(--text-tertiary)" }}
+                        >
+                          / space / month
+                          {annual ? " (billed annually)" : ""}
+                        </span>
+                      </>
+                    )}
                   </div>
                   <button
                     type="button"
-                    onClick={goToSubscribeFlow}
+                    onClick={
+                      isContactSales
+                        ? () => navigate("/contact")
+                        : goToSubscribeFlow
+                    }
                     className="w-full text-[13px] font-medium py-2.5 rounded-lg transition-all cursor-pointer mb-6"
                     style={
                       plan.style === "featured"

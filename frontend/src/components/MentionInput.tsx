@@ -222,7 +222,8 @@ export function MentionInput({
           color: rgb(109 40 217);
           font-size: 12px;
           font-weight: 500;
-          vertical-align: baseline;
+          line-height: inherit;
+          vertical-align: middle;
           user-select: all;
         }
         .dark .mention-tag {

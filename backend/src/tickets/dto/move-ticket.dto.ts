@@ -3,25 +3,9 @@ import { ApiProperty } from "@nestjs/swagger";
 
 export class MoveTicketDto {
   @ApiProperty({
-    enum: [
-      "backlog",
-      "planning",
-      "development",
-      "review",
-      "testing",
-      "staged",
-      "done",
-    ],
+    enum: ["backlog", "development", "review", "testing", "staged", "done"],
     example: "development",
   })
-  @IsEnum([
-    "backlog",
-    "planning",
-    "development",
-    "review",
-    "testing",
-    "staged",
-    "done",
-  ])
+  @IsEnum(["backlog", "development", "review", "testing", "staged", "done"])
   status: string;
 }

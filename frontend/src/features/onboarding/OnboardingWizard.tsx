@@ -13,7 +13,6 @@ import type { GithubRepository, GitlabRepository } from "@/types";
 export type WizardStep = 1 | 2 | 3;
 
 const PIPELINE_STAGES = [
-  { key: "planning", label: "Planning" },
   { key: "development", label: "Development" },
   { key: "review", label: "Review" },
   { key: "testing", label: "Testing" },

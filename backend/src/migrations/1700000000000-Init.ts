@@ -94,7 +94,7 @@ export class Init1700000000000 implements MigrationInterface {
         "githubRepoUrl" varchar,
         "gitlabRepoUrl" text,
         "githubTokenRef" text,
-        "pipelineConfig" jsonb NOT NULL DEFAULT '{"planning":true,"development":true,"review":true,"testing":true,"staged":true}',
+        "pipelineConfig" jsonb NOT NULL DEFAULT '{"development":true,"review":true,"testing":true,"staged":true}',
         "crossTeamRules" text,
         "order" int NOT NULL DEFAULT 0,
         "color" text,

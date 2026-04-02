@@ -4,7 +4,6 @@ import { Repository } from "typeorm";
 import { EventEmitter2 } from "@nestjs/event-emitter";
 import { Space } from "../entities/space.entity";
 import { Ticket } from "../entities/ticket.entity";
-import { PmAgentService } from "../agents/pm-agent.service";
 import { DeveloperAgentService } from "../agents/developer-agent.service";
 import { TesterAgentService } from "../agents/tester-agent.service";
 import { ReviewerAgentService } from "../agents/reviewer-agent.service";
@@ -25,7 +24,6 @@ import { CountlyService } from "../common/countly.service";
 
 export type PipelineStage =
   | "backlog"
-  | "planning"
   | "development"
   | "review"
   | "testing"
@@ -34,7 +32,6 @@ export type PipelineStage =
 
 export const PIPELINE_STAGES: PipelineStage[] = [
   "backlog",
-  "planning",
   "development",
   "review",
   "testing",
@@ -54,7 +51,7 @@ export const STAGE_AGENT_MAP: Partial<
 export const AGENT_DEFAULT_STATUS: Partial<
   Record<"pm" | "developer" | "tester" | "reviewer", PipelineStage>
 > = {
-  pm: "planning",
+  pm: "backlog",
   developer: "development",
   reviewer: "review",
   tester: "testing",

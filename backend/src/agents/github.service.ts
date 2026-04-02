@@ -206,19 +206,49 @@ export class GithubService {
       });
 
       if (status.trim()) {
-        this.logger.log(
-          `Committing uncommitted changes for branch ${branchName}`,
-        );
-        execSync("git add -A", {
+        // Exclude .github/workflows/ files — pushing workflow changes requires
+        // the `workflow` OAuth scope which users typically don't grant.
+        execSync("git reset HEAD -- .github/workflows/", {
           cwd: repoDir,
           timeout: 10000,
           stdio: "pipe",
         });
-        execSync(`git commit -m "feat: implement changes for ${branchName}"`, {
+        execSync("git checkout -- .github/workflows/ 2>/dev/null || true", {
           cwd: repoDir,
-          timeout: 30000,
+          timeout: 10000,
           stdio: "pipe",
+          shell: "/bin/sh",
         });
+
+        // Re-check if there are still changes to commit after excluding workflows
+        const statusAfter = execSync("git status --porcelain", {
+          cwd: repoDir,
+          timeout: 10000,
+          encoding: "utf-8",
+        });
+
+        if (statusAfter.trim()) {
+          this.logger.log(
+            `Committing uncommitted changes for branch ${branchName}`,
+          );
+          execSync("git add -A", {
+            cwd: repoDir,
+            timeout: 10000,
+            stdio: "pipe",
+          });
+          execSync(
+            `git commit -m "feat: implement changes for ${branchName}"`,
+            {
+              cwd: repoDir,
+              timeout: 30000,
+              stdio: "pipe",
+            },
+          );
+        } else {
+          this.logger.log(
+            `Only workflow files were changed for branch ${branchName}, nothing to commit`,
+          );
+        }
       }
 
       // Check if there are any commits to push
@@ -245,7 +275,16 @@ export class GithubService {
       });
       this.logger.log(`Pushed branch ${branchName} for space ${spaceId}`);
     } catch (e) {
-      this.logger.error(`Failed to push branch ${branchName}: ${e}`);
+      const errMsg = e instanceof Error ? e.message : String(e);
+      this.logger.error(`Failed to push branch ${branchName}: ${errMsg}`);
+
+      if (errMsg.includes("workflow")) {
+        throw new Error(
+          `Push rejected: GitHub requires the "workflow" OAuth scope to modify .github/workflows/ files. ` +
+            `Please reconnect your GitHub account with the workflow scope, or avoid modifying workflow files.`,
+        );
+      }
+
       throw new Error(`Failed to push branch to GitHub: ${e}`);
     }
   }
@@ -357,6 +396,28 @@ export class GithubService {
     // Push the branch to remote before creating PR
     await this.pushBranch(spaceId, branchName);
 
+    // Verify the branch has commits ahead of the default branch
+    const defaultBranch = await this.getDefaultBranch(owner, repo, token);
+
+    const compareRes = await fetch(
+      `https://api.github.com/repos/${owner}/${repo}/compare/${defaultBranch}...${branchName}`,
+      {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          Accept: "application/vnd.github+json",
+        },
+      },
+    );
+
+    if (compareRes.ok) {
+      const compareData = await compareRes.json();
+      if (compareData.ahead_by === 0) {
+        throw new Error(
+          `Branch "${branchName}" has no commits ahead of "${defaultBranch}". The agent may not have made any code changes.`,
+        );
+      }
+    }
+
     const appBaseUrl = this.configService.get(
       "APP_BASE_URL",
       "https://runa-app.com",
@@ -370,7 +431,7 @@ export class GithubService {
     );
 
     // Get the default branch name
-    const defaultBranch = await this.getDefaultBranch(owner, repo, token);
+    // (already fetched above for the compare check)
 
     const response = await fetch(
       `https://api.github.com/repos/${owner}/${repo}/pulls`,

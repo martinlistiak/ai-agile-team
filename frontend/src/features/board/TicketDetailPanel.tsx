@@ -32,7 +32,7 @@ import type { Ticket, AgentType, Priority, TicketStatus } from "@/types";
 
 /** Default column label per agent type (for "Start working?" confirmation). */
 const AGENT_DEFAULT_COLUMN: Record<string, string> = {
-  pm: "Planning",
+  pm: "Backlog",
   developer: "Development",
   reviewer: "Review",
   tester: "Testing",
@@ -50,7 +50,6 @@ const AGENT_LABEL: Record<string, string> = {
 
 const STATUS_STYLE: Record<string, { dot: string; label: string }> = {
   backlog: { dot: "bg-stone-400", label: "Backlog" },
-  planning: { dot: "bg-sky-500", label: "Planning" },
   development: { dot: "bg-violet-500", label: "Development" },
   review: { dot: "bg-amber-500", label: "Code Review" },
   testing: { dot: "bg-orange-500", label: "Testing" },

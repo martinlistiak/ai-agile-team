@@ -1,6 +1,5 @@
 export type TicketStatus =
   | "backlog"
-  | "planning"
   | "development"
   | "review"
   | "testing"

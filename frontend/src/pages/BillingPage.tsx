@@ -253,10 +253,13 @@ export function BillingPage({ onboarding = false }: { onboarding?: boolean }) {
                   </p>
                 )}
               {user?.subscriptionStatus === "canceled" && (
-                <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
-                  Your subscription has been canceled. Choose a plan to
+                <div
+                  className="mt-2 rounded-lg border border-red-200 dark:border-red-900/50 bg-red-50 dark:bg-red-950/30 px-3 py-2 text-sm text-red-800 dark:text-red-200"
+                  role="alert"
+                >
+                  Your subscription has been canceled. Choose a plan below to
                   resubscribe.
-                </p>
+                </div>
               )}
             </div>
             {showManageBilling && (
@@ -451,6 +454,45 @@ export function BillingPage({ onboarding = false }: { onboarding?: boolean }) {
               Credits added successfully.
             </div>
           )}
+
+          {/* Credit tokens progress bar */}
+          {(() => {
+            const creditsInCents =
+              creditsData?.creditsBalance ?? user?.creditsBalance ?? 0;
+            const tokensFromCredits = creditsInCents * 30; // 30 tokens per cent
+            const maxDisplayTokens = 150000; // $5 worth = 150K tokens as reference
+            const percentage = Math.min(
+              (tokensFromCredits / maxDisplayTokens) * 100,
+              100,
+            );
+
+            return (
+              <div className="rounded-lg bg-amber-50 dark:bg-amber-900/20 p-3 mb-4">
+                <div className="flex items-center justify-between mb-2">
+                  <p className="text-xs text-amber-700 dark:text-amber-400">
+                    Available credit tokens
+                  </p>
+                  <p className="text-xs font-medium text-amber-700 dark:text-amber-400">
+                    {tokensFromCredits >= 1000000
+                      ? `${(tokensFromCredits / 1000000).toFixed(2)}M`
+                      : tokensFromCredits >= 1000
+                        ? `${(tokensFromCredits / 1000).toFixed(0)}K`
+                        : tokensFromCredits.toLocaleString()}{" "}
+                    tokens
+                  </p>
+                </div>
+                <div className="w-full bg-amber-200 dark:bg-amber-800/50 rounded-full h-2">
+                  <div
+                    className="h-2 rounded-full bg-amber-500 transition-all"
+                    style={{ width: `${percentage}%` }}
+                  />
+                </div>
+                <p className="text-xs text-amber-600/70 dark:text-amber-500/70 mt-1">
+                  Used when monthly plan quota is exceeded • $1 = 30K tokens
+                </p>
+              </div>
+            );
+          })()}
 
           <div className="flex flex-wrap items-end gap-3">
             <div className="flex-1 min-w-[140px]">

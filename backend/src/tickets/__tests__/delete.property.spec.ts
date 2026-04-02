@@ -30,7 +30,6 @@ const ticketArb = fc.record({
   description: fc.string(),
   status: fc.constantFrom(
     "backlog",
-    "planning",
     "development",
     "review",
     "testing",

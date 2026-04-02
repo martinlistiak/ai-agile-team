@@ -34,7 +34,6 @@ function applyDeleteTicket(state: BoardState, ticketId: string): BoardState {
 
 const ticketStatusArb: fc.Arbitrary<TicketStatus> = fc.constantFrom(
   "backlog",
-  "planning",
   "development",
   "review",
   "testing",

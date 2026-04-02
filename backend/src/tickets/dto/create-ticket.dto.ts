@@ -21,26 +21,10 @@ export class CreateTicketDto {
   priority?: string;
 
   @ApiPropertyOptional({
-    enum: [
-      "backlog",
-      "planning",
-      "development",
-      "review",
-      "testing",
-      "staged",
-      "done",
-    ],
+    enum: ["backlog", "development", "review", "testing", "staged", "done"],
     example: "backlog",
   })
-  @IsEnum([
-    "backlog",
-    "planning",
-    "development",
-    "review",
-    "testing",
-    "staged",
-    "done",
-  ])
+  @IsEnum(["backlog", "development", "review", "testing", "staged", "done"])
   @IsOptional()
   status?: string;
 }

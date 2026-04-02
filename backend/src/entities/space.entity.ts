@@ -34,7 +34,6 @@ export class Space {
   @Column({
     type: "jsonb",
     default: {
-      planning: true,
       development: true,
       review: true,
       testing: true,

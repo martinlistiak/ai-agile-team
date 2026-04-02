@@ -16,7 +16,7 @@ interface RotatingBorderProps {
  */
 const RotatingBorder: React.FC<RotatingBorderProps> = ({
   active = false,
-  color = "#8b5cf6",
+  color = "#160048",
   children,
   borderRadius = 8,
   duration = 3,
@@ -29,8 +29,8 @@ const RotatingBorder: React.FC<RotatingBorderProps> = ({
 
   // Derive 3 gradient stops from the base color at different opacities
   const stops = {
-    dim: `${color}66`, // 40% opacity
-    mid: `${color}cc`, // 80% opacity
+    dim: `${color}16`, // 40% opacity
+    mid: `${color}`, // 80% opacity
     bright: color, // full
   };
 
@@ -53,7 +53,7 @@ const RotatingBorder: React.FC<RotatingBorderProps> = ({
         style={{
           background: `conic-gradient(from var(--gradient-angle), ${stops.dim}, ${stops.mid}, ${stops.bright}, ${stops.mid}, ${stops.dim})`,
           animation: `gradient-rotation ${duration}s linear infinite`,
-          filter: "blur(8px)",
+          filter: "blur(4px)",
           borderRadius: borderRadius + 2,
         }}
       />

@@ -13,7 +13,6 @@ const TRIGGER_CONFIG: Record<
 
 const STATUS_BADGE_COLORS: Record<string, string> = {
   backlog: "bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300",
-  planning: "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400",
   development:
     "bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400",
   review:

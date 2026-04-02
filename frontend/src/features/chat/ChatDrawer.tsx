@@ -3,6 +3,7 @@ import { useParams } from "react-router-dom";
 import { FiImage, FiSend, FiX, FiActivity } from "react-icons/fi";
 import { cn } from "@/lib/cn";
 import { getAvatarSrc } from "@/lib/avatars";
+import { useAutoResize } from "@/hooks/useAutoResize";
 import { renderMarkdown } from "@/lib/markdown";
 import { useChatContext } from "@/contexts/ChatContext";
 import { TypingIndicator } from "./TypingIndicator";
@@ -197,6 +198,7 @@ export function ChatDrawer() {
   const sendMessage = useSendChatMessage(spaceId || null);
 
   const [input, setInput] = useState("");
+  const [textareaRef, handleTextareaResize] = useAutoResize();
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const [filePreviews, setFilePreviews] = useState<
     Array<{ file: File; url: string | null }>
@@ -292,6 +294,10 @@ export function ChatDrawer() {
     const files = [...selectedFiles];
 
     setInput("");
+    if (textareaRef.current) {
+      textareaRef.current.style.height = "auto";
+      textareaRef.current.style.overflowY = "hidden";
+    }
     setSelectedFiles([]);
     if (fileInputRef.current) {
       fileInputRef.current.value = "";
@@ -472,8 +478,12 @@ export function ChatDrawer() {
             />
 
             <textarea
+              ref={textareaRef}
               value={input}
-              onChange={(event) => setInput(event.target.value)}
+              onChange={(event) => {
+                setInput(event.target.value);
+                handleTextareaResize(event);
+              }}
               onKeyDown={(event) => {
                 if (event.key === "Enter" && !event.shiftKey) {
                   event.preventDefault();
@@ -482,7 +492,7 @@ export function ChatDrawer() {
               }}
               placeholder="Type a message..."
               rows={1}
-              className="box-border h-9 w-full resize-none overflow-y-auto rounded-lg border border-gray-200 bg-gray-50 px-3 pt-2 pb-2 text-sm leading-5 text-gray-900 outline-none transition-colors placeholder:text-gray-400 focus:border-primary-300 focus:bg-white focus:ring-1 focus:ring-primary-200 dark:border-gray-700 dark:bg-gray-800/50 dark:text-gray-100 dark:placeholder:text-gray-500 dark:focus:border-primary-600 dark:focus:bg-gray-800"
+              className="box-border w-full resize-none overflow-hidden rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm leading-5 text-gray-900 outline-none transition-colors placeholder:text-gray-400 focus:border-primary-300 focus:bg-white focus:ring-1 focus:ring-primary-200 dark:border-gray-700 dark:bg-gray-800/50 dark:text-gray-100 dark:placeholder:text-gray-500 dark:focus:border-primary-600 dark:focus:bg-gray-800"
             />
 
             <button

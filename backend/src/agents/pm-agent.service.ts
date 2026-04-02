@@ -45,7 +45,7 @@ const TOOLS: Anthropic.Tool[] = [
         },
         status: {
           type: "string",
-          enum: ["backlog", "planning"],
+          enum: ["backlog"],
           description: "Initial status",
         },
       },
@@ -93,7 +93,7 @@ const TOOLS: Anthropic.Tool[] = [
       properties: {
         status: {
           type: "string",
-          enum: ["backlog", "planning", "in_progress", "review", "done"],
+          enum: ["backlog", "in_progress", "review", "done"],
           description: "Optional: filter tickets by status column",
         },
       },

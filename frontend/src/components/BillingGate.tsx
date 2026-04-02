@@ -21,7 +21,14 @@ export function BillingGate() {
     user?.subscriptionStatus === "trialing" ||
     user?.hasTeamMembership;
 
-  if (isActive) {
+  // Users who previously had a subscription (canceled, past_due, etc.)
+  // should see the full billing page with their history, not the onboarding wall.
+  const hadSubscription =
+    user?.subscriptionStatus === "canceled" ||
+    user?.subscriptionStatus === "past_due" ||
+    user?.hasStripeCustomer;
+
+  if (isActive || hadSubscription) {
     return (
       <ChatProvider>
         <div className="h-screen flex flex-col overflow-hidden bg-white dark:bg-gray-950">

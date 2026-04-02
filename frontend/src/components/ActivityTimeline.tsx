@@ -26,7 +26,6 @@ const TRIGGER_LABELS: Record<TransitionTrigger, string> = {
 
 const STATUS_COLORS: Record<string, string> = {
   backlog: "bg-stone-100 text-stone-600 dark:bg-stone-700 dark:text-stone-300",
-  planning: "bg-sky-100 text-sky-700 dark:bg-sky-900/40 dark:text-sky-300",
   development:
     "bg-violet-100 text-violet-700 dark:bg-violet-900/40 dark:text-violet-300",
   review:

@@ -18,7 +18,7 @@ export class UpdateSpaceDto {
   gitlabRepoUrl?: string;
 
   @ApiPropertyOptional({
-    example: { planning: true, development: true, testing: false },
+    example: { development: true, testing: false },
   })
   @IsObject()
   @IsOptional()

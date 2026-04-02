@@ -1,13 +1,6 @@
 import { Reveal } from "./primitives";
 
-const stages = [
-  "Backlog",
-  "Planning",
-  "Development",
-  "Review",
-  "Testing",
-  "Done",
-];
+const stages = ["Backlog", "Development", "Review", "Testing", "Done"];
 
 const agentLabels = [
   { src: "/avatars/pm.svg", label: "PM Agent" },

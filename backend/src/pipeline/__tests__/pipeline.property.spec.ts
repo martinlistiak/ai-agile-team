@@ -6,7 +6,7 @@ import * as fc from "fast-check";
  *
  * For any ticket status, the play button is enabled if and only if the status
  * has a mapped agent in STAGE_AGENT_MAP (development → developer, testing → tester).
- * For statuses without a mapping (backlog, planning, review, staged, done),
+ * For statuses without a mapping (backlog, review, staged, done),
  * the play button must be disabled.
  *
  * **Validates: Requirements 1.1, 1.4**
@@ -14,7 +14,6 @@ import * as fc from "fast-check";
 
 type PipelineStage =
   | "backlog"
-  | "planning"
   | "development"
   | "review"
   | "testing"
@@ -30,7 +29,6 @@ const STAGE_AGENT_MAP: Partial<Record<PipelineStage, "developer" | "tester">> =
 
 const ALL_STATUSES: PipelineStage[] = [
   "backlog",
-  "planning",
   "development",
   "review",
   "testing",
@@ -41,7 +39,6 @@ const ALL_STATUSES: PipelineStage[] = [
 const STATUSES_WITH_AGENT: PipelineStage[] = ["development", "testing"];
 const STATUSES_WITHOUT_AGENT: PipelineStage[] = [
   "backlog",
-  "planning",
   "review",
   "staged",
   "done",
@@ -124,7 +121,6 @@ describe("Feature: spec-gap-implementation, Property 1: Status-to-agent mapping 
 // Mirror PIPELINE_STAGES from pipeline.service.ts
 const PIPELINE_STAGES: PipelineStage[] = [
   "backlog",
-  "planning",
   "development",
   "review",
   "testing",
@@ -163,7 +159,6 @@ function getNextEnabledStage(
 
 // Generator for pipeline config: each configurable stage is randomly enabled/disabled
 const pipelineConfigArb = fc.record({
-  planning: fc.boolean(),
   development: fc.boolean(),
   review: fc.boolean(),
   testing: fc.boolean(),
@@ -173,7 +168,6 @@ const pipelineConfigArb = fc.record({
 // All stages except "done" (can advance from any of these)
 const advanceableStageArb = fc.constantFrom<PipelineStage>(
   "backlog",
-  "planning",
   "development",
   "review",
   "testing",
@@ -313,7 +307,6 @@ describe("Feature: spec-gap-implementation, Property 7: Full pipeline run reache
     fc.assert(
       fc.property(fc.constant(true), () => {
         const allEnabled: Record<string, boolean> = {
-          planning: true,
           development: true,
           review: true,
           testing: true,

@@ -41,7 +41,6 @@ const ticketIdArb = fc.uuid();
 
 const ticketStatusArb: fc.Arbitrary<TicketStatus> = fc.constantFrom(
   "backlog",
-  "planning",
   "development",
   "review",
   "testing",

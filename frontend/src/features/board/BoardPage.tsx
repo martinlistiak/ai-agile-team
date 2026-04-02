@@ -152,12 +152,22 @@ export function BoardPage() {
               </button>
             )}
             {space?.githubRepoUrl && (
-              <span className="ml-1 text-xs font-medium text-gray-400 dark:text-gray-500 hidden md:inline">
+              <span
+                className={cn(
+                  "ml-1 text-xs font-medium text-gray-400 dark:text-gray-500 hidden md:inline",
+                  isChatOpen && "md:hidden xl:inline",
+                )}
+              >
                 {space.githubRepoUrl}
               </span>
             )}
             {space?.gitlabRepoUrl && (
-              <span className="ml-1 text-xs font-medium text-gray-400 dark:text-gray-500 hidden md:inline">
+              <span
+                className={cn(
+                  "ml-1 text-xs font-medium text-gray-400 dark:text-gray-500 hidden md:inline",
+                  isChatOpen && "md:hidden xl:inline",
+                )}
+              >
                 {space.gitlabRepoUrl}
               </span>
             )}
@@ -313,7 +323,14 @@ export function BoardPage() {
                 size={13}
                 className="transition-transform duration-150 group-hover/btn:scale-110"
               />
-              <span className="hidden md:inline">Chat</span>
+              <span
+                className={cn(
+                  "hidden md:inline",
+                  isChatOpen && "md:hidden lg:inline",
+                )}
+              >
+                Chat
+              </span>
             </button>
             {/* Secondary actions — hidden labels on mobile */}
             <button
@@ -326,7 +343,14 @@ export function BoardPage() {
                 size={13}
                 className="transition-transform duration-150 group-hover/btn:rotate-[-4deg]"
               />
-              <span className="hidden md:inline">Rules</span>
+              <span
+                className={cn(
+                  "hidden md:inline",
+                  isChatOpen && "md:hidden lg:inline",
+                )}
+              >
+                Rules
+              </span>
             </button>
             <button
               type="button"
@@ -338,7 +362,14 @@ export function BoardPage() {
                 size={13}
                 className="transition-transform duration-150 group-hover/btn:-translate-y-px"
               />
-              <span className="hidden md:inline">Pipeline</span>
+              <span
+                className={cn(
+                  "hidden md:inline",
+                  isChatOpen && "md:hidden lg:inline",
+                )}
+              >
+                Pipeline
+              </span>
             </button>
 
             {/* Divider */}
@@ -364,7 +395,14 @@ export function BoardPage() {
               aria-label="New ticket"
             >
               <FiPlus size={13} strokeWidth={2.5} />
-              <span className="hidden sm:inline">New ticket</span>
+              <span
+                className={cn(
+                  "hidden sm:inline",
+                  isChatOpen && "sm:hidden lg:inline",
+                )}
+              >
+                New ticket
+              </span>
             </button>
           </div>
         </div>

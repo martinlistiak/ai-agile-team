@@ -28,7 +28,6 @@ import type { Ticket, TicketStatus } from "@/types";
 
 const COLUMNS: { id: TicketStatus; label: string; color: string }[] = [
   { id: "backlog", label: "Backlog", color: "bg-gray-400" },
-  { id: "planning", label: "Planning", color: "bg-blue-400" },
   { id: "development", label: "Development", color: "bg-purple-400" },
   { id: "review", label: "Code Review", color: "bg-orange-400" },
   { id: "testing", label: "Testing", color: "bg-yellow-400" },

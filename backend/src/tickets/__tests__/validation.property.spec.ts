@@ -17,7 +17,6 @@ import { MoveTicketDto } from "../dto/move-ticket.dto";
 describe("Property 14: DTO validation rejects invalid input", () => {
   const validStatuses = [
     "backlog",
-    "planning",
     "development",
     "review",
     "testing",
