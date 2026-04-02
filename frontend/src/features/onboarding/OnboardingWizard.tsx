@@ -22,12 +22,12 @@ const PIPELINE_STAGES = [
 
 /**
  * Pure step-advancement logic extracted for testability.
- * Returns the next step after completing.
+ * Returns the next step after completing or skipping.
  * Returns null if the wizard is complete (step 3 completed).
  */
 export function getNextStep(
   currentStep: WizardStep,
-  action: "complete",
+  action: "complete" | "skip",
 ): WizardStep | null {
   if (currentStep === 3 && action === "complete") return null;
   return (currentStep + 1) as WizardStep;

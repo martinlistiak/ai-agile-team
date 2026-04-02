@@ -698,7 +698,7 @@ export function TicketDetailPanel({
                 comments={ticket!.comments ?? []}
                 currentUserId={user?.id}
                 currentUserName={user?.name}
-                currentUserAvatar={user?.avatarUrl}
+                currentUserAvatar={user?.avatarUrl ?? undefined}
               />
             )}
           </div>

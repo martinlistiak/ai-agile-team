@@ -182,7 +182,8 @@
 
 @layer base {
   body {
-    @apply font-sans text-gray-900 dark:text-gray-100 bg-white dark:bg-gray-900 m-0;
+    @apply font-sans text-gray-900 dark:text-gray-100 bg-white dark:bg-gray-900;
+    margin: 0;
   }
 
   /* Favicon palette (public/favicon.svg) — shared wordmark */
