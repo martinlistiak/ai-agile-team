@@ -406,6 +406,18 @@ ${userMessage ? `**Additional instructions from the user:** ${userMessage}` : "I
       execution.actionLog = actionLog;
       await this.executionRepo.save(execution);
 
+      // Deduct credits if over monthly quota
+      if (execution.tokensUsed > 0) {
+        this.agentRunQuota
+          .deductCreditsForExecution(spaceId, execution.tokensUsed)
+          .catch((err) =>
+            this.logger.warn(
+              `Credit deduction failed for execution ${execution.id}:`,
+              err,
+            ),
+          );
+      }
+
       // Trigger learning loops — rule suggestions + episodic memory extraction, then set agent idle
       this.agentMemory
         .analyzeExecution(execution.id)

@@ -1,6 +1,7 @@
 import {
   ForbiddenException,
   Injectable,
+  Logger,
   NotFoundException,
 } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
@@ -13,7 +14,9 @@ import {
   STARTER_MONTHLY_TOKENS,
   TEAM_MONTHLY_TOKENS,
   ENTERPRISE_MONTHLY_TOKENS,
+  TOKENS_PER_CENT,
 } from "./subscription.constants";
+import { EventEmitter2 } from "@nestjs/event-emitter";
 
 /** Get the monthly token limit for a plan tier */
 export function getMonthlyTokenLimit(planTier: PlanTier): number {
@@ -28,12 +31,25 @@ export function getMonthlyTokenLimit(planTier: PlanTier): number {
   }
 }
 
+/** Convert tokens to cents (for credit deduction) */
+export function tokensToCents(tokens: number): number {
+  return Math.ceil(tokens / TOKENS_PER_CENT);
+}
+
+/** Convert cents to tokens (for display) */
+export function centsToTokens(cents: number): number {
+  return cents * TOKENS_PER_CENT;
+}
+
 @Injectable()
 export class AgentRunQuotaService {
+  private readonly logger = new Logger(AgentRunQuotaService.name);
+
   constructor(
     @InjectRepository(Space) private spaceRepo: Repository<Space>,
     @InjectRepository(User) private userRepo: Repository<User>,
     @InjectRepository(Execution) private executionRepo: Repository<Execution>,
+    private eventEmitter: EventEmitter2,
   ) {}
 
   /**
@@ -90,6 +106,14 @@ export class AgentRunQuotaService {
     const totalTokens = result?.totalTokens ?? 0;
 
     if (totalTokens >= monthlyLimit) {
+      // Check if user has credits to continue
+      if (user.creditsBalance > 0) {
+        this.logger.log(
+          `User ${user.id} exceeded monthly limit but has ${user.creditsBalance} cents in credits, allowing run`,
+        );
+        return; // Allow the run, credits will be deducted after execution
+      }
+
       const upgradeHint =
         user.planTier === "starter"
           ? "Upgrade to Team for higher token limits, or top up usage credits."
@@ -140,5 +164,79 @@ export class AgentRunQuotaService {
       tokensThisPeriod: result?.tokensThisPeriod ?? 0,
       monthlyTokenLimit: getMonthlyTokenLimit(user.planTier),
     };
+  }
+
+  /**
+   * Deduct credits for tokens used beyond the monthly quota.
+   * Called after each agent execution completes.
+   * Only deducts if the user has exceeded their monthly limit.
+   */
+  async deductCreditsForExecution(
+    spaceId: string,
+    tokensUsed: number,
+  ): Promise<{ creditsDeducted: number; remainingCredits: number }> {
+    if (tokensUsed <= 0) {
+      return { creditsDeducted: 0, remainingCredits: 0 };
+    }
+
+    const space = await this.spaceRepo.findOneBy({ id: spaceId });
+    if (!space) {
+      return { creditsDeducted: 0, remainingCredits: 0 };
+    }
+
+    const user = await this.userRepo.findOneBy({ id: space.userId });
+    if (!user) {
+      return { creditsDeducted: 0, remainingCredits: 0 };
+    }
+
+    // Check if user is over their monthly limit
+    const { tokensThisPeriod, monthlyTokenLimit } = await this.getUsageForUser(
+      user.id,
+    );
+
+    // Calculate how many tokens are over the limit
+    // tokensThisPeriod already includes the current execution's tokens
+    const tokensOverLimit = tokensThisPeriod - monthlyTokenLimit;
+
+    if (tokensOverLimit <= 0) {
+      // Still within monthly quota, no credits needed
+      return { creditsDeducted: 0, remainingCredits: user.creditsBalance };
+    }
+
+    // Calculate how many of THIS execution's tokens should be charged to credits
+    // If we just went over, only charge the overage portion
+    // If we were already over, charge all tokens from this execution
+    const tokensToCharge = Math.min(tokensUsed, tokensOverLimit);
+    const centsToDeduct = tokensToCents(tokensToCharge);
+
+    if (centsToDeduct <= 0) {
+      return { creditsDeducted: 0, remainingCredits: user.creditsBalance };
+    }
+
+    // Deduct credits (clamp to available balance)
+    const actualDeduction = Math.min(centsToDeduct, user.creditsBalance);
+    if (actualDeduction > 0) {
+      await this.userRepo.decrement(
+        { id: user.id },
+        "creditsBalance",
+        actualDeduction,
+      );
+
+      const updatedUser = await this.userRepo.findOneBy({ id: user.id });
+      const remainingCredits = updatedUser?.creditsBalance ?? 0;
+
+      this.logger.log(
+        `Deducted ${actualDeduction} cents (${tokensToCharge} tokens) from user ${user.id}. Remaining: ${remainingCredits} cents`,
+      );
+
+      // Emit event if credits are exhausted
+      if (remainingCredits <= 0) {
+        this.eventEmitter.emit("credits.exhausted", { email: user.email });
+      }
+
+      return { creditsDeducted: actualDeduction, remainingCredits };
+    }
+
+    return { creditsDeducted: 0, remainingCredits: user.creditsBalance };
   }
 }

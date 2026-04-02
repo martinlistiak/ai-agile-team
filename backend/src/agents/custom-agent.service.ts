@@ -117,6 +117,18 @@ export class CustomAgentService {
       await this.agentRepo.update(agent.id, { status: "idle" });
       this.eventsGateway.emitAgentStatus(spaceId, agent.id, "idle");
 
+      // Deduct credits if over monthly quota
+      if (execution.tokensUsed > 0) {
+        this.agentRunQuota
+          .deductCreditsForExecution(spaceId, execution.tokensUsed)
+          .catch((err) =>
+            this.logger.warn(
+              `Credit deduction failed for execution ${execution.id}:`,
+              err,
+            ),
+          );
+      }
+
       return finalText || "I've processed your request.";
     } catch (error) {
       this.logger.error("Custom Agent error:", error);

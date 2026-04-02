@@ -163,12 +163,37 @@ export class BillingService {
     const user = await this.userRepo.findOneBy({ id: userId });
     if (!user) throw new NotFoundException("User not found");
 
+    let billingInterval: "monthly" | "annual" | null = null;
+    let quantity = 1;
+
+    // Fetch billing interval and quantity from Stripe subscription
+    if (user.stripeSubscriptionId) {
+      try {
+        const subscription = await this.stripe.subscriptions.retrieve(
+          user.stripeSubscriptionId,
+        );
+        const item = subscription.items?.data?.[0];
+        if (item?.price?.recurring?.interval) {
+          billingInterval =
+            item.price.recurring.interval === "year" ? "annual" : "monthly";
+        }
+        quantity = item?.quantity ?? 1;
+      } catch (err) {
+        this.logger.warn(
+          `Failed to fetch subscription details for user ${userId}:`,
+          err,
+        );
+      }
+    }
+
     return {
       planTier: user.planTier,
       subscriptionStatus: user.subscriptionStatus,
       currentPeriodEnd: user.currentPeriodEnd,
       cancelAtPeriodEnd: user.cancelAtPeriodEnd,
       stripeCustomerId: user.stripeCustomerId,
+      billingInterval,
+      quantity,
     };
   }
 
@@ -586,6 +611,28 @@ export class BillingService {
     if (!userId || isNaN(amountCents)) {
       this.logger.warn("Top-up session missing metadata");
       return;
+    }
+
+    // Check if already credited via verifyTopUpSession to prevent double-crediting
+    const paymentIntentId =
+      typeof session.payment_intent === "string"
+        ? session.payment_intent
+        : session.payment_intent?.id;
+
+    if (paymentIntentId) {
+      const paymentIntent =
+        await this.stripe.paymentIntents.retrieve(paymentIntentId);
+      if (paymentIntent.metadata?.credited === "true") {
+        this.logger.log(
+          `Top-up webhook for session ${session.id} already credited, skipping`,
+        );
+        return;
+      }
+
+      // Mark as credited before adding to prevent race conditions
+      await this.stripe.paymentIntents.update(paymentIntentId, {
+        metadata: { ...paymentIntent.metadata, credited: "true" },
+      });
     }
 
     await this.userRepo.increment(

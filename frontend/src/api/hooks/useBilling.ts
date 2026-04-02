@@ -127,3 +127,24 @@ export function useAddSpaceCheckout() {
     },
   });
 }
+
+export interface SubscriptionInfo {
+  planTier: string;
+  subscriptionStatus: string;
+  currentPeriodEnd: string | null;
+  cancelAtPeriodEnd: boolean;
+  stripeCustomerId: string | null;
+  billingInterval: "monthly" | "annual" | null;
+  quantity: number;
+}
+
+export function useSubscriptionInfo(enabled = true) {
+  return useQuery<SubscriptionInfo>({
+    queryKey: ["billing", "subscription"],
+    queryFn: async () => {
+      const { data } = await api.get<SubscriptionInfo>("/billing/subscription");
+      return data;
+    },
+    enabled,
+  });
+}

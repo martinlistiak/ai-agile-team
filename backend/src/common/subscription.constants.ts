@@ -16,6 +16,17 @@ export const TEAM_MONTHLY_TOKENS = 1_500_000;
 /** Max tokens per billing period for Enterprise plan. */
 export const ENTERPRISE_MONTHLY_TOKENS = 10_000_000;
 
+// ── Credit to Token Conversion ──
+// Based on blended cost of ~$33/1M tokens
+// $1 (100 cents) = ~30,000 tokens
+// This gives us margin while being fair to users
+
+/** Tokens per cent of credit (30 tokens per cent = 30,000 tokens per dollar) */
+export const TOKENS_PER_CENT = 30;
+
+/** Cost in cents per 1000 tokens (for display purposes) */
+export const CENTS_PER_1K_TOKENS = Math.ceil(1000 / TOKENS_PER_CENT); // ~34 cents per 1K tokens
+
 // ── Error Codes ──
 
 /** API `code` on 403 responses when monthly token limit is reached. */

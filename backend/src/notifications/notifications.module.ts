@@ -1,6 +1,7 @@
 import { Module } from "@nestjs/common";
 import { TypeOrmModule } from "@nestjs/typeorm";
 import { NotificationsController } from "./notifications.controller";
+import { ContactController } from "./contact.controller";
 import { NotificationsService } from "./notifications.service";
 import { NotificationsListener } from "./notifications.listener";
 import { SlackService } from "./slack.service";
@@ -24,7 +25,7 @@ import { ChatModule } from "../chat/chat.module";
     TeamsModule,
     ChatModule,
   ],
-  controllers: [NotificationsController],
+  controllers: [NotificationsController, ContactController],
   providers: [NotificationsService, NotificationsListener, SlackService],
   exports: [NotificationsService, SlackService],
 })

@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useSearchParams } from "react-router-dom";
+import { useSearchParams, Link } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/Button";
@@ -12,7 +12,9 @@ import {
   useCreditTopUp,
   useVerifyCheckoutSession,
   useVerifyTopUpSession,
+  useSubscriptionInfo,
 } from "@/api/hooks/useBilling";
+import { useSpaces } from "@/api/hooks/useSpaces";
 import type { PlanTier } from "@/types";
 
 const PLANS = [
@@ -87,7 +89,10 @@ export function BillingPage({ onboarding = false }: { onboarding?: boolean }) {
   const queryClient = useQueryClient();
 
   const { data: usage } = useBillingUsage();
+  const { data: spaces } = useSpaces();
+  const spaceCount = spaces?.length ?? 0;
   const hasStripeCustomer = Boolean(user?.hasStripeCustomer);
+  const { data: subscriptionInfo } = useSubscriptionInfo(hasStripeCustomer);
   const { data: invoicesData, isLoading: invoicesLoading } =
     useBillingInvoices(hasStripeCustomer);
   const checkoutMutation = useCheckout();
@@ -210,53 +215,134 @@ export function BillingPage({ onboarding = false }: { onboarding?: boolean }) {
       )}
 
       {!onboarding && (
-        <div className="rounded-xl border border-gray-200 dark:border-gray-800 p-5 mb-8 flex flex-wrap items-center justify-between gap-4">
-          <div>
-            <p className="text-sm text-gray-500 dark:text-gray-400">
-              Current plan
-            </p>
-            <p className="text-lg font-semibold text-gray-900 dark:text-gray-100 capitalize">
-              {currentPlan}
-              {user?.subscriptionStatus &&
-                user.subscriptionStatus !== "none" && (
-                  <span
-                    className={`ml-2 text-xs font-medium px-2 py-0.5 rounded-full ${
-                      isActive
-                        ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400"
-                        : "bg-amber-50 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400"
-                    }`}
-                  >
-                    {user.subscriptionStatus}
-                  </span>
+        <div className="rounded-xl border border-gray-200 dark:border-gray-800 p-5 mb-8">
+          <div className="flex flex-wrap items-center justify-between gap-4 mb-4">
+            <div>
+              <p className="text-sm text-gray-500 dark:text-gray-400">
+                Current plan
+              </p>
+              <p className="text-lg font-semibold text-gray-900 dark:text-gray-100 capitalize">
+                {currentPlan}
+                {user?.subscriptionStatus &&
+                  user.subscriptionStatus !== "none" && (
+                    <span
+                      className={`ml-2 text-xs font-medium px-2 py-0.5 rounded-full ${
+                        isActive
+                          ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400"
+                          : "bg-amber-50 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400"
+                      }`}
+                    >
+                      {user.subscriptionStatus}
+                    </span>
+                  )}
+              </p>
+              {user?.cancelAtPeriodEnd &&
+                user?.currentPeriodEnd &&
+                isActive && (
+                  <p className="text-xs text-amber-600 dark:text-amber-400 mt-0.5">
+                    Cancels on{" "}
+                    {new Date(user.currentPeriodEnd).toLocaleDateString()}
+                  </p>
                 )}
-            </p>
-            {user?.cancelAtPeriodEnd && user?.currentPeriodEnd && isActive && (
-              <p className="text-xs text-amber-600 dark:text-amber-400 mt-0.5">
-                Cancels on{" "}
-                {new Date(user.currentPeriodEnd).toLocaleDateString()}
-              </p>
-            )}
-            {!user?.cancelAtPeriodEnd && user?.currentPeriodEnd && isActive && (
-              <p className="text-xs text-gray-400 mt-0.5">
-                Renews {new Date(user.currentPeriodEnd).toLocaleDateString()}
-              </p>
-            )}
-            {user?.subscriptionStatus === "canceled" && (
-              <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
-                Your subscription has been canceled. Choose a plan to
-                resubscribe.
-              </p>
+              {!user?.cancelAtPeriodEnd &&
+                user?.currentPeriodEnd &&
+                isActive && (
+                  <p className="text-xs text-gray-400 mt-0.5">
+                    Renews{" "}
+                    {new Date(user.currentPeriodEnd).toLocaleDateString()}
+                  </p>
+                )}
+              {user?.subscriptionStatus === "canceled" && (
+                <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                  Your subscription has been canceled. Choose a plan to
+                  resubscribe.
+                </p>
+              )}
+            </div>
+            {showManageBilling && (
+              <button
+                type="button"
+                onClick={handleManageBilling}
+                disabled={portalMutation.isPending}
+                className="text-sm font-medium px-4 py-2 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors disabled:opacity-50"
+              >
+                {portalMutation.isPending ? "Loading…" : "Manage billing"}
+              </button>
             )}
           </div>
-          {showManageBilling && (
-            <button
-              type="button"
-              onClick={handleManageBilling}
-              disabled={portalMutation.isPending}
-              className="text-sm font-medium px-4 py-2 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors disabled:opacity-50"
-            >
-              {portalMutation.isPending ? "Loading…" : "Manage billing"}
-            </button>
+
+          {/* Billing summary */}
+          {isActive && currentPlan !== "enterprise" && spaceCount > 0 && (
+            <div className="border-t border-gray-200 dark:border-gray-700 pt-4">
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <div className="rounded-lg bg-gray-50 dark:bg-gray-900 p-3">
+                  <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">
+                    Billing
+                  </p>
+                  <p className="text-xl font-semibold text-gray-900 dark:text-gray-100 capitalize">
+                    {subscriptionInfo?.billingInterval ?? "—"}
+                  </p>
+                </div>
+                <div className="rounded-lg bg-gray-50 dark:bg-gray-900 p-3">
+                  <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">
+                    Spaces
+                  </p>
+                  <p className="text-xl font-semibold text-gray-900 dark:text-gray-100">
+                    {spaceCount}
+                  </p>
+                </div>
+                <div className="rounded-lg bg-gray-50 dark:bg-gray-900 p-3">
+                  <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">
+                    Per space
+                  </p>
+                  <p className="text-xl font-semibold text-gray-900 dark:text-gray-100">
+                    $
+                    {subscriptionInfo?.billingInterval === "annual"
+                      ? (PLANS.find((p) => p.tier === currentPlan)
+                          ?.annualPrice ?? 0)
+                      : (PLANS.find((p) => p.tier === currentPlan)
+                          ?.monthlyPrice ?? 0)}
+                    <span className="text-xs font-normal text-gray-400">
+                      /mo
+                    </span>
+                  </p>
+                </div>
+                <div className="rounded-lg bg-indigo-50 dark:bg-indigo-900/20 p-3">
+                  <p className="text-xs text-indigo-600 dark:text-indigo-400 mb-1">
+                    {subscriptionInfo?.billingInterval === "annual"
+                      ? "Annual total"
+                      : "Monthly total"}
+                  </p>
+                  <p className="text-xl font-semibold text-indigo-600 dark:text-indigo-400">
+                    $
+                    {subscriptionInfo?.billingInterval === "annual"
+                      ? (PLANS.find((p) => p.tier === currentPlan)
+                          ?.annualPrice ?? 0) *
+                        spaceCount *
+                        12
+                      : (PLANS.find((p) => p.tier === currentPlan)
+                          ?.monthlyPrice ?? 0) * spaceCount}
+                    <span className="text-xs font-normal">
+                      /
+                      {subscriptionInfo?.billingInterval === "annual"
+                        ? "yr"
+                        : "mo"}
+                    </span>
+                  </p>
+                </div>
+              </div>
+              <p className="text-xs text-gray-400 mt-2">
+                {spaceCount} {spaceCount === 1 ? "space" : "spaces"} × $
+                {subscriptionInfo?.billingInterval === "annual"
+                  ? (PLANS.find((p) => p.tier === currentPlan)?.annualPrice ??
+                    0)
+                  : (PLANS.find((p) => p.tier === currentPlan)?.monthlyPrice ??
+                    0)}
+                /space/mo
+                {subscriptionInfo?.billingInterval === "annual" &&
+                  " × 12 months"}
+              </p>
+            </div>
           )}
         </div>
       )}
@@ -507,12 +593,12 @@ export function BillingPage({ onboarding = false }: { onboarding?: boolean }) {
               </div>
 
               {isEnterprise ? (
-                <a
-                  href="mailto:sales@runa-app.com"
+                <Link
+                  to="/contact?source=billing"
                   className="block w-full text-center text-sm font-medium py-2.5 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 transition-all mb-5"
                 >
                   Talk to sales
-                </a>
+                </Link>
               ) : isCurrent ? (
                 <button
                   type="button"

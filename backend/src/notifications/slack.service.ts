@@ -121,4 +121,24 @@ export class SlackService {
   async notifyTeamMemberJoined(memberName: string): Promise<void> {
     await this.send(`👋 ${memberName} joined the team`);
   }
+
+  async notifyContactForm(opts: {
+    name: string;
+    email: string;
+    company?: string;
+    teamSize?: string;
+    message: string;
+    source?: string;
+  }): Promise<void> {
+    const lines = [
+      `🏢 *Enterprise Contact Form*`,
+      `*Name:* ${opts.name}`,
+      `*Email:* ${opts.email}`,
+    ];
+    if (opts.company) lines.push(`*Company:* ${opts.company}`);
+    if (opts.teamSize) lines.push(`*Team Size:* ${opts.teamSize}`);
+    if (opts.source) lines.push(`*Source:* ${opts.source}`);
+    lines.push(`\n*Message:*\n${opts.message}`);
+    await this.send(lines.join("\n"));
+  }
 }

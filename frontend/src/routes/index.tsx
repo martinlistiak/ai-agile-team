@@ -15,6 +15,7 @@ import { GitlabCallbackPage } from "@/features/auth/GitlabCallbackPage";
 import { SpaceListPage } from "@/features/spaces/SpaceListPage";
 import { BoardPage } from "@/features/board/BoardPage";
 import { HomePage } from "@/pages/HomePage";
+import { ContactPage } from "@/pages/ContactPage";
 import { PrivacyPolicyPage } from "@/pages/PrivacyPolicyPage";
 import { StatusPage } from "@/pages/StatusPage";
 import { TermsPage } from "@/pages/TermsPage";
@@ -52,6 +53,10 @@ export const router = createBrowserRouter([
       {
         path: "/",
         element: <HomePage />,
+      },
+      {
+        path: "/contact",
+        element: <ContactPage />,
       },
       {
         path: "/privacy",
