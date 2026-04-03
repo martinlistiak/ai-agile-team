@@ -100,7 +100,7 @@ export class AgentRunQuotaService {
       .innerJoin("agent.space", "space")
       .where("space.userId = :userId", { userId: user.id })
       .andWhere("e.startTime >= :periodStart", { periodStart })
-      .select('COALESCE(SUM(e."tokensUsed"), 0)::int', "totalTokens")
+      .select('COALESCE(SUM(e."costWeightedTokens"), 0)::int', "totalTokens")
       .getRawOne();
 
     const totalTokens = result?.totalTokens ?? 0;
@@ -157,7 +157,9 @@ export class AgentRunQuotaService {
       .innerJoin("agent.space", "space")
       .where("space.userId = :userId", { userId })
       .andWhere("e.startTime >= :periodStart", { periodStart })
-      .select('COALESCE(SUM(e."tokensUsed"), 0)::int AS "tokensThisPeriod"')
+      .select(
+        'COALESCE(SUM(e."costWeightedTokens"), 0)::int AS "tokensThisPeriod"',
+      )
       .getRawOne();
 
     return {
@@ -167,15 +169,15 @@ export class AgentRunQuotaService {
   }
 
   /**
-   * Deduct credits for tokens used beyond the monthly quota.
+   * Deduct credits for cost-weighted tokens used beyond the monthly quota.
    * Called after each agent execution completes.
    * Only deducts if the user has exceeded their monthly limit.
    */
   async deductCreditsForExecution(
     spaceId: string,
-    tokensUsed: number,
+    costWeightedTokens: number,
   ): Promise<{ creditsDeducted: number; remainingCredits: number }> {
-    if (tokensUsed <= 0) {
+    if (costWeightedTokens <= 0) {
       return { creditsDeducted: 0, remainingCredits: 0 };
     }
 
@@ -206,7 +208,7 @@ export class AgentRunQuotaService {
     // Calculate how many of THIS execution's tokens should be charged to credits
     // If we just went over, only charge the overage portion
     // If we were already over, charge all tokens from this execution
-    const tokensToCharge = Math.min(tokensUsed, tokensOverLimit);
+    const tokensToCharge = Math.min(costWeightedTokens, tokensOverLimit);
     const centsToDeduct = tokensToCents(tokensToCharge);
 
     if (centsToDeduct <= 0) {

@@ -14,6 +14,7 @@ import { EventsGateway } from "../chat/events.gateway";
 import { formatAgentExecutionLog } from "../common/structured-logger";
 import { ExecutionRegistry } from "./execution-registry";
 import { AgentRunQuotaService } from "../common/agent-run-quota.service";
+import { computeCostWeightedTokens } from "../common/subscription.constants";
 import { ModelRouterService } from "./model-router.service";
 import { AgentMemoryService } from "./agent-memory.service";
 import { AgentBoosterService } from "./agent-booster.service";
@@ -301,6 +302,15 @@ ${userMessage ? `**Additional instructions from the user:** ${userMessage}` : "R
       }
       execution.modelUsed = model;
 
+      // Compute cost-weighted tokens for accurate billing
+      execution.costWeightedTokens = computeCostWeightedTokens({
+        inputTokens: execution.inputTokens,
+        outputTokens: execution.outputTokens,
+        cacheReadTokens: execution.cacheReadTokens,
+        cacheCreationTokens: execution.cacheCreationTokens,
+        modelUsed: execution.modelUsed,
+      });
+
       // Post review comments on GitHub PR and summary on ticket
       if (ticketId && ticket) {
         // Post PR review comment on GitHub/GitLab
@@ -366,9 +376,9 @@ ${userMessage ? `**Additional instructions from the user:** ${userMessage}` : "R
       await this.executionRepo.save(execution);
 
       // Deduct credits if over monthly quota
-      if (execution.tokensUsed > 0) {
+      if (execution.costWeightedTokens > 0) {
         this.agentRunQuota
-          .deductCreditsForExecution(spaceId, execution.tokensUsed)
+          .deductCreditsForExecution(spaceId, execution.costWeightedTokens)
           .catch((err) =>
             this.logger.warn(
               `Credit deduction failed for execution ${execution.id}:`,

@@ -16,6 +16,7 @@ import { EventsGateway } from "../chat/events.gateway";
 import { formatAgentExecutionLog } from "../common/structured-logger";
 import { ExecutionRegistry } from "./execution-registry";
 import { AgentRunQuotaService } from "../common/agent-run-quota.service";
+import { computeCostWeightedTokens } from "../common/subscription.constants";
 import { ModelRouterService } from "./model-router.service";
 import { AgentMemoryService } from "./agent-memory.service";
 import { AgentBoosterService } from "./agent-booster.service";
@@ -330,6 +331,15 @@ ${userMessage ? `**Additional instructions from the user:** ${userMessage}` : "W
       }
       execution.modelUsed = model;
 
+      // Compute cost-weighted tokens for accurate billing
+      execution.costWeightedTokens = computeCostWeightedTokens({
+        inputTokens: execution.inputTokens,
+        outputTokens: execution.outputTokens,
+        cacheReadTokens: execution.cacheReadTokens,
+        cacheCreationTokens: execution.cacheCreationTokens,
+        modelUsed: execution.modelUsed,
+      });
+
       // Emit browser session end if a session was active
       if (browserSessionActive) {
         this.eventsGateway.emitBrowserSessionEnd(spaceId, {
@@ -356,9 +366,9 @@ ${userMessage ? `**Additional instructions from the user:** ${userMessage}` : "W
       this.eventsGateway.emitAgentStatus(spaceId, agent.id, "idle");
 
       // Deduct credits if over monthly quota
-      if (execution.tokensUsed > 0) {
+      if (execution.costWeightedTokens > 0) {
         this.agentRunQuota
-          .deductCreditsForExecution(spaceId, execution.tokensUsed)
+          .deductCreditsForExecution(spaceId, execution.costWeightedTokens)
           .catch((err) =>
             this.logger.warn(
               `Credit deduction failed for execution ${execution.id}:`,

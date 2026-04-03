@@ -9,6 +9,7 @@ import { RulesService } from "../rules/rules.service";
 import { EventsGateway } from "../chat/events.gateway";
 import { ExecutionRegistry } from "./execution-registry";
 import { AgentRunQuotaService } from "../common/agent-run-quota.service";
+import { computeCostWeightedTokens } from "../common/subscription.constants";
 import { ModelRouterService } from "./model-router.service";
 import { AgentMemoryService } from "./agent-memory.service";
 
@@ -110,6 +111,15 @@ export class CustomAgentService {
         (response.usage?.output_tokens ?? 0);
       execution.modelUsed = model;
 
+      // Compute cost-weighted tokens for accurate billing
+      execution.costWeightedTokens = computeCostWeightedTokens({
+        inputTokens: execution.inputTokens,
+        outputTokens: execution.outputTokens,
+        cacheReadTokens: execution.cacheReadTokens,
+        cacheCreationTokens: execution.cacheCreationTokens,
+        modelUsed: execution.modelUsed,
+      });
+
       this.executionRegistry.remove(execution.id);
       execution.status = "completed";
       execution.endTime = new Date();
@@ -118,9 +128,9 @@ export class CustomAgentService {
       this.eventsGateway.emitAgentStatus(spaceId, agent.id, "idle");
 
       // Deduct credits if over monthly quota
-      if (execution.tokensUsed > 0) {
+      if (execution.costWeightedTokens > 0) {
         this.agentRunQuota
-          .deductCreditsForExecution(spaceId, execution.tokensUsed)
+          .deductCreditsForExecution(spaceId, execution.costWeightedTokens)
           .catch((err) =>
             this.logger.warn(
               `Credit deduction failed for execution ${execution.id}:`,

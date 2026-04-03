@@ -47,6 +47,9 @@ export class Execution {
   @Column({ type: "int", default: 0 })
   cacheCreationTokens: number;
 
+  @Column({ type: "int", default: 0 })
+  costWeightedTokens: number;
+
   @Column({ type: "varchar", nullable: true })
   modelUsed: string;
 

@@ -748,7 +748,7 @@ export class BillingService {
         'COUNT(*)::int AS "totalRuns"',
         "COUNT(*) FILTER (WHERE e.status = 'completed')::int AS \"completedRuns\"",
         "COUNT(*) FILTER (WHERE e.status = 'failed')::int AS \"failedRuns\"",
-        'COALESCE(SUM(e."tokensUsed"), 0)::int AS "totalTokens"',
+        'COALESCE(SUM(e."costWeightedTokens"), 0)::int AS "totalTokens"',
       ])
       .getRawOne();
 

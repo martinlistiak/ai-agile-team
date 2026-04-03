@@ -181,88 +181,68 @@ export function TeamPage() {
       )}
 
       {selectedTeam && (
-        <>
-          {/* Team name section */}
-          <section className="rounded-xl border border-gray-200 dark:border-gray-800 p-5 mb-6">
-            <h2 className="text-sm font-semibold text-gray-900 dark:text-gray-100 mb-1">
-              Team name
-            </h2>
-            <p className="text-xs text-gray-500 dark:text-gray-400 mb-4">
-              The name of your team as it appears across the workspace.
-            </p>
+        <section
+          className="rounded-xl border border-gray-200 dark:border-gray-800 overflow-hidden mb-6"
+          aria-labelledby="team-settings-heading"
+        >
+          <h2 id="team-settings-heading" className="sr-only">
+            Team settings
+          </h2>
 
-            {isEditingName ? (
-              <div className="flex flex-col sm:flex-row gap-2 max-w-md">
-                <input
-                  ref={nameInputRef}
-                  type="text"
-                  value={editedName}
-                  onChange={(e) => setEditedName(e.target.value)}
-                  className="flex-1 px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-indigo-500/40"
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") handleSaveName();
-                    if (e.key === "Escape") handleCancelEdit();
-                  }}
-                />
-                <div className="flex gap-2">
-                  <Button
-                    onClick={handleSaveName}
-                    disabled={!editedName.trim()}
-                    loading={updateTeamMutation.isPending}
-                  >
-                    Save
-                  </Button>
-                  <Button variant="secondary" onClick={handleCancelEdit}>
-                    Cancel
-                  </Button>
+          {/* Name + seat count */}
+          <div className="p-5 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+            <div className="min-w-0 flex-1">
+              {isEditingName ? (
+                <div className="flex flex-col sm:flex-row gap-2 max-w-md">
+                  <input
+                    ref={nameInputRef}
+                    type="text"
+                    value={editedName}
+                    onChange={(e) => setEditedName(e.target.value)}
+                    className="flex-1 px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-indigo-500/40"
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") handleSaveName();
+                      if (e.key === "Escape") handleCancelEdit();
+                    }}
+                  />
+                  <div className="flex gap-2">
+                    <Button
+                      onClick={handleSaveName}
+                      disabled={!editedName.trim()}
+                      loading={updateTeamMutation.isPending}
+                    >
+                      Save
+                    </Button>
+                    <Button variant="secondary" onClick={handleCancelEdit}>
+                      Cancel
+                    </Button>
+                  </div>
                 </div>
-              </div>
-            ) : (
-              <div className="flex items-center gap-3">
-                <span className="text-sm text-gray-900 dark:text-gray-100 font-medium">
-                  {selectedTeam.name}
-                </span>
-                {isOwnerOrAdmin && (
-                  <Button variant="link" onClick={() => setIsEditingName(true)}>
-                    Edit
-                  </Button>
-                )}
-              </div>
-            )}
-          </section>
-
-          {/* Capacity section */}
-          <section className="rounded-xl border border-gray-200 dark:border-gray-800 p-5 mb-6">
-            <h2 className="text-sm font-semibold text-gray-900 dark:text-gray-100 mb-1">
-              Team capacity
-            </h2>
-            <p className="text-xs text-gray-500 dark:text-gray-400 mb-4">
-              Invite up to 99 members on any plan—no per-seat charges.
-            </p>
-            <div className="flex items-baseline gap-2">
-              <span className="text-2xl font-semibold text-gray-900 dark:text-gray-100">
-                {selectedTeam.members.length}
-              </span>
-              <span className="text-sm text-gray-500 dark:text-gray-400">
-                / 99 members
-              </span>
+              ) : (
+                <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                  <span className="text-base font-semibold text-gray-900 dark:text-gray-100">
+                    {selectedTeam.name}
+                  </span>
+                  {isOwnerOrAdmin && (
+                    <Button variant="link" onClick={() => setIsEditingName(true)}>
+                      Edit
+                    </Button>
+                  )}
+                </div>
+              )}
             </div>
-          </section>
+            <p className="text-sm text-gray-500 dark:text-gray-400 shrink-0 sm:text-right">
+              {selectedTeam.members.length} / 99 members
+            </p>
+          </div>
 
-          {/* Invite section */}
           {isOwnerOrAdmin && (
-            <section className="rounded-xl border border-gray-200 dark:border-gray-800 p-5 mb-6">
-              <h2 className="text-sm font-semibold text-gray-900 dark:text-gray-100 mb-1">
-                Invite members
-              </h2>
-              <p className="text-xs text-gray-500 dark:text-gray-400 mb-4">
-                Send an invitation email to add someone to your team.
-              </p>
-
+            <div className="border-t border-gray-100 dark:border-gray-800 p-5">
+              <h3 className="sr-only">Invite members</h3>
               {needsEmailVerification ? (
                 <p className="text-sm text-amber-800 dark:text-amber-300/95">
-                  Verify your email address before inviting teammates. Check
-                  your inbox for the confirmation link.
+                  Verify your email before inviting people. Check your inbox for
+                  the confirmation link.
                 </p>
               ) : (
                 <div className="flex flex-col sm:flex-row gap-2 max-w-xl">
@@ -270,7 +250,7 @@ export function TeamPage() {
                     type="email"
                     value={inviteEmail}
                     onChange={(e) => setInviteEmail(e.target.value)}
-                    placeholder="colleague@company.com"
+                    placeholder="Email address"
                     className="flex-1 px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-indigo-500/40"
                     onKeyDown={(e) => e.key === "Enter" && handleInvite()}
                   />
@@ -294,15 +274,14 @@ export function TeamPage() {
                   </Button>
                 </div>
               )}
-            </section>
+            </div>
           )}
 
-          {/* Members list */}
-          <section className="rounded-xl border border-gray-200 dark:border-gray-800 overflow-hidden mb-6">
+          <div className="border-t border-gray-100 dark:border-gray-800">
             <div className="px-5 py-3 border-b border-gray-100 dark:border-gray-800">
-              <h2 className="text-sm font-semibold text-gray-900 dark:text-gray-100">
+              <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100">
                 Members ({selectedTeam.members.length})
-              </h2>
+              </h3>
             </div>
             <ul>
               {selectedTeam.members.map((m) => (
@@ -377,15 +356,14 @@ export function TeamPage() {
                 </li>
               ))}
             </ul>
-          </section>
+          </div>
 
-          {/* Pending invitations */}
           {selectedTeam.pendingInvitations.length > 0 && (
-            <section className="rounded-xl border border-gray-200 dark:border-gray-800 overflow-hidden">
+            <div className="border-t border-gray-100 dark:border-gray-800">
               <div className="px-5 py-3 border-b border-gray-100 dark:border-gray-800">
-                <h2 className="text-sm font-semibold text-gray-900 dark:text-gray-100">
+                <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100">
                   Pending invitations ({selectedTeam.pendingInvitations.length})
-                </h2>
+                </h3>
               </div>
               <ul>
                 {selectedTeam.pendingInvitations.map((inv) => (
@@ -420,9 +398,9 @@ export function TeamPage() {
                   </li>
                 ))}
               </ul>
-            </section>
+            </div>
           )}
-        </>
+        </section>
       )}
     </div>
   );

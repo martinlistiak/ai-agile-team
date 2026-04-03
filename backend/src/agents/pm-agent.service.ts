@@ -18,6 +18,7 @@ import { GitlabService } from "./gitlab.service";
 import { EventsGateway } from "../chat/events.gateway";
 import { ExecutionRegistry } from "./execution-registry";
 import { AgentRunQuotaService } from "../common/agent-run-quota.service";
+import { computeCostWeightedTokens } from "../common/subscription.constants";
 import { AgentMemoryService } from "./agent-memory.service";
 import { AgentBoosterService } from "./agent-booster.service";
 
@@ -416,6 +417,15 @@ export class PmAgentService {
       execution.tokensUsed = totalInputTokens + totalOutputTokens;
       execution.modelUsed = model;
 
+      // Compute cost-weighted tokens for accurate billing
+      execution.costWeightedTokens = computeCostWeightedTokens({
+        inputTokens: execution.inputTokens,
+        outputTokens: execution.outputTokens,
+        cacheReadTokens: execution.cacheReadTokens,
+        cacheCreationTokens: execution.cacheCreationTokens,
+        modelUsed: execution.modelUsed,
+      });
+
       // Update execution and agent status
       this.executionRegistry.remove(execution.id);
       execution.status = "completed";
@@ -425,9 +435,9 @@ export class PmAgentService {
       this.eventsGateway.emitAgentStatus(spaceId, agent.id, "idle");
 
       // Deduct credits if over monthly quota
-      if (execution.tokensUsed > 0) {
+      if (execution.costWeightedTokens > 0) {
         this.agentRunQuota
-          .deductCreditsForExecution(spaceId, execution.tokensUsed)
+          .deductCreditsForExecution(spaceId, execution.costWeightedTokens)
           .catch((err) =>
             this.logger.warn(
               `Credit deduction failed for execution ${execution.id}:`,

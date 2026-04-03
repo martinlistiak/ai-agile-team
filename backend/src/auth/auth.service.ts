@@ -359,7 +359,7 @@ export class AuthService {
       "GITHUB_REDIRECT_URI",
       "https://runa-app.com/login/callback",
     );
-    return `https://github.com/login/oauth/authorize?client_id=${clientId}&redirect_uri=${encodeURIComponent(redirectUri)}&scope=repo,user:email`;
+    return `https://github.com/login/oauth/authorize?client_id=${clientId}&redirect_uri=${encodeURIComponent(redirectUri)}&scope=repo,workflow,user:email`;
   }
 
   async getGitlabAuthUrl() {
