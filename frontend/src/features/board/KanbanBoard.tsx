@@ -17,13 +17,16 @@ import {
   useDeleteTicket,
   useReorderTickets,
   useBulkDeleteTickets,
+  useMergePr,
 } from "@/api/hooks/useTickets";
 import { useAgents } from "@/api/hooks/useAgents";
 import { BoardColumn } from "./BoardColumn";
 import { TicketCard } from "./TicketCard";
 import { TicketDetailPanel } from "./TicketDetailPanel";
 import { BulkActionsBar } from "./BulkActionsBar";
+import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { KanbanBoardSkeleton } from "@/components/Skeleton";
+import { getSocket } from "@/lib/socket";
 import type { Ticket, TicketStatus } from "@/types";
 
 const COLUMNS: { id: TicketStatus; label: string; color: string }[] = [
@@ -43,9 +46,43 @@ export function KanbanBoard({ spaceId }: { spaceId: string }) {
   const deleteTicket = useDeleteTicket();
   const reorderTickets = useReorderTickets();
   const bulkDelete = useBulkDeleteTickets();
+  const mergePr = useMergePr();
   const [activeTicket, setActiveTicket] = useState<Ticket | null>(null);
   const [selectedTicketId, setSelectedTicketId] = useState<string | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+
+  // Review verdict prompt state
+  const [reviewVerdictPrompt, setReviewVerdictPrompt] = useState<{
+    ticketId: string;
+    summary: string;
+  } | null>(null);
+
+  // Merge PR prompt state (shown when moving to staged)
+  const [mergePrPrompt, setMergePrPrompt] = useState<{
+    ticketId: string;
+    targetStatus: TicketStatus;
+  } | null>(null);
+
+  // Listen for review_verdict WebSocket events
+  useEffect(() => {
+    const socket = getSocket();
+    const handleReviewVerdict = (payload: {
+      ticketId: string;
+      verdict: string;
+      summary: string;
+    }) => {
+      if (payload.verdict === "request_changes") {
+        setReviewVerdictPrompt({
+          ticketId: payload.ticketId,
+          summary: payload.summary,
+        });
+      }
+    };
+    socket.on("review_verdict", handleReviewVerdict);
+    return () => {
+      socket.off("review_verdict", handleReviewVerdict);
+    };
+  }, []);
 
   // Handle ticket query param from email links
   useEffect(() => {
@@ -104,7 +141,12 @@ export function KanbanBoard({ spaceId }: { spaceId: string }) {
     if (isColumn) {
       const newStatus = overId as TicketStatus;
       if (ticket.status !== newStatus) {
-        moveTicket.mutate({ ticketId, status: newStatus, spaceId });
+        // If moving to staged and ticket has a PR, prompt to merge
+        if (newStatus === "staged" && ticket.prUrl) {
+          setMergePrPrompt({ ticketId, targetStatus: newStatus });
+        } else {
+          moveTicket.mutate({ ticketId, status: newStatus, spaceId });
+        }
       }
       return;
     }
@@ -229,6 +271,74 @@ export function KanbanBoard({ spaceId }: { spaceId: string }) {
           onDelete={handleDelete}
         />
       )}
+
+      {/* Review verdict prompt — reviewer requested changes */}
+      <ConfirmDialog
+        open={!!reviewVerdictPrompt}
+        title="Code review: changes requested"
+        message={
+          reviewVerdictPrompt
+            ? `The reviewer requested changes: "${reviewVerdictPrompt.summary}". Send the ticket back to the developer for fixing?`
+            : ""
+        }
+        confirmLabel="Send to developer"
+        cancelLabel="Leave as is"
+        onConfirm={() => {
+          if (reviewVerdictPrompt) {
+            moveTicket.mutate({
+              ticketId: reviewVerdictPrompt.ticketId,
+              status: "development",
+              spaceId,
+            });
+          }
+          setReviewVerdictPrompt(null);
+        }}
+        onCancel={() => setReviewVerdictPrompt(null)}
+      />
+
+      {/* Merge PR prompt — shown when moving to staged */}
+      <ConfirmDialog
+        open={!!mergePrPrompt}
+        title="Merge pull request?"
+        message="This ticket has an open PR. Would you like to merge it before moving to staged?"
+        confirmLabel="Merge & move"
+        cancelLabel="Move without merging"
+        onConfirm={() => {
+          if (mergePrPrompt) {
+            mergePr.mutate(
+              { ticketId: mergePrPrompt.ticketId, spaceId },
+              {
+                onSuccess: () => {
+                  moveTicket.mutate({
+                    ticketId: mergePrPrompt.ticketId,
+                    status: mergePrPrompt.targetStatus,
+                    spaceId,
+                  });
+                },
+                onError: () => {
+                  // Still move even if merge fails — user was notified via toast
+                  moveTicket.mutate({
+                    ticketId: mergePrPrompt.ticketId,
+                    status: mergePrPrompt.targetStatus,
+                    spaceId,
+                  });
+                },
+              },
+            );
+          }
+          setMergePrPrompt(null);
+        }}
+        onCancel={() => {
+          if (mergePrPrompt) {
+            moveTicket.mutate({
+              ticketId: mergePrPrompt.ticketId,
+              status: mergePrPrompt.targetStatus,
+              spaceId,
+            });
+          }
+          setMergePrPrompt(null);
+        }}
+      />
     </>
   );
 }

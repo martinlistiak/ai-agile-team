@@ -81,9 +81,14 @@ export function TicketCard({
     const handleAgentStatus = (payload: {
       agentId: string;
       status: string;
+      ticketId?: string;
     }) => {
-      // When agent becomes idle or errors out, stop the spinner
-      if (payload.status !== "active") {
+      // Only react to events for this specific ticket
+      if (payload.ticketId !== ticket.id) return;
+
+      if (payload.status === "active") {
+        setAgentActive(true);
+      } else {
         setAgentActive(false);
       }
     };
@@ -92,7 +97,7 @@ export function TicketCard({
     return () => {
       socket.off("agent_status", handleAgentStatus);
     };
-  }, []);
+  }, [ticket.id]);
 
   const handlePlay = useCallback(
     (e: React.MouseEvent) => {
@@ -160,7 +165,7 @@ export function TicketCard({
       ? "No agent available for this status"
       : "Trigger agent";
 
-  const isBeingWorkedOn = assignedAgent?.status === "active";
+  const isBeingWorkedOn = agentActive;
 
   const card = (
     <div
@@ -218,7 +223,7 @@ export function TicketCard({
             >
               {assignedAgent ? (
                 <RotatingBorder
-                  active={assignedAgent.status === "active"}
+                  active={agentActive}
                   color={
                     AGENT_BORDER_COLORS[assignedAgent.agentType] ?? "#8b5cf6"
                   }

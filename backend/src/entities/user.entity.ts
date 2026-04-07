@@ -36,6 +36,9 @@ export class User {
   @Column({ type: "text", nullable: true })
   githubTokenEncrypted: string;
 
+  @Column({ type: "text", nullable: true })
+  githubReviewerTokenEncrypted: string;
+
   @Column({ type: "bigint", nullable: true, unique: true })
   gitlabId: number;
 

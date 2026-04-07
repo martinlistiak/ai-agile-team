@@ -146,7 +146,12 @@ export class AgentsService {
     // Always force the agent back to idle — even if no execution was found
     // (handles edge cases like server restart where registry is empty)
     await this.agentRepo.update(agentId, { status: "idle" });
-    this.eventsGateway.emitAgentStatus(agent.spaceId, agentId, "idle");
+    this.eventsGateway.emitAgentStatus(
+      agent.spaceId,
+      agentId,
+      "idle",
+      execution?.ticketId,
+    );
 
     return { stopped: true };
   }

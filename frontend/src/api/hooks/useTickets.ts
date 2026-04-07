@@ -45,6 +45,7 @@ export function useCreateTicket() {
 
 export function useMoveTicket() {
   const queryClient = useQueryClient();
+  const { error: showError } = useToast();
   return useMutation({
     mutationFn: async (payload: {
       ticketId: string;
@@ -56,7 +57,35 @@ export function useMoveTicket() {
       });
       return data;
     },
-    onSuccess: (_, variables) => {
+    onMutate: async (variables) => {
+      await queryClient.cancelQueries({
+        queryKey: ["tickets", variables.spaceId],
+      });
+      const previous = queryClient.getQueryData<Ticket[]>([
+        "tickets",
+        variables.spaceId,
+      ]);
+      queryClient.setQueryData<Ticket[]>(
+        ["tickets", variables.spaceId],
+        (old) =>
+          old?.map((t) =>
+            t.id === variables.ticketId
+              ? { ...t, status: variables.status }
+              : t,
+          ),
+      );
+      return { previous };
+    },
+    onError: (_err, variables, context) => {
+      if (context?.previous) {
+        queryClient.setQueryData(
+          ["tickets", variables.spaceId],
+          context.previous,
+        );
+      }
+      showError("Failed to move ticket");
+    },
+    onSettled: (_, __, variables) => {
       queryClient.invalidateQueries({
         queryKey: ["tickets", variables.spaceId],
       });
@@ -78,7 +107,36 @@ export function useReorderTickets() {
       );
       return data;
     },
-    onSuccess: (_, variables) => {
+    onMutate: async (variables) => {
+      await queryClient.cancelQueries({
+        queryKey: ["tickets", variables.spaceId],
+      });
+      const previous = queryClient.getQueryData<Ticket[]>([
+        "tickets",
+        variables.spaceId,
+      ]);
+      queryClient.setQueryData<Ticket[]>(
+        ["tickets", variables.spaceId],
+        (old) => {
+          if (!old) return old;
+          const orderMap = new Map(variables.ticketIds.map((id, i) => [id, i]));
+          return old.map((t) => {
+            const newOrder = orderMap.get(t.id);
+            return newOrder !== undefined ? { ...t, order: newOrder } : t;
+          });
+        },
+      );
+      return { previous };
+    },
+    onError: (_err, variables, context) => {
+      if (context?.previous) {
+        queryClient.setQueryData(
+          ["tickets", variables.spaceId],
+          context.previous,
+        );
+      }
+    },
+    onSettled: (_, __, variables) => {
       queryClient.invalidateQueries({
         queryKey: ["tickets", variables.spaceId],
       });
@@ -179,6 +237,26 @@ export function useAddComment() {
     },
     onError: (err: Error) => {
       showError(err.message || "Failed to add comment");
+    },
+  });
+}
+
+export function useMergePr() {
+  const queryClient = useQueryClient();
+  const { success, error: showError } = useToast();
+  return useMutation({
+    mutationFn: async ({ ticketId }: { ticketId: string; spaceId: string }) => {
+      const { data } = await api.post(`/tickets/${ticketId}/merge-pr`);
+      return data;
+    },
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({
+        queryKey: ["tickets", variables.spaceId],
+      });
+      success("PR merged successfully");
+    },
+    onError: (err: Error) => {
+      showError(err.message || "Failed to merge PR");
     },
   });
 }

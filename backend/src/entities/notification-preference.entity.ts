@@ -45,13 +45,13 @@ export class NotificationPreference {
   inAppTeamMemberJoined: boolean;
 
   // Email notification toggles
-  @Column({ type: "boolean", default: true })
+  @Column({ type: "boolean", default: false })
   emailAgentCompleted: boolean;
 
   @Column({ type: "boolean", default: true })
   emailAgentFailed: boolean;
 
-  @Column({ type: "boolean", default: true })
+  @Column({ type: "boolean", default: false })
   emailPipelineStageChanged: boolean;
 
   @Column({ type: "boolean", default: true })

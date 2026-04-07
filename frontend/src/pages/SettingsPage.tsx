@@ -12,6 +12,12 @@ import {
   useChangePassword,
   useDeleteAccount,
 } from "@/api/hooks/useSettings";
+import {
+  useReviewerTokenStatus,
+  useSaveReviewerToken,
+  useClearReviewerToken,
+} from "@/api/hooks/useIntegrations";
+import { Button } from "@/components/Button";
 
 const THEME_OPTIONS: { value: ThemeMode; label: string; icon: typeof FiSun }[] =
   [
@@ -38,11 +44,15 @@ export function SettingsPage() {
   const [deletePassword, setDeletePassword] = useState("");
   const [deleteEmailConfirm, setDeleteEmailConfirm] = useState("");
   const [showRemoveAvatarConfirm, setShowRemoveAvatarConfirm] = useState(false);
+  const [reviewerToken, setReviewerToken] = useState("");
 
   const saveProfileMutation = useSaveProfile();
   const uploadAvatarMutation = useUploadAvatar();
   const changePasswordMutation = useChangePassword();
   const deleteAccountMutation = useDeleteAccount();
+  const reviewerTokenStatus = useReviewerTokenStatus();
+  const saveReviewerToken = useSaveReviewerToken();
+  const clearReviewerToken = useClearReviewerToken();
 
   useEffect(() => {
     void refreshUser();
@@ -288,6 +298,67 @@ export function SettingsPage() {
           Open notification settings
         </Link>
       </section>
+
+      {user.hasGithub && (
+        <section className="rounded-xl border border-gray-200 dark:border-gray-800 p-5 mb-6">
+          <h2 className="text-sm font-semibold text-gray-900 dark:text-gray-100 mb-1">
+            GitHub reviewer token
+          </h2>
+          <p className="text-xs text-gray-500 dark:text-gray-400 mb-4">
+            Add a separate GitHub PAT from a different account so the reviewer
+            agent can post inline file comments and approve/request changes on
+            PRs. Without this, reviews fall back to plain comments (GitHub
+            doesn't allow reviewing your own PRs).
+          </p>
+          {reviewerTokenStatus.data?.configured ? (
+            <div className="flex items-center gap-3">
+              <span className="inline-flex items-center gap-1.5 text-xs font-medium text-emerald-700 dark:text-emerald-400">
+                <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+                Reviewer token configured
+              </span>
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() => clearReviewerToken.mutate()}
+                loading={clearReviewerToken.isPending}
+              >
+                Remove
+              </Button>
+            </div>
+          ) : (
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                if (!reviewerToken.trim()) return;
+                saveReviewerToken.mutate(reviewerToken.trim(), {
+                  onSuccess: () => {
+                    setReviewerToken("");
+                    success("Reviewer token saved");
+                  },
+                });
+              }}
+              className="flex gap-2 max-w-lg"
+            >
+              <input
+                type="password"
+                value={reviewerToken}
+                onChange={(e) => setReviewerToken(e.target.value)}
+                placeholder="ghp_... or github_pat_..."
+                className="flex-1 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 px-3 py-2 text-sm text-gray-900 dark:text-gray-100 placeholder:text-gray-400"
+              />
+              <Button
+                variant="primary"
+                size="sm"
+                loading={saveReviewerToken.isPending}
+                disabled={!reviewerToken.trim()}
+                className="shrink-0"
+              >
+                Save token
+              </Button>
+            </form>
+          )}
+        </section>
+      )}
 
       <section
         id="appearance"

@@ -2,7 +2,10 @@ import { Injectable, Logger, Inject, forwardRef } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
 import { Repository } from "typeorm";
 import { EventEmitter2 } from "@nestjs/event-emitter";
-import { query } from "@anthropic-ai/claude-agent-sdk";
+import { generateText, tool } from "ai";
+import { z } from "zod";
+import { createMimoProvider } from "./mimo-provider";
+import { ConfigService } from "@nestjs/config";
 import { Agent } from "../entities/agent.entity";
 import { Execution } from "../entities/execution.entity";
 import { Space } from "../entities/space.entity";
@@ -20,6 +23,8 @@ import { ModelRouterService } from "./model-router.service";
 import { AgentMemoryService } from "./agent-memory.service";
 import { AgentBoosterService } from "./agent-booster.service";
 import { execSync } from "child_process";
+import { readFileSync, writeFileSync, readdirSync, existsSync } from "fs";
+import { join, relative } from "path";
 
 const DEVELOPER_SYSTEM_PROMPT = `You are a Senior Developer AI agent in an agile software development team.
 Your role is to implement code changes for assigned tickets.
@@ -53,6 +58,7 @@ export class DeveloperAgentService {
   private readonly logger = new Logger(DeveloperAgentService.name);
 
   constructor(
+    private configService: ConfigService,
     private ticketsService: TicketsService,
     private githubService: GithubService,
     private gitlabService: GitlabService,
@@ -70,12 +76,7 @@ export class DeveloperAgentService {
     private agentMemory: AgentMemoryService,
     private agentBooster: AgentBoosterService,
   ) {}
-  /**
-   * Run the developer agent on a ticket via a chat message.
-   * Can be invoked with either:
-   *   - A direct user instruction (freeform text)
-   *   - A ticket ID to implement
-   */
+
   async run(
     spaceId: string,
     userMessage: string,
@@ -101,7 +102,7 @@ export class DeveloperAgentService {
     }
 
     await this.agentRepo.update(agent.id, { status: "active" });
-    this.eventsGateway.emitAgentStatus(spaceId, agent.id, "active");
+    this.eventsGateway.emitAgentStatus(spaceId, agent.id, "active", ticketId);
 
     if (ticketId) {
       await this.ticketsService.update(ticketId, {
@@ -116,7 +117,7 @@ export class DeveloperAgentService {
       actionLog: [],
     });
     await this.executionRepo.save(execution);
-    const abortController = this.executionRegistry.register(execution.id);
+    this.executionRegistry.register(execution.id);
 
     const startTime = Date.now();
     this.logger.log(
@@ -129,14 +130,14 @@ export class DeveloperAgentService {
     );
 
     try {
-      // Get repo path (clones if needed) — prefer GitHub, fall back to GitLab
+      // Get repo path
       const space = await this.spaceRepo.findOneBy({ id: spaceId });
       const useGitlab = !space?.githubRepoUrl && !!space?.gitlabRepoUrl;
       const repoPath = useGitlab
         ? await this.gitlabService.getRepoPath(spaceId)
         : await this.githubService.getRepoPath(spaceId);
 
-      // Check for booster fast path (no LLM needed)
+      // Check for booster fast path
       const fastPath = this.agentBooster.classify("developer", userMessage);
       if (fastPath && !ticketId) {
         const boosterResult = this.executeFastPath(fastPath, repoPath);
@@ -156,7 +157,12 @@ export class DeveloperAgentService {
           ];
           await this.executionRepo.save(execution);
           await this.agentRepo.update(agent.id, { status: "idle" });
-          this.eventsGateway.emitAgentStatus(spaceId, agent.id, "idle");
+          this.eventsGateway.emitAgentStatus(
+            spaceId,
+            agent.id,
+            "idle",
+            ticketId,
+          );
           return boosterResult;
         }
       }
@@ -181,7 +187,6 @@ ${ticket.description}
 
 ${userMessage ? `**Additional instructions from the user:** ${userMessage}` : "Implement this ticket according to its description and acceptance criteria."}`;
 
-        // Move ticket to development
         await this.ticketsService.moveTicket(ticketId, "development", "agent", {
           id: agent.id,
           name: "Developer",
@@ -189,7 +194,7 @@ ${userMessage ? `**Additional instructions from the user:** ${userMessage}` : "I
         });
       }
 
-      // Compile 3-tier rules and episodic memories for this agent
+      // Compile rules, memories, and ticket context
       const [compiledRules, compiledMemories, spaceTickets] = await Promise.all(
         [
           this.rulesService.compileRulesForAgent(spaceId, agent.id),
@@ -198,7 +203,6 @@ ${userMessage ? `**Additional instructions from the user:** ${userMessage}` : "I
         ],
       );
 
-      // Build ticket context for the agent
       let ticketContext = "";
       if (spaceTickets.length > 0) {
         const ticketsByStatus: Record<string, typeof spaceTickets> = {};
@@ -206,7 +210,6 @@ ${userMessage ? `**Additional instructions from the user:** ${userMessage}` : "I
           if (!ticketsByStatus[t.status]) ticketsByStatus[t.status] = [];
           ticketsByStatus[t.status].push(t);
         }
-
         ticketContext = "\n\n# Current Tickets in Space\n";
         for (const [status, tickets] of Object.entries(ticketsByStatus)) {
           ticketContext += `\n## ${status.charAt(0).toUpperCase() + status.slice(1)} (${tickets.length})\n`;
@@ -226,124 +229,60 @@ ${userMessage ? `**Additional instructions from the user:** ${userMessage}` : "I
         systemSuffix += `\n\n# Learned Patterns\nApply these lessons from past executions:\n${compiledMemories}`;
       }
       systemSuffix += ticketContext;
-      const fullPrompt = `${DEVELOPER_SYSTEM_PROMPT}${systemSuffix}\n\n---\n\n${prompt}`;
+      const fullSystem = `${DEVELOPER_SYSTEM_PROMPT}${systemSuffix}`;
 
-      // Run the Claude Agent SDK
-      let finalResult = "";
-      const actionLog: any[] = [];
-      let sdkUsage: any = null;
-      const { model } = this.modelRouter.routeModel("developer", userMessage, {
-        ticketId,
-        ticketPriority,
+      const { model: modelName } = this.modelRouter.routeModel(
+        "developer",
+        userMessage,
+        { ticketId, ticketPriority },
+      );
+
+      const provider = createMimoProvider(
+        this.configService.get("MIMO_API_KEY", ""),
+      );
+
+      // Build developer tools
+      const devTools = this.buildTools(repoPath, spaceId, execution, agent);
+
+      const result = await generateText({
+        model: provider.chatModel(modelName),
+        system: fullSystem,
+        messages: [{ role: "user", content: prompt }],
+        tools: devTools,
+        maxSteps: 50,
       });
 
-      for await (const message of query({
-        prompt: fullPrompt,
-        options: {
-          model,
-          allowedTools: ["Read", "Write", "Edit", "Bash", "Glob", "Grep"],
-          cwd: repoPath,
-          permissionMode: "bypassPermissions",
-          allowDangerouslySkipPermissions: true,
-          maxTurns: 50,
-          executable: "bun",
-          abortController,
-          stderr: (data: string) => {
-            this.logger.debug(`Claude SDK stderr: ${data}`);
-          },
-        },
-      })) {
-        // Collect messages from the agent
-        if ("type" in message && message.type === "assistant") {
-          const content = (message as any).message?.content;
-          if (Array.isArray(content)) {
-            for (const block of content) {
-              if (block.type === "text" && block.text) {
-                finalResult = block.text;
-              }
-              if (block.type === "tool_use") {
-                actionLog.push({
-                  tool: block.name,
-                  input: block.input,
-                  timestamp: new Date().toISOString(),
-                });
-                // Emit execution_action WebSocket event for live streaming
-                this.eventsGateway.emitExecutionAction(spaceId, {
-                  executionId: execution.id,
-                  agentId: agent.id,
-                  tool: block.name,
-                  inputSummary:
-                    typeof block.input === "string"
-                      ? block.input.substring(0, 200)
-                      : JSON.stringify(block.input).substring(0, 200),
-                  timestamp: new Date().toISOString(),
-                });
+      const finalResult = result.text || "";
 
-                // Emit file_change event for Write/Edit tool uses (live code viewer)
-                if (block.name === "Write" || block.name === "Edit") {
-                  const input = block.input as Record<string, any>;
-                  const filePath =
-                    (input.file_path as string) ||
-                    (input.filePath as string) ||
-                    "";
-                  const content =
-                    (input.content as string) ||
-                    (input.new_string as string) ||
-                    "";
-
-                  // Compute simple diff line numbers from content
-                  const additions: number[] = [];
-                  const deletions: number[] = [];
-                  if (block.name === "Write") {
-                    // For Write, all lines are additions
-                    const lines = content.split("\n");
-                    for (let i = 0; i < lines.length; i++) {
-                      additions.push(i + 1);
-                    }
-                  } else if (block.name === "Edit") {
-                    // For Edit, old_string lines are deletions, new_string lines are additions
-                    const oldString = (input.old_string as string) || "";
-                    const newString = (input.new_string as string) || "";
-                    const oldLines = oldString.split("\n");
-                    const newLines = newString.split("\n");
-                    for (let i = 0; i < oldLines.length; i++) {
-                      deletions.push(i + 1);
-                    }
-                    for (let i = 0; i < newLines.length; i++) {
-                      additions.push(i + 1);
-                    }
-                  }
-
-                  this.eventsGateway.emitFileChange(spaceId, {
-                    executionId: execution.id,
-                    filePath,
-                    content,
-                    diff: { additions, deletions },
-                  });
-                }
-              }
-            }
-          }
-        }
-        if ("result" in message) {
-          finalResult = (message as any).result;
-          sdkUsage = (message as any).usage;
+      // Build action log from steps
+      const actionLog: any[] = [];
+      for (const step of result.steps ?? []) {
+        for (const tc of step.toolCalls ?? []) {
+          actionLog.push({
+            tool: tc.toolName,
+            input: tc.args,
+            timestamp: new Date().toISOString(),
+          });
+          this.eventsGateway.emitExecutionAction(spaceId, {
+            executionId: execution.id,
+            agentId: agent.id,
+            tool: tc.toolName,
+            inputSummary: JSON.stringify(tc.args).substring(0, 200),
+            timestamp: new Date().toISOString(),
+          });
         }
       }
 
-      // Store token usage from SDK result
-      if (sdkUsage) {
-        execution.inputTokens = sdkUsage.input_tokens ?? 0;
-        execution.outputTokens = sdkUsage.output_tokens ?? 0;
-        execution.cacheReadTokens = sdkUsage.cache_read_input_tokens ?? 0;
-        execution.cacheCreationTokens =
-          sdkUsage.cache_creation_input_tokens ?? 0;
-        execution.tokensUsed =
-          (sdkUsage.input_tokens ?? 0) + (sdkUsage.output_tokens ?? 0);
-      }
-      execution.modelUsed = model;
+      // Store token usage
+      execution.inputTokens = result.usage?.promptTokens ?? 0;
+      execution.outputTokens = result.usage?.completionTokens ?? 0;
+      execution.cacheReadTokens = 0;
+      execution.cacheCreationTokens = 0;
+      execution.tokensUsed =
+        (result.usage?.promptTokens ?? 0) +
+        (result.usage?.completionTokens ?? 0);
+      execution.modelUsed = modelName;
 
-      // Compute cost-weighted tokens for accurate billing
       execution.costWeightedTokens = computeCostWeightedTokens({
         inputTokens: execution.inputTokens,
         outputTokens: execution.outputTokens,
@@ -352,7 +291,7 @@ ${userMessage ? `**Additional instructions from the user:** ${userMessage}` : "I
         modelUsed: execution.modelUsed,
       });
 
-      // Update ticket status to review after implementation
+      // Create PR after implementation
       let prFailed = false;
       if (ticketId) {
         await this.ticketsService.moveTicket(ticketId, "review", "agent", {
@@ -361,7 +300,6 @@ ${userMessage ? `**Additional instructions from the user:** ${userMessage}` : "I
           type: "agent",
         });
 
-        // Create a pull request for the branch
         try {
           const ticket = await this.ticketsService.findById(ticketId);
           const branchName = `runa/${ticketId}`;
@@ -378,13 +316,11 @@ ${userMessage ? `**Additional instructions from the user:** ${userMessage}` : "I
                 ticketId,
                 finalResult,
               );
-          // Store PR URL on the ticket
           await this.ticketsService.update(ticketId, {
             prUrl: prResult.url,
           } as any);
           this.logger.log(`PR created for ticket ${ticketId}: ${prResult.url}`);
 
-          // Emit PR created notification event
           this.eventEmitter.emit("pr.created", {
             spaceId,
             ticketId,
@@ -398,25 +334,23 @@ ${userMessage ? `**Additional instructions from the user:** ${userMessage}` : "I
             `Failed to create PR for ticket ${ticketId}:`,
             prError,
           );
-          // Add a comment to the ticket with the failure reason
           await this.ticketsService.addComment(
             ticketId,
             `⚠️ Failed to create pull request: ${prError instanceof Error ? prError.message : String(prError)}`,
             "agent",
             agent.id,
             "Developer",
+            "developer",
           );
         }
       }
 
-      // Update execution
       this.executionRegistry.remove(execution.id);
       execution.status = prFailed ? "completed_with_warnings" : "completed";
       execution.endTime = new Date();
       execution.actionLog = actionLog;
       await this.executionRepo.save(execution);
 
-      // Deduct credits if over monthly quota
       if (execution.costWeightedTokens > 0) {
         this.agentRunQuota
           .deductCreditsForExecution(spaceId, execution.costWeightedTokens)
@@ -428,7 +362,7 @@ ${userMessage ? `**Additional instructions from the user:** ${userMessage}` : "I
           );
       }
 
-      // Trigger learning loops — rule suggestions + episodic memory extraction, then set agent idle
+      // Trigger learning loops
       this.agentMemory
         .analyzeExecution(execution.id)
         .catch((err) =>
@@ -447,7 +381,12 @@ ${userMessage ? `**Additional instructions from the user:** ${userMessage}` : "I
         )
         .finally(() => {
           this.agentRepo.update(agent.id, { status: "idle" });
-          this.eventsGateway.emitAgentStatus(spaceId, agent.id, "idle");
+          this.eventsGateway.emitAgentStatus(
+            spaceId,
+            agent.id,
+            "idle",
+            ticketId,
+          );
         });
 
       this.logger.log(
@@ -482,14 +421,186 @@ ${userMessage ? `**Additional instructions from the user:** ${userMessage}` : "I
       execution.endTime = new Date();
       await this.executionRepo.save(execution);
       await this.agentRepo.update(agent.id, { status: "error" });
-      this.eventsGateway.emitAgentStatus(spaceId, agent.id, "error");
+      this.eventsGateway.emitAgentStatus(spaceId, agent.id, "error", ticketId);
       throw error;
     }
   }
 
-  /**
-   * Execute a developer fast-path operation without LLM.
-   */
+  private buildTools(
+    repoPath: string,
+    spaceId: string,
+    execution: Execution,
+    agent: Agent,
+  ) {
+    return {
+      read_file: tool({
+        description: "Read the contents of a file in the repository",
+        parameters: z.object({
+          file_path: z.string().describe("Relative file path inside the repo"),
+        }),
+        execute: async (input) => {
+          try {
+            const target = join(repoPath, input.file_path);
+            if (!target.startsWith(repoPath))
+              return { error: "Path outside repository" };
+            const content = readFileSync(target, "utf-8");
+            return {
+              content:
+                content.length > 50_000
+                  ? content.slice(0, 50_000) + "\n... (truncated)"
+                  : content,
+            };
+          } catch (err: any) {
+            return { error: err.message };
+          }
+        },
+      }),
+      write_file: tool({
+        description:
+          "Write content to a file in the repository (creates or overwrites)",
+        parameters: z.object({
+          file_path: z.string().describe("Relative file path"),
+          content: z.string().describe("File content to write"),
+        }),
+        execute: async (input) => {
+          try {
+            const target = join(repoPath, input.file_path);
+            if (!target.startsWith(repoPath))
+              return { error: "Path outside repository" };
+            writeFileSync(target, input.content, "utf-8");
+
+            // Emit file_change event for live code viewer
+            const additions: number[] = [];
+            const lines = input.content.split("\n");
+            for (let i = 0; i < lines.length; i++) additions.push(i + 1);
+            this.eventsGateway.emitFileChange(spaceId, {
+              executionId: execution.id,
+              filePath: input.file_path,
+              content: input.content,
+              diff: { additions, deletions: [] },
+            });
+
+            return { success: true, path: input.file_path };
+          } catch (err: any) {
+            return { error: err.message };
+          }
+        },
+      }),
+      edit_file: tool({
+        description:
+          "Replace a specific string in a file with new content (for surgical edits)",
+        parameters: z.object({
+          file_path: z.string().describe("Relative file path"),
+          old_string: z.string().describe("Exact string to find and replace"),
+          new_string: z.string().describe("Replacement string"),
+        }),
+        execute: async (input) => {
+          try {
+            const target = join(repoPath, input.file_path);
+            if (!target.startsWith(repoPath))
+              return { error: "Path outside repository" };
+            const content = readFileSync(target, "utf-8");
+            if (!content.includes(input.old_string)) {
+              return { error: "old_string not found in file" };
+            }
+            const newContent = content.replace(
+              input.old_string,
+              input.new_string,
+            );
+            writeFileSync(target, newContent, "utf-8");
+
+            const additions: number[] = [];
+            const deletions: number[] = [];
+            const oldLines = input.old_string.split("\n");
+            const newLines = input.new_string.split("\n");
+            for (let i = 0; i < oldLines.length; i++) deletions.push(i + 1);
+            for (let i = 0; i < newLines.length; i++) additions.push(i + 1);
+            this.eventsGateway.emitFileChange(spaceId, {
+              executionId: execution.id,
+              filePath: input.file_path,
+              content: input.new_string,
+              diff: { additions, deletions },
+            });
+
+            return { success: true, path: input.file_path };
+          } catch (err: any) {
+            return { error: err.message };
+          }
+        },
+      }),
+      bash: tool({
+        description:
+          "Execute a shell command in the repository directory. Use for git operations, running tests, installing deps, etc.",
+        parameters: z.object({
+          command: z.string().describe("Shell command to execute"),
+        }),
+        execute: async (input) => {
+          try {
+            const output = execSync(input.command, {
+              cwd: repoPath,
+              timeout: 120_000,
+              encoding: "utf-8",
+              maxBuffer: 1024 * 1024 * 5,
+            });
+            return {
+              output:
+                output.length > 10_000
+                  ? output.slice(0, 10_000) + "\n... (truncated)"
+                  : output,
+            };
+          } catch (err: any) {
+            return {
+              error: err.message,
+              stdout: err.stdout?.slice(0, 5000),
+              stderr: err.stderr?.slice(0, 5000),
+            };
+          }
+        },
+      }),
+      glob: tool({
+        description: "List files matching a glob pattern in the repository",
+        parameters: z.object({
+          pattern: z.string().describe("Glob pattern (e.g. 'src/**/*.ts')"),
+        }),
+        execute: async (input) => {
+          try {
+            const output = execSync(
+              `find . -path './.git' -prune -o -path '${input.pattern}' -print 2>/dev/null | head -200`,
+              { cwd: repoPath, encoding: "utf-8", timeout: 10_000 },
+            );
+            return { files: output.trim().split("\n").filter(Boolean) };
+          } catch (err: any) {
+            return { error: err.message };
+          }
+        },
+      }),
+      grep: tool({
+        description: "Search for a pattern in files in the repository",
+        parameters: z.object({
+          pattern: z.string().describe("Search pattern (regex)"),
+          path: z
+            .string()
+            .optional()
+            .describe("Optional path to search in (default: .)"),
+        }),
+        execute: async (input) => {
+          try {
+            const searchPath = input.path || ".";
+            const output = execSync(
+              `grep -rn --include='*' '${input.pattern.replace(/'/g, "\\'")}' ${searchPath} 2>/dev/null | head -100`,
+              { cwd: repoPath, encoding: "utf-8", timeout: 10_000 },
+            );
+            return { matches: output.trim() };
+          } catch (err: any) {
+            // grep returns exit code 1 when no matches found
+            if (err.status === 1) return { matches: "" };
+            return { error: err.message };
+          }
+        },
+      }),
+    };
+  }
+
   private executeFastPath(fastPath: string, repoPath: string): string | null {
     try {
       const opts = {

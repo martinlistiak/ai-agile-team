@@ -5,6 +5,7 @@ import { Repository } from "typeorm";
 import { randomUUID } from "crypto";
 import { Ticket } from "../entities/ticket.entity";
 import { Execution } from "../entities/execution.entity";
+import { Space } from "../entities/space.entity";
 
 /** Update payload that allows null for assignee fields (to clear assignment). */
 export type TicketUpdateData = Omit<
@@ -20,6 +21,7 @@ export class TicketsService {
   constructor(
     @InjectRepository(Ticket) private ticketRepo: Repository<Ticket>,
     @InjectRepository(Execution) private executionRepo: Repository<Execution>,
+    @InjectRepository(Space) private spaceRepo: Repository<Space>,
     private eventEmitter: EventEmitter2,
   ) {}
 
@@ -34,6 +36,13 @@ export class TicketsService {
     const ticket = await this.ticketRepo.findOneBy({ id });
     if (!ticket) throw new NotFoundException("Ticket not found");
     return ticket;
+  }
+
+  async getSpaceForTicket(ticketId: string): Promise<Space> {
+    const ticket = await this.findById(ticketId);
+    const space = await this.spaceRepo.findOneBy({ id: ticket.spaceId });
+    if (!space) throw new NotFoundException("Space not found");
+    return space;
   }
 
   async create(data: {
@@ -188,15 +197,19 @@ export class TicketsService {
     authorType: string,
     authorId: string,
     commenterName?: string,
+    authorAgentType?: string,
   ): Promise<Ticket> {
     const ticket = await this.findById(ticketId);
-    const comment = {
+    const comment: Record<string, unknown> = {
       id: randomUUID(),
       authorType,
       authorId,
       content,
       createdAt: new Date().toISOString(),
     };
+    if (authorAgentType) {
+      comment.authorAgentType = authorAgentType;
+    }
     ticket.comments = [...(ticket.comments || []), comment];
     const saved = await this.ticketRepo.save(ticket);
 

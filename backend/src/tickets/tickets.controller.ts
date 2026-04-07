@@ -26,6 +26,8 @@ import { CountlyService } from "../common/countly.service";
 import { Throttle } from "@nestjs/throttler";
 import { TicketsService } from "./tickets.service";
 import { AgentsService } from "../agents/agents.service";
+import { GithubService } from "../agents/github.service";
+import { GitlabService } from "../agents/gitlab.service";
 import {
   PipelineService,
   AGENT_DEFAULT_STATUS,
@@ -45,6 +47,8 @@ export class TicketsController {
   constructor(
     private ticketsService: TicketsService,
     private agentsService: AgentsService,
+    private githubService: GithubService,
+    private gitlabService: GitlabService,
     @Inject(forwardRef(() => PipelineService))
     private pipelineService: PipelineService,
     private countly: CountlyService,
@@ -203,5 +207,29 @@ export class TicketsController {
   @ApiResponse({ status: 429, description: "Rate limited (10 req/min)" })
   async triggerAgent(@Param("id") id: string, @Body() _body: TriggerAgentDto) {
     return this.pipelineService.triggerAgentForTicket(id);
+  }
+
+  @Post("tickets/:id/merge-pr")
+  @HttpCode(200)
+  @ApiOperation({ summary: "Merge the PR/MR associated with a ticket" })
+  @ApiParam({ name: "id", format: "uuid" })
+  @ApiResponse({ status: 200, description: "PR/MR merged" })
+  async mergePr(@Param("id") id: string) {
+    const ticket = await this.ticketsService.findById(id);
+    if (!ticket.prUrl) {
+      throw new Error("Ticket has no associated PR/MR");
+    }
+
+    const space = await this.ticketsService.getSpaceForTicket(id);
+
+    if (space.gitlabRepoUrl && ticket.prUrl.includes("gitlab")) {
+      await this.gitlabService.mergeMergeRequest(space.id, ticket.prUrl);
+    } else if (space.githubRepoUrl) {
+      await this.githubService.mergePullRequest(space.id, ticket.prUrl);
+    } else {
+      throw new Error("No connected repository for this space");
+    }
+
+    return { merged: true };
   }
 }

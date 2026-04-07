@@ -4,12 +4,14 @@ import { Repository } from "typeorm";
 import * as crypto from "crypto";
 import { User } from "../entities/user.entity";
 import { ApiKey } from "../entities/api-key.entity";
+import { TokenEncryptionService } from "../common/token-encryption.service";
 
 @Injectable()
 export class IntegrationsService {
   constructor(
     @InjectRepository(User) private userRepo: Repository<User>,
     @InjectRepository(ApiKey) private apiKeyRepo: Repository<ApiKey>,
+    private tokenEncryptionService: TokenEncryptionService,
   ) {}
 
   /** Disconnect GitHub: clear githubId and encrypted token */
@@ -17,7 +19,29 @@ export class IntegrationsService {
     await this.userRepo.update(userId, {
       githubId: null as any,
       githubTokenEncrypted: null as any,
+      githubReviewerTokenEncrypted: null as any,
     });
+  }
+
+  /** Save a separate GitHub PAT for the reviewer agent */
+  async saveReviewerToken(userId: string, token: string) {
+    const encrypted = this.tokenEncryptionService.encrypt(token);
+    await this.userRepo.update(userId, {
+      githubReviewerTokenEncrypted: encrypted,
+    });
+  }
+
+  /** Clear the reviewer GitHub token */
+  async clearReviewerToken(userId: string) {
+    await this.userRepo.update(userId, {
+      githubReviewerTokenEncrypted: null as any,
+    });
+  }
+
+  /** Check if a reviewer token is configured */
+  async hasReviewerToken(userId: string): Promise<boolean> {
+    const user = await this.userRepo.findOneBy({ id: userId });
+    return !!user?.githubReviewerTokenEncrypted;
   }
 
   /** Disconnect GitLab: clear gitlabId and encrypted token */

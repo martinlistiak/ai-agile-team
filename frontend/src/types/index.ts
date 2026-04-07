@@ -135,6 +135,7 @@ export interface TicketComment {
   id: string;
   authorType: "user" | "agent";
   authorId: string;
+  authorAgentType?: string;
   content: string;
   createdAt: string;
 }

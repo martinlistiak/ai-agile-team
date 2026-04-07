@@ -34,7 +34,7 @@ caprover-run:
 		-v runa_data:/data \
 		-e JWT_SECRET=change-me \
 		-e ENCRYPTION_KEY=change-me-32-chars-minimum-key00 \
-		-e ANTHROPIC_API_KEY=$${ANTHROPIC_API_KEY} \
+		-e MIMO_API_KEY=$${MIMO_API_KEY} \
 		runa-caprover
 
 caprover-stop:

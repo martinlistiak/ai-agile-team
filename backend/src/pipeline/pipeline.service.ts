@@ -192,10 +192,12 @@ export class PipelineService {
       }
 
       // Emit pipeline_completed event so frontend can show progression prompts
-      // Use the fresh ticket status from DB — agents may have already advanced the ticket
-      const actualStatus = updatedTicket?.status ?? ticket.status;
+      // Use the original stage the agent was triggered for as completedStage,
+      // not the current DB status (which the agent may have already advanced).
+      const completedStage = ticket.status;
+      const updatedStatus = updatedTicket?.status ?? ticket.status;
       const currentStageIndex = PIPELINE_STAGES.indexOf(
-        actualStatus as PipelineStage,
+        updatedStatus as PipelineStage,
       );
       const nextStage =
         currentStageIndex < PIPELINE_STAGES.length - 1
@@ -203,7 +205,7 @@ export class PipelineService {
           : null;
       this.eventsGateway.emitPipelineCompleted(spaceId, {
         ticketId: ticket.id,
-        completedStage: actualStatus,
+        completedStage,
         nextStage,
         agentType,
       });
@@ -218,13 +220,13 @@ export class PipelineService {
         executionId: ticket.id, // best available reference
       });
 
-      if (actualStatus !== ticket.status) {
+      if (updatedStatus !== ticket.status) {
         this.eventEmitter.emit("pipeline.stage.changed", {
           spaceId,
           ticketId: ticket.id,
           ticketTitle: ticket.title,
           fromStage: ticket.status,
-          toStage: actualStatus,
+          toStage: updatedStatus,
         });
       }
     } catch (error: any) {

@@ -1,4 +1,6 @@
+import { useMemo } from "react";
 import { cn } from "@/lib/cn";
+import { renderMarkdown } from "@/lib/markdown";
 import { getAvatarSrc } from "@/lib/avatars";
 
 interface CommentContentProps {
@@ -8,67 +10,41 @@ interface CommentContentProps {
 
 const MENTION_PATTERN = /@(developer|dev|pm|tester|reviewer)\b/gi;
 
+function normAgent(name: string) {
+  return name.toLowerCase() === "dev" ? "developer" : name.toLowerCase();
+}
+
 /**
- * Renders comment content with highlighted @mentions.
+ * Renders comment content as markdown with highlighted @mentions.
  * Mentions are displayed as inline badges with agent avatars.
  */
 export function CommentContent({ content, className }: CommentContentProps) {
-  const parts: (string | { type: "mention"; agent: string })[] = [];
-  let lastIndex = 0;
-  let match: RegExpExecArray | null;
+  const html = useMemo(() => {
+    // Render markdown first
+    let rendered = renderMarkdown(content);
 
-  // Reset regex state
-  MENTION_PATTERN.lastIndex = 0;
+    // Replace @mentions in the rendered HTML with badge markup
+    rendered = rendered.replace(MENTION_PATTERN, (_match, agent: string) => {
+      const normalized = normAgent(agent);
+      const avatar = getAvatarSrc(normalized);
+      return `<span class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-violet-100 dark:bg-violet-900/30 text-violet-700 dark:text-violet-300 font-medium text-xs align-middle"><img src="${avatar}" alt="" class="h-3.5 w-3.5 rounded-full pixelated" />@${normalized}</span>`;
+    });
 
-  while ((match = MENTION_PATTERN.exec(content)) !== null) {
-    // Add text before the mention
-    if (match.index > lastIndex) {
-      parts.push(content.slice(lastIndex, match.index));
-    }
-
-    // Normalize the agent name (dev -> developer)
-    let agent = match[1].toLowerCase();
-    if (agent === "dev") agent = "developer";
-
-    parts.push({ type: "mention", agent });
-    lastIndex = match.index + match[0].length;
-  }
-
-  // Add remaining text
-  if (lastIndex < content.length) {
-    parts.push(content.slice(lastIndex));
-  }
+    return rendered;
+  }, [content]);
 
   return (
     <div
       className={cn(
-        "text-sm text-stone-700 dark:text-stone-300 whitespace-pre-wrap break-words overflow-wrap-anywhere",
+        "text-sm text-stone-700 dark:text-stone-300 break-words",
+        "prose prose-sm prose-stone dark:prose-invert max-w-none",
+        "prose-headings:text-sm prose-headings:font-semibold prose-headings:mt-3 prose-headings:mb-1",
+        "prose-p:my-1 prose-ul:my-1 prose-ol:my-1 prose-li:my-0",
+        "prose-strong:font-semibold prose-code:text-xs prose-code:px-1 prose-code:py-0.5 prose-code:rounded prose-code:bg-stone-100 dark:prose-code:bg-stone-800",
         className,
       )}
-      style={{ wordBreak: "break-word", overflowWrap: "anywhere" }}
-    >
-      {parts.map((part, i) => {
-        if (typeof part === "string") {
-          return <span key={i}>{part}</span>;
-        }
-        return (
-          <span
-            key={i}
-            className={cn(
-              "inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md",
-              "bg-violet-100 dark:bg-violet-900/30 text-violet-700 dark:text-violet-300",
-              "font-medium text-xs align-middle",
-            )}
-          >
-            <img
-              src={getAvatarSrc(part.agent)}
-              alt=""
-              className="h-3.5 w-3.5 rounded-full pixelated"
-            />
-            @{part.agent}
-          </span>
-        );
-      })}
-    </div>
+      style={{ overflowWrap: "anywhere" }}
+      dangerouslySetInnerHTML={{ __html: html }}
+    />
   );
 }

@@ -81,12 +81,26 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
     this.server?.to(spaceId).emit("ticket_updated", { ticket });
   }
 
-  emitAgentStatus(spaceId: string, agentId: string, status: string) {
-    this.server?.to(spaceId).emit("agent_status", { agentId, status });
+  emitAgentStatus(
+    spaceId: string,
+    agentId: string,
+    status: string,
+    ticketId?: string,
+  ) {
+    this.server
+      ?.to(spaceId)
+      .emit("agent_status", { agentId, status, ticketId });
   }
 
   emitChatMessage(spaceId: string, message: any) {
     this.server?.to(spaceId).emit("chat_message", { message });
+  }
+
+  emitReviewVerdict(
+    spaceId: string,
+    payload: { ticketId: string; verdict: string; summary: string },
+  ) {
+    this.server?.to(spaceId).emit("review_verdict", payload);
   }
 
   emitPipelineEvent(spaceId: string, event: any) {

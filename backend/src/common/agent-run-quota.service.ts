@@ -18,17 +18,23 @@ import {
 } from "./subscription.constants";
 import { EventEmitter2 } from "@nestjs/event-emitter";
 
-/** Get the monthly token limit for a plan tier */
-export function getMonthlyTokenLimit(planTier: PlanTier): number {
-  switch (planTier) {
-    case "enterprise":
-      return ENTERPRISE_MONTHLY_TOKENS;
-    case "team":
-      return TEAM_MONTHLY_TOKENS;
-    case "starter":
-    default:
-      return STARTER_MONTHLY_TOKENS;
-  }
+/** Get the monthly token limit for a plan tier, scaled by number of spaces */
+export function getMonthlyTokenLimit(
+  planTier: PlanTier,
+  spaceCount: number = 1,
+): number {
+  const perSpaceLimit = (() => {
+    switch (planTier) {
+      case "enterprise":
+        return ENTERPRISE_MONTHLY_TOKENS;
+      case "team":
+        return TEAM_MONTHLY_TOKENS;
+      case "starter":
+      default:
+        return STARTER_MONTHLY_TOKENS;
+    }
+  })();
+  return perSpaceLimit * Math.max(spaceCount, 1);
 }
 
 /** Convert tokens to cents (for credit deduction) */
@@ -51,6 +57,11 @@ export class AgentRunQuotaService {
     @InjectRepository(Execution) private executionRepo: Repository<Execution>,
     private eventEmitter: EventEmitter2,
   ) {}
+
+  /** Count the number of spaces owned by a user */
+  private async countUserSpaces(userId: string): Promise<number> {
+    return this.spaceRepo.count({ where: { userId } });
+  }
 
   /**
    * Enforces monthly token limits for the space owner.
@@ -92,7 +103,10 @@ export class AgentRunQuotaService {
       );
     }
 
-    const monthlyLimit = getMonthlyTokenLimit(user.planTier);
+    const monthlyLimit = getMonthlyTokenLimit(
+      user.planTier,
+      await this.countUserSpaces(user.id),
+    );
 
     const result = await this.executionRepo
       .createQueryBuilder("e")
@@ -116,7 +130,7 @@ export class AgentRunQuotaService {
 
       const upgradeHint =
         user.planTier === "starter"
-          ? "Upgrade to Team for higher token limits, or top up usage credits."
+          ? "Upgrade to Team for 20M tokens/month, or top up usage credits."
           : user.planTier === "team"
             ? "Upgrade to Enterprise for higher limits, or top up usage credits."
             : "Contact support if you need higher limits.";
@@ -164,7 +178,10 @@ export class AgentRunQuotaService {
 
     return {
       tokensThisPeriod: result?.tokensThisPeriod ?? 0,
-      monthlyTokenLimit: getMonthlyTokenLimit(user.planTier),
+      monthlyTokenLimit: getMonthlyTokenLimit(
+        user.planTier,
+        await this.countUserSpaces(user.id),
+      ),
     };
   }
 

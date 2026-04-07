@@ -86,7 +86,8 @@ export class ModelRouterService {
     // Check if this agent has a pinned model override
     const pinnedModel = getModelForAgent(agentType, options?.envModel);
     const defaultTier2 = getModelForTier(2);
-    const isPinned = pinnedModel !== defaultTier2;
+    const isPinned =
+      pinnedModel !== defaultTier2 && pinnedModel !== "mimo-v2-pro";
 
     if (isPinned) {
       // Agent has a specific model configured — respect it

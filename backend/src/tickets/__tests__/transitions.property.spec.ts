@@ -36,7 +36,12 @@ describe("Property 8: Status transitions are recorded with correct metadata", ()
     mockEventEmitter = {
       emit: jest.fn(),
     };
-    service = new TicketsService(mockRepo, {} as any, mockEventEmitter);
+    service = new TicketsService(
+      mockRepo,
+      {} as any,
+      {} as any,
+      mockEventEmitter,
+    );
   });
 
   it("moveTicket should append exactly one transition entry with correct from/to/timestamp/trigger", async () => {

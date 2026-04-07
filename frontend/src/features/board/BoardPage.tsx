@@ -432,7 +432,12 @@ export function BoardPage() {
       {showRulesUpsell && (
         <RulesUpsellModal onClose={() => setShowRulesUpsell(false)} />
       )}
-      <PipelineToast spaceId={spaceId} />
+      <PipelineToast
+        spaceId={spaceId}
+        onFullPipelineUpsell={
+          canUseTeamFeatures ? undefined : () => setShowPipelineUpsell(true)
+        }
+      />
       {showCreateTicket && (
         <TicketDetailPanel
           spaceId={spaceId}

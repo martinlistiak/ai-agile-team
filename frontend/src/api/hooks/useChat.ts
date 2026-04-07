@@ -24,7 +24,7 @@ export function useChatMessages(
 
 export function useSendChatMessage(spaceId: string | null) {
   const queryClient = useQueryClient();
-  const { error: showError, agentRunLimit } = useToast();
+  const { error: showError } = useToast();
 
   return useMutation({
     mutationFn: async (payload: {
@@ -100,8 +100,8 @@ export function useSendChatMessage(spaceId: string | null) {
           context.previous,
         );
       }
+      // Token quota errors are handled by the inline AgentRunLimitUpsell component
       if (isTokenQuotaError(err)) {
-        agentRunLimit(getApiErrorPayload(err).message);
         return;
       }
       showError(getApiErrorPayload(err).message || "Failed to send message");

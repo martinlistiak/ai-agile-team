@@ -79,7 +79,12 @@ describe("Property 7: Backend ticket deletion removes ticket and comments", () =
     mockEventEmitter = {
       emit: jest.fn(),
     };
-    service = new TicketsService(mockRepo, mockExecutionRepo, mockEventEmitter);
+    service = new TicketsService(
+      mockRepo,
+      mockExecutionRepo,
+      {} as any,
+      mockEventEmitter,
+    );
   });
 
   it("delete should remove ticket so findById throws NotFoundException", async () => {

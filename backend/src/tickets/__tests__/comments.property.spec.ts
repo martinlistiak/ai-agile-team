@@ -23,7 +23,12 @@ describe("Property 3: Comment persistence round-trip", () => {
     mockEventEmitter = {
       emit: jest.fn(),
     };
-    service = new TicketsService(mockRepo, {} as any, mockEventEmitter);
+    service = new TicketsService(
+      mockRepo,
+      {} as any,
+      {} as any,
+      mockEventEmitter,
+    );
   });
 
   it("should preserve comment content through save and retrieval", async () => {

@@ -225,4 +225,144 @@ export class GitlabService {
       return repoUrl.replace("https://", `https://oauth2:${token}@`);
     }
   }
+
+  /**
+   * Post a review comment on a GitLab merge request, with optional inline notes.
+   */
+  async createMrReviewComment(
+    spaceId: string,
+    mrUrl: string,
+    reviewBody: string,
+  ): Promise<void> {
+    const space = await this.spaceRepo.findOneBy({ id: spaceId });
+    if (!space || !space.gitlabRepoUrl) {
+      throw new Error("Space has no connected GitLab repository");
+    }
+
+    const token = await this.getToken(spaceId);
+    if (!token) {
+      throw new Error("No GitLab token available for this space");
+    }
+
+    const projectPath = this.getProjectPath(space.gitlabRepoUrl);
+    const encodedPath = encodeURIComponent(projectPath);
+    const mrIid = this.extractMrIid(mrUrl);
+    if (!mrIid) {
+      throw new Error(`Could not extract MR IID from URL: ${mrUrl}`);
+    }
+
+    // Post the overall review as a note
+    const noteResponse = await fetch(
+      `${this.baseUrl}/api/v4/projects/${encodedPath}/merge_requests/${mrIid}/notes`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ body: reviewBody }),
+      },
+    );
+
+    if (!noteResponse.ok) {
+      const errorBody = await noteResponse.text();
+      throw new Error(
+        `GitLab MR note failed (${noteResponse.status}): ${errorBody}`,
+      );
+    }
+
+    // Parse and post inline comments
+    const inlineComments = this.parseInlineComments(reviewBody);
+    for (const comment of inlineComments) {
+      try {
+        await fetch(
+          `${this.baseUrl}/api/v4/projects/${encodedPath}/merge_requests/${mrIid}/discussions`,
+          {
+            method: "POST",
+            headers: {
+              Authorization: `Bearer ${token}`,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              body: comment.body,
+              position: {
+                position_type: "text",
+                new_path: comment.path,
+                new_line: comment.line,
+                base_sha: "HEAD~1",
+                head_sha: "HEAD",
+                start_sha: "HEAD~1",
+              },
+            }),
+          },
+        );
+      } catch {
+        // Inline comments may fail if file isn't in the diff — that's ok
+      }
+    }
+  }
+
+  /**
+   * Merge a GitLab merge request.
+   */
+  async mergeMergeRequest(spaceId: string, mrUrl: string): Promise<void> {
+    const space = await this.spaceRepo.findOneBy({ id: spaceId });
+    if (!space || !space.gitlabRepoUrl) {
+      throw new Error("Space has no connected GitLab repository");
+    }
+
+    const token = await this.getToken(spaceId);
+    if (!token) {
+      throw new Error("No GitLab token available for this space");
+    }
+
+    const projectPath = this.getProjectPath(space.gitlabRepoUrl);
+    const encodedPath = encodeURIComponent(projectPath);
+    const mrIid = this.extractMrIid(mrUrl);
+    if (!mrIid) {
+      throw new Error(`Could not extract MR IID from URL: ${mrUrl}`);
+    }
+
+    const response = await fetch(
+      `${this.baseUrl}/api/v4/projects/${encodedPath}/merge_requests/${mrIid}/merge`,
+      {
+        method: "PUT",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ should_remove_source_branch: true }),
+      },
+    );
+
+    if (!response.ok) {
+      const errorBody = await response.text();
+      throw new Error(
+        `GitLab MR merge failed (${response.status}): ${errorBody}`,
+      );
+    }
+  }
+
+  private extractMrIid(mrUrl: string): string | null {
+    const match = mrUrl.match(/merge_requests\/(\d+)/);
+    return match ? match[1] : null;
+  }
+
+  private parseInlineComments(
+    reviewBody: string,
+  ): Array<{ path: string; line: number; body: string }> {
+    const comments: Array<{ path: string; line: number; body: string }> = [];
+    const pattern =
+      /-\s*\*\*File:\*\*\s*(.+?)\n-\s*\*\*Line:\*\*\s*(\d+)[\s\S]*?-\s*\*\*(?:Severity:\*\*\s*.+?\n-\s*\*\*)?Comment:\*\*\s*(.+?)(?=\n\n|\n-\s*\*\*File:|\n##|$)/gi;
+    let match: RegExpExecArray | null;
+    while ((match = pattern.exec(reviewBody)) !== null) {
+      const path = match[1].trim().replace(/^`|`$/g, "");
+      const line = parseInt(match[2].trim(), 10);
+      const body = match[3].trim();
+      if (path && line > 0 && body) {
+        comments.push({ path, line, body });
+      }
+    }
+    return comments;
+  }
 }

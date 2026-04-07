@@ -14,6 +14,10 @@ import { TokenEncryptionService } from "../common/token-encryption.service";
 export class GithubService {
   private readonly logger = new Logger(GithubService.name);
   private readonly workspacesRoot: string;
+  /** Tracks last fetch time per spaceId to avoid hammering `git fetch`. */
+  private readonly lastFetchTime = new Map<string, number>();
+  /** Minimum interval between fetches for the same space (ms). */
+  private static readonly FETCH_COOLDOWN_MS = 60_000;
 
   constructor(
     private configService: ConfigService,
@@ -49,12 +53,19 @@ export class GithubService {
 
     if (existsSync(join(repoDir, ".git"))) {
       // Fetch latest from remote but don't reset (preserve local branches)
+      // Skip if we fetched recently to avoid excessive GitHub API calls
+      const now = Date.now();
+      const lastFetch = this.lastFetchTime.get(spaceId) ?? 0;
+      if (now - lastFetch < GithubService.FETCH_COOLDOWN_MS) {
+        return repoDir;
+      }
       try {
         execSync("git fetch origin", {
           cwd: repoDir,
           timeout: 60000,
           stdio: "pipe",
         });
+        this.lastFetchTime.set(spaceId, now);
         this.logger.log(`Fetched latest for space ${spaceId}`);
       } catch (e) {
         this.logger.warn(`Failed to fetch latest: ${e}`);
@@ -305,6 +316,33 @@ export class GithubService {
   }
 
   /**
+   * Get the reviewer-specific GitHub token for a space.
+   * Falls back to the regular token if no reviewer token is configured.
+   */
+  async getReviewerToken(spaceId: string): Promise<string | null> {
+    const space = await this.spaceRepo.findOne({
+      where: { id: spaceId },
+    });
+    if (!space) return null;
+
+    const user = await this.userRepo.findOneBy({ id: space.userId });
+    if (!user) return null;
+
+    if (user.githubReviewerTokenEncrypted) {
+      return this.tokenEncryptionService.decrypt(
+        user.githubReviewerTokenEncrypted,
+      );
+    }
+
+    // Fall back to the regular token
+    if (user.githubTokenEncrypted) {
+      return this.tokenEncryptionService.decrypt(user.githubTokenEncrypted);
+    }
+
+    return null;
+  }
+
+  /**
    * Extract owner and repo name from a GitHub repo URL.
    */
   getOwnerRepo(githubRepoUrl: string): { owner: string; repo: string } {
@@ -524,6 +562,10 @@ export class GithubService {
   /**
    * Post a review comment on a GitHub pull request.
    */
+  /**
+   * Post a PR review with optional inline file comments.
+   * Parses the review body for file/line references and posts them as inline comments.
+   */
   async createPrReviewComment(
     spaceId: string,
     prUrl: string,
@@ -534,7 +576,7 @@ export class GithubService {
       throw new Error("Space has no connected GitHub repository");
     }
 
-    const token = await this.getToken(spaceId);
+    const token = await this.getReviewerToken(spaceId);
     if (!token) {
       throw new Error("No GitHub token available for this space");
     }
@@ -545,7 +587,24 @@ export class GithubService {
       throw new Error(`Could not extract PR number from URL: ${prUrl}`);
     }
 
-    // Post as a PR review (not just a comment) so it shows in the review tab
+    // Parse inline comments from the review body
+    const inlineComments = this.parseInlineComments(reviewBody);
+
+    // Determine review event based on verdict
+    const lowerBody = reviewBody.toLowerCase();
+    let event: "APPROVE" | "REQUEST_CHANGES" | "COMMENT" = "COMMENT";
+    if (
+      lowerBody.includes("verdict: approve") ||
+      lowerBody.includes("verdict:**approve")
+    ) {
+      event = "APPROVE";
+    } else if (
+      lowerBody.includes("verdict: request_changes") ||
+      lowerBody.includes("verdict:**request_changes")
+    ) {
+      event = "REQUEST_CHANGES";
+    }
+
     const response = await fetch(
       `https://api.github.com/repos/${owner}/${repo}/pulls/${prNumber}/reviews`,
       {
@@ -557,17 +616,121 @@ export class GithubService {
         },
         body: JSON.stringify({
           body: reviewBody,
-          event: "COMMENT",
+          event,
+          comments: inlineComments,
         }),
       },
     );
 
     if (!response.ok) {
       const errorBody = await response.text();
+
+      if (response.status === 422) {
+        // 422 can happen for two reasons:
+        // 1. Inline comments reference files/lines not in the diff
+        // 2. APPROVE/REQUEST_CHANGES on your own PR (same token authored it)
+        // Strategy: retry without inline comments first, then fall back to COMMENT event
+        if (inlineComments.length > 0) {
+          this.logger.warn(
+            `Inline comments failed, retrying without them: ${errorBody}`,
+          );
+          const retryResponse = await fetch(
+            `https://api.github.com/repos/${owner}/${repo}/pulls/${prNumber}/reviews`,
+            {
+              method: "POST",
+              headers: {
+                Authorization: `Bearer ${token}`,
+                Accept: "application/vnd.github+json",
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify({ body: reviewBody, event }),
+            },
+          );
+          if (retryResponse.ok) return;
+
+          // Still failing — likely an event issue, fall back to COMMENT
+          const retryError = await retryResponse.text();
+          if (retryResponse.status === 422 && event !== "COMMENT") {
+            this.logger.warn(
+              `Review event "${event}" rejected, falling back to COMMENT: ${retryError}`,
+            );
+            const fallbackResponse = await fetch(
+              `https://api.github.com/repos/${owner}/${repo}/pulls/${prNumber}/reviews`,
+              {
+                method: "POST",
+                headers: {
+                  Authorization: `Bearer ${token}`,
+                  Accept: "application/vnd.github+json",
+                  "Content-Type": "application/json",
+                },
+                body: JSON.stringify({ body: reviewBody, event: "COMMENT" }),
+              },
+            );
+            if (fallbackResponse.ok) return;
+            const fallbackError = await fallbackResponse.text();
+            throw new Error(
+              `GitHub PR review fallback failed (${fallbackResponse.status}): ${fallbackError}`,
+            );
+          }
+          throw new Error(
+            `GitHub PR review retry failed (${retryResponse.status}): ${retryError}`,
+          );
+        }
+
+        // No inline comments — the event itself is likely the problem
+        if (event !== "COMMENT") {
+          this.logger.warn(
+            `Review event "${event}" rejected (422), falling back to COMMENT: ${errorBody}`,
+          );
+          const fallbackResponse = await fetch(
+            `https://api.github.com/repos/${owner}/${repo}/pulls/${prNumber}/reviews`,
+            {
+              method: "POST",
+              headers: {
+                Authorization: `Bearer ${token}`,
+                Accept: "application/vnd.github+json",
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify({ body: reviewBody, event: "COMMENT" }),
+            },
+          );
+          if (fallbackResponse.ok) return;
+          const fallbackError = await fallbackResponse.text();
+          throw new Error(
+            `GitHub PR review fallback failed (${fallbackResponse.status}): ${fallbackError}`,
+          );
+        }
+      }
+
       throw new Error(
         `GitHub PR review failed (${response.status}): ${errorBody}`,
       );
     }
+  }
+
+  /**
+   * Parse file comments from the reviewer's structured output.
+   * Looks for patterns like:
+   *   - **File:** path/to/file.ts
+   *   - **Line:** 42
+   *   - **Comment:** The feedback text
+   */
+  private parseInlineComments(
+    reviewBody: string,
+  ): Array<{ path: string; line: number; body: string }> {
+    const comments: Array<{ path: string; line: number; body: string }> = [];
+    const pattern =
+      /-\s*\*\*File:\*\*\s*(.+?)\n-\s*\*\*Line:\*\*\s*(\d+)[\s\S]*?-\s*\*\*(?:Severity:\*\*\s*.+?\n-\s*\*\*)?Comment:\*\*\s*(.+?)(?=\n\n|\n-\s*\*\*File:|\n##|$)/gi;
+    let match: RegExpExecArray | null;
+    while ((match = pattern.exec(reviewBody)) !== null) {
+      const path = match[1].trim().replace(/^`|`$/g, "");
+      const line = parseInt(match[2].trim(), 10);
+      const body = match[3].trim();
+      if (path && line > 0 && body) {
+        comments.push({ path, line, body });
+      }
+    }
+    return comments;
   }
 
   /**
@@ -588,6 +751,47 @@ export class GithubService {
     } catch {
       // If URL parsing fails, try to inject token into the URL
       return repoUrl.replace("https://", `https://x-access-token:${token}@`);
+    }
+  }
+
+  /**
+   * Merge a GitHub pull request.
+   */
+  async mergePullRequest(spaceId: string, prUrl: string): Promise<void> {
+    const space = await this.spaceRepo.findOneBy({ id: spaceId });
+    if (!space || !space.githubRepoUrl) {
+      throw new Error("Space has no connected GitHub repository");
+    }
+
+    const token = await this.getToken(spaceId);
+    if (!token) {
+      throw new Error("No GitHub token available for this space");
+    }
+
+    const { owner, repo } = this.getOwnerRepo(space.githubRepoUrl);
+    const prNumber = this.extractPrNumber(prUrl);
+    if (!prNumber) {
+      throw new Error(`Could not extract PR number from URL: ${prUrl}`);
+    }
+
+    const response = await fetch(
+      `https://api.github.com/repos/${owner}/${repo}/pulls/${prNumber}/merge`,
+      {
+        method: "PUT",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          Accept: "application/vnd.github+json",
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ merge_method: "squash" }),
+      },
+    );
+
+    if (!response.ok) {
+      const errorBody = await response.text();
+      throw new Error(
+        `GitHub PR merge failed (${response.status}): ${errorBody}`,
+      );
     }
   }
 }

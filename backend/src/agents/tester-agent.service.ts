@@ -2,7 +2,9 @@ import { Injectable, Logger, Inject, forwardRef } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { InjectRepository } from "@nestjs/typeorm";
 import { Repository } from "typeorm";
-import { query } from "@anthropic-ai/claude-agent-sdk";
+import { generateText, tool } from "ai";
+import { z } from "zod";
+import { createMimoProvider } from "./mimo-provider";
 import { Agent } from "../entities/agent.entity";
 import { Ticket } from "../entities/ticket.entity";
 import { Execution } from "../entities/execution.entity";
@@ -21,6 +23,9 @@ import { ModelRouterService } from "./model-router.service";
 import { AgentMemoryService } from "./agent-memory.service";
 import { AgentBoosterService } from "./agent-booster.service";
 import { execSync } from "child_process";
+import { readFileSync, writeFileSync } from "fs";
+import { join } from "path";
+
 const TESTER_SYSTEM_PROMPT = `You are a Tester AI agent in an agile software development team.
 Your role is to write and execute tests for the project, ensuring code quality and correctness.
 
@@ -30,7 +35,7 @@ When given a ticket or request to test, you should:
 3. Write appropriate tests:
    - **Unit tests** for individual functions, services, and components
    - **Integration tests** for API endpoints and service interactions
-   - **E2E tests** for user flows using the Playwright MCP browser tools (browser runs via CDP against Lightpanda)
+   - **E2E tests** for user flows when applicable
 4. Run the tests and verify they pass
 5. If tests fail, analyze the failure and report whether it's a test issue or a code bug
 6. Report back with a detailed summary: tests written, pass/fail results, coverage notes, and any bugs found
@@ -73,9 +78,7 @@ export class TesterAgentService {
     private agentMemory: AgentMemoryService,
     private agentBooster: AgentBoosterService,
   ) {}
-  /**
-   * Run the tester agent — either on a specific ticket or a freeform testing instruction.
-   */
+
   async run(
     spaceId: string,
     userMessage: string,
@@ -101,7 +104,7 @@ export class TesterAgentService {
     }
 
     await this.agentRepo.update(agent.id, { status: "active" });
-    this.eventsGateway.emitAgentStatus(spaceId, agent.id, "active");
+    this.eventsGateway.emitAgentStatus(spaceId, agent.id, "active", ticketId);
 
     if (ticketId) {
       await this.ticketsService.update(ticketId, {
@@ -116,9 +119,8 @@ export class TesterAgentService {
       actionLog: [],
     });
     await this.executionRepo.save(execution);
-    const abortController = this.executionRegistry.register(execution.id);
+    this.executionRegistry.register(execution.id);
 
-    let browserSessionActive = false;
     const startTime = Date.now();
     this.logger.log(
       formatAgentExecutionLog({
@@ -136,7 +138,7 @@ export class TesterAgentService {
         ? await this.gitlabService.getRepoPath(spaceId)
         : await this.githubService.getRepoPath(spaceId);
 
-      // Check for booster fast path (no LLM needed)
+      // Check for booster fast path
       const fastPath = this.agentBooster.classify("tester", userMessage);
       if (fastPath && !ticketId) {
         const boosterResult = this.executeFastPath(fastPath, repoPath);
@@ -156,7 +158,12 @@ export class TesterAgentService {
           ];
           await this.executionRepo.save(execution);
           await this.agentRepo.update(agent.id, { status: "idle" });
-          this.eventsGateway.emitAgentStatus(spaceId, agent.id, "idle");
+          this.eventsGateway.emitAgentStatus(
+            spaceId,
+            agent.id,
+            "idle",
+            ticketId,
+          );
           return boosterResult;
         }
       }
@@ -181,7 +188,6 @@ ${ticket.description}
 
 ${userMessage ? `**Additional instructions from the user:** ${userMessage}` : "Write and run tests for this ticket based on its acceptance criteria."}`;
 
-        // Move ticket to testing
         await this.ticketsService.moveTicket(ticketId, "testing", "agent", {
           id: agent.id,
           name: "Tester",
@@ -189,7 +195,7 @@ ${userMessage ? `**Additional instructions from the user:** ${userMessage}` : "W
         });
       }
 
-      // Compile 3-tier rules and episodic memories for this agent
+      // Compile rules and memories
       const [compiledRules, compiledMemories] = await Promise.all([
         this.rulesService.compileRulesForAgent(spaceId, agent.id),
         this.agentMemory.compileMemoriesForAgent(spaceId, agent.id),
@@ -201,137 +207,59 @@ ${userMessage ? `**Additional instructions from the user:** ${userMessage}` : "W
       if (compiledMemories) {
         systemSuffix += `\n\n# Learned Patterns\nApply these lessons from past executions:\n${compiledMemories}`;
       }
-      const fullPrompt = `${TESTER_SYSTEM_PROMPT}${systemSuffix}\n\n---\n\n${prompt}`;
+      const fullSystem = `${TESTER_SYSTEM_PROMPT}${systemSuffix}`;
 
-      // Run the Claude Agent SDK with Playwright MCP (connects to Lightpanda over CDP)
-      const playwrightCdpEndpoint = this.configService.get<string>(
-        "PLAYWRIGHT_MCP_CDP_ENDPOINT",
-        "ws://127.0.0.1:9222",
+      const { model: modelName } = this.modelRouter.routeModel(
+        "tester",
+        userMessage,
+        { ticketId, ticketPriority },
       );
-      let finalResult = "";
-      const actionLog: any[] = [];
-      let lastScreenshotTime = 0;
-      const SCREENSHOT_MIN_INTERVAL_MS = 500; // ~2fps cap
-      let sdkUsage: any = null;
-      const { model } = this.modelRouter.routeModel("tester", userMessage, {
-        ticketId,
-        ticketPriority,
+
+      const provider = createMimoProvider(
+        this.configService.get("MIMO_API_KEY", ""),
+      );
+
+      const testerTools = this.buildTools(repoPath, spaceId, execution, agent);
+
+      const result = await generateText({
+        model: provider.chatModel(modelName),
+        system: fullSystem,
+        messages: [{ role: "user", content: prompt }],
+        tools: testerTools,
+        maxSteps: 50,
       });
 
-      for await (const message of query({
-        prompt: fullPrompt,
-        options: {
-          model,
-          allowedTools: ["Read", "Write", "Edit", "Bash", "Glob", "Grep"],
-          cwd: repoPath,
-          permissionMode: "bypassPermissions",
-          allowDangerouslySkipPermissions: true,
-          maxTurns: 50,
-          executable: "node",
-          abortController,
-          stderr: (data: string) => {
-            this.logger.debug(`Claude SDK stderr: ${data}`);
-          },
-          mcpServers: {
-            playwright: {
-              command: "bunx",
-              args: [
-                "@playwright/mcp@latest",
-                "--cdp-endpoint",
-                playwrightCdpEndpoint,
-              ],
-            },
-          },
-        },
-      })) {
-        if ("type" in message && message.type === "assistant") {
-          const content = (message as any).message?.content;
-          if (Array.isArray(content)) {
-            for (const block of content) {
-              if (block.type === "text" && block.text) {
-                finalResult = block.text;
-              }
-              if (block.type === "tool_use") {
-                actionLog.push({
-                  tool: block.name,
-                  input: block.input,
-                  timestamp: new Date().toISOString(),
-                });
-                // Emit execution_action WebSocket event for live streaming
-                this.eventsGateway.emitExecutionAction(spaceId, {
-                  executionId: execution.id,
-                  agentId: agent.id,
-                  tool: block.name,
-                  inputSummary:
-                    typeof block.input === "string"
-                      ? block.input.substring(0, 200)
-                      : JSON.stringify(block.input).substring(0, 200),
-                  timestamp: new Date().toISOString(),
-                });
+      const finalResult = result.text || "";
 
-                // Track Playwright MCP browser session start
-                if (
-                  !browserSessionActive &&
-                  typeof block.name === "string" &&
-                  (block.name.includes("browser_") ||
-                    block.name.toLowerCase().includes("playwright"))
-                ) {
-                  browserSessionActive = true;
-                }
-              }
-            }
-          }
-        }
-
-        // Detect Playwright MCP tool results containing screenshots
-        // The SDK emits tool_use_summary messages with result data from MCP tools
-        if ("type" in message && message.type === "tool_use_summary") {
-          const summary = message as any;
-          const resultContent =
-            summary.result ?? summary.content ?? summary.output;
-          if (resultContent) {
-            const contentBlocks = Array.isArray(resultContent)
-              ? resultContent
-              : [resultContent];
-            for (const block of contentBlocks) {
-              if (
-                block.type === "image" &&
-                block.source?.type === "base64" &&
-                block.source?.data
-              ) {
-                const now = Date.now();
-                if (now - lastScreenshotTime >= SCREENSHOT_MIN_INTERVAL_MS) {
-                  lastScreenshotTime = now;
-                  this.eventsGateway.emitBrowserScreenshot(spaceId, {
-                    executionId: execution.id,
-                    screenshot: block.source.data,
-                    timestamp: new Date().toISOString(),
-                  });
-                }
-              }
-            }
-          }
-        }
-
-        if ("result" in message) {
-          finalResult = (message as any).result;
-          sdkUsage = (message as any).usage;
+      // Build action log
+      const actionLog: any[] = [];
+      for (const step of result.steps ?? []) {
+        for (const tc of step.toolCalls ?? []) {
+          actionLog.push({
+            tool: tc.toolName,
+            input: tc.args,
+            timestamp: new Date().toISOString(),
+          });
+          this.eventsGateway.emitExecutionAction(spaceId, {
+            executionId: execution.id,
+            agentId: agent.id,
+            tool: tc.toolName,
+            inputSummary: JSON.stringify(tc.args).substring(0, 200),
+            timestamp: new Date().toISOString(),
+          });
         }
       }
 
-      // Store token usage from SDK result
-      if (sdkUsage) {
-        execution.inputTokens = sdkUsage.input_tokens ?? 0;
-        execution.outputTokens = sdkUsage.output_tokens ?? 0;
-        execution.cacheReadTokens = sdkUsage.cache_read_input_tokens ?? 0;
-        execution.cacheCreationTokens =
-          sdkUsage.cache_creation_input_tokens ?? 0;
-        execution.tokensUsed =
-          (sdkUsage.input_tokens ?? 0) + (sdkUsage.output_tokens ?? 0);
-      }
-      execution.modelUsed = model;
+      // Store token usage
+      execution.inputTokens = result.usage?.promptTokens ?? 0;
+      execution.outputTokens = result.usage?.completionTokens ?? 0;
+      execution.cacheReadTokens = 0;
+      execution.cacheCreationTokens = 0;
+      execution.tokensUsed =
+        (result.usage?.promptTokens ?? 0) +
+        (result.usage?.completionTokens ?? 0);
+      execution.modelUsed = modelName;
 
-      // Compute cost-weighted tokens for accurate billing
       execution.costWeightedTokens = computeCostWeightedTokens({
         inputTokens: execution.inputTokens,
         outputTokens: execution.outputTokens,
@@ -339,14 +267,6 @@ ${userMessage ? `**Additional instructions from the user:** ${userMessage}` : "W
         cacheCreationTokens: execution.cacheCreationTokens,
         modelUsed: execution.modelUsed,
       });
-
-      // Emit browser session end if a session was active
-      if (browserSessionActive) {
-        this.eventsGateway.emitBrowserSessionEnd(spaceId, {
-          executionId: execution.id,
-          timestamp: new Date().toISOString(),
-        });
-      }
 
       // If all tests pass and ticket was in testing, move to staged
       if (ticketId && finalResult.toLowerCase().includes("all tests pass")) {
@@ -363,9 +283,8 @@ ${userMessage ? `**Additional instructions from the user:** ${userMessage}` : "W
       execution.actionLog = actionLog;
       await this.executionRepo.save(execution);
       await this.agentRepo.update(agent.id, { status: "idle" });
-      this.eventsGateway.emitAgentStatus(spaceId, agent.id, "idle");
+      this.eventsGateway.emitAgentStatus(spaceId, agent.id, "idle", ticketId);
 
-      // Deduct credits if over monthly quota
       if (execution.costWeightedTokens > 0) {
         this.agentRunQuota
           .deductCreditsForExecution(spaceId, execution.costWeightedTokens)
@@ -377,7 +296,7 @@ ${userMessage ? `**Additional instructions from the user:** ${userMessage}` : "W
           );
       }
 
-      // Trigger learning loops — rule suggestions + episodic memory extraction
+      // Trigger learning loops
       this.suggestedRulesService
         .analyzeExecution(execution.id)
         .catch((err) =>
@@ -420,28 +339,157 @@ ${userMessage ? `**Additional instructions from the user:** ${userMessage}` : "W
           error: error instanceof Error ? error.message : String(error),
         }),
       );
-
-      // Emit browser session end on error if session was active
-      if (browserSessionActive) {
-        this.eventsGateway.emitBrowserSessionEnd(spaceId, {
-          executionId: execution.id,
-          timestamp: new Date().toISOString(),
-        });
-      }
-
       this.executionRegistry.remove(execution.id);
       execution.status = "failed";
       execution.endTime = new Date();
       await this.executionRepo.save(execution);
       await this.agentRepo.update(agent.id, { status: "error" });
-      this.eventsGateway.emitAgentStatus(spaceId, agent.id, "error");
+      this.eventsGateway.emitAgentStatus(spaceId, agent.id, "error", ticketId);
       throw error;
     }
   }
 
-  /**
-   * Execute a tester fast-path operation without LLM.
-   */
+  private buildTools(
+    repoPath: string,
+    spaceId: string,
+    execution: Execution,
+    agent: Agent,
+  ) {
+    return {
+      read_file: tool({
+        description: "Read the contents of a file in the repository",
+        parameters: z.object({
+          file_path: z.string().describe("Relative file path inside the repo"),
+        }),
+        execute: async (input) => {
+          try {
+            const target = join(repoPath, input.file_path);
+            if (!target.startsWith(repoPath))
+              return { error: "Path outside repository" };
+            const content = readFileSync(target, "utf-8");
+            return {
+              content:
+                content.length > 50_000
+                  ? content.slice(0, 50_000) + "\n... (truncated)"
+                  : content,
+            };
+          } catch (err: any) {
+            return { error: err.message };
+          }
+        },
+      }),
+      write_file: tool({
+        description: "Write content to a file (creates or overwrites)",
+        parameters: z.object({
+          file_path: z.string().describe("Relative file path"),
+          content: z.string().describe("File content to write"),
+        }),
+        execute: async (input) => {
+          try {
+            const target = join(repoPath, input.file_path);
+            if (!target.startsWith(repoPath))
+              return { error: "Path outside repository" };
+            writeFileSync(target, input.content, "utf-8");
+            return { success: true, path: input.file_path };
+          } catch (err: any) {
+            return { error: err.message };
+          }
+        },
+      }),
+      edit_file: tool({
+        description: "Replace a specific string in a file with new content",
+        parameters: z.object({
+          file_path: z.string().describe("Relative file path"),
+          old_string: z.string().describe("Exact string to find and replace"),
+          new_string: z.string().describe("Replacement string"),
+        }),
+        execute: async (input) => {
+          try {
+            const target = join(repoPath, input.file_path);
+            if (!target.startsWith(repoPath))
+              return { error: "Path outside repository" };
+            const content = readFileSync(target, "utf-8");
+            if (!content.includes(input.old_string))
+              return { error: "old_string not found in file" };
+            writeFileSync(
+              target,
+              content.replace(input.old_string, input.new_string),
+              "utf-8",
+            );
+            return { success: true, path: input.file_path };
+          } catch (err: any) {
+            return { error: err.message };
+          }
+        },
+      }),
+      bash: tool({
+        description: "Execute a shell command in the repository directory",
+        parameters: z.object({
+          command: z.string().describe("Shell command to execute"),
+        }),
+        execute: async (input) => {
+          try {
+            const output = execSync(input.command, {
+              cwd: repoPath,
+              timeout: 120_000,
+              encoding: "utf-8",
+              maxBuffer: 1024 * 1024 * 5,
+            });
+            return {
+              output:
+                output.length > 10_000
+                  ? output.slice(0, 10_000) + "\n... (truncated)"
+                  : output,
+            };
+          } catch (err: any) {
+            return {
+              error: err.message,
+              stdout: err.stdout?.slice(0, 5000),
+              stderr: err.stderr?.slice(0, 5000),
+            };
+          }
+        },
+      }),
+      glob: tool({
+        description: "List files matching a glob pattern",
+        parameters: z.object({
+          pattern: z.string().describe("Glob pattern"),
+        }),
+        execute: async (input) => {
+          try {
+            const output = execSync(
+              `find . -path './.git' -prune -o -path '${input.pattern}' -print 2>/dev/null | head -200`,
+              { cwd: repoPath, encoding: "utf-8", timeout: 10_000 },
+            );
+            return { files: output.trim().split("\n").filter(Boolean) };
+          } catch (err: any) {
+            return { error: err.message };
+          }
+        },
+      }),
+      grep: tool({
+        description: "Search for a pattern in files",
+        parameters: z.object({
+          pattern: z.string().describe("Search pattern (regex)"),
+          path: z.string().optional().describe("Optional path to search in"),
+        }),
+        execute: async (input) => {
+          try {
+            const searchPath = input.path || ".";
+            const output = execSync(
+              `grep -rn --include='*' '${input.pattern.replace(/'/g, "\\'")}' ${searchPath} 2>/dev/null | head -100`,
+              { cwd: repoPath, encoding: "utf-8", timeout: 10_000 },
+            );
+            return { matches: output.trim() };
+          } catch (err: any) {
+            if (err.status === 1) return { matches: "" };
+            return { error: err.message };
+          }
+        },
+      }),
+    };
+  }
+
   private executeFastPath(fastPath: string, repoPath: string): string | null {
     try {
       const opts = {

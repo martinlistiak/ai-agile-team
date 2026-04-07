@@ -4,6 +4,7 @@ import { cn } from "@/lib/cn";
 import { getAvatarSrc } from "@/lib/avatars";
 import { CommentContent } from "./CommentContent";
 import type {
+  Agent,
   StatusTransition,
   TicketComment,
   TransitionTrigger,
@@ -64,6 +65,7 @@ function formatTime(timestamp: string) {
 interface ActivityTimelineProps {
   statusHistory: StatusTransition[];
   comments: TicketComment[];
+  agents?: Agent[];
   currentUserId?: string;
   currentUserName?: string;
   currentUserAvatar?: string;
@@ -72,6 +74,7 @@ interface ActivityTimelineProps {
 export function ActivityTimeline({
   statusHistory,
   comments,
+  agents = [],
   currentUserId,
   currentUserName,
   currentUserAvatar,
@@ -162,6 +165,7 @@ export function ActivityTimeline({
               <CommentItem
                 key={`comment-${(activity.data as TicketComment).id}`}
                 comment={activity.data as TicketComment}
+                agents={agents}
                 currentUserId={currentUserId}
                 currentUserName={currentUserName}
                 currentUserAvatar={currentUserAvatar}
@@ -221,11 +225,13 @@ function TransitionItem({ transition }: { transition: StatusTransition }) {
 
 function CommentItem({
   comment,
+  agents,
   currentUserId,
   currentUserName,
   currentUserAvatar,
 }: {
   comment: TicketComment;
+  agents: Agent[];
   currentUserId?: string;
   currentUserName?: string;
   currentUserAvatar?: string;
@@ -233,13 +239,28 @@ function CommentItem({
   const isAgent = comment.authorType === "agent";
   const isCurrentUser = !isAgent && comment.authorId === currentUserId;
 
+  // Resolve agent type for avatar: prefer authorAgentType, fall back to looking up agent by ID
+  const resolvedAgentType = isAgent
+    ? (comment.authorAgentType ??
+      agents.find((a) => a.id === comment.authorId)?.agentType ??
+      comment.authorId)
+    : null;
+
+  // Resolve display name
+  const agentDisplayName = isAgent
+    ? resolvedAgentType
+      ? resolvedAgentType.charAt(0).toUpperCase() + resolvedAgentType.slice(1)
+      : (comment.authorId || "Agent").charAt(0).toUpperCase() +
+        (comment.authorId || "Agent").slice(1)
+    : null;
+
   return (
     <div className="relative flex gap-3">
       {/* Timeline marker - author avatar */}
       <div className="flex-shrink-0 w-[15px] flex justify-center">
         {isAgent ? (
           <img
-            src={getAvatarSrc(comment.authorId || "pm")}
+            src={getAvatarSrc(resolvedAgentType || "pm")}
             alt=""
             className="h-[15px] w-[15px] rounded-full pixelated z-10"
           />
@@ -261,8 +282,7 @@ function CommentItem({
         <div className="flex items-center gap-2 mb-1 flex-wrap">
           <span className="text-xs font-medium text-stone-600 dark:text-stone-300 truncate max-w-[180px]">
             {isAgent
-              ? (comment.authorId || "Agent").charAt(0).toUpperCase() +
-                (comment.authorId || "Agent").slice(1)
+              ? agentDisplayName
               : isCurrentUser
                 ? currentUserName || "You"
                 : "User"}

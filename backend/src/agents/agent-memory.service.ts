@@ -2,7 +2,8 @@ import { Injectable, Logger } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { InjectRepository } from "@nestjs/typeorm";
 import { Repository, MoreThan } from "typeorm";
-import Anthropic from "@anthropic-ai/sdk";
+import { generateText } from "ai";
+import { createMimoProvider } from "./mimo-provider";
 import { AgentMemory } from "../entities/agent-memory.entity";
 import { Execution } from "../entities/execution.entity";
 
@@ -18,7 +19,6 @@ import { Execution } from "../entities/execution.entity";
 @Injectable()
 export class AgentMemoryService {
   private readonly logger = new Logger(AgentMemoryService.name);
-  private client: Anthropic;
 
   /** Minimum confidence for a memory to be injected into prompts */
   private static readonly INJECTION_THRESHOLD = 0.7;
@@ -35,11 +35,7 @@ export class AgentMemoryService {
     private memoryRepo: Repository<AgentMemory>,
     @InjectRepository(Execution)
     private executionRepo: Repository<Execution>,
-  ) {
-    this.client = new Anthropic({
-      apiKey: this.configService.get("ANTHROPIC_API_KEY", ""),
-    });
-  }
+  ) {}
 
   /**
    * Analyze a completed execution and extract episodic memories.
@@ -69,7 +65,7 @@ export class AgentMemoryService {
       .map((m) => `- ${m.lesson}`)
       .join("\n");
 
-    // Use a cheap model to extract learnings
+    // Use the cheap Flash model to extract learnings
     const actionSummary = execution.actionLog
       .slice(-30)
       .map(
@@ -79,9 +75,12 @@ export class AgentMemoryService {
       .join("\n");
 
     try {
-      const response = await this.client.messages.create({
-        model: "claude-haiku-4-5-20251001",
-        max_tokens: 512,
+      const provider = createMimoProvider(
+        this.configService.get("MIMO_API_KEY", ""),
+      );
+
+      const result = await generateText({
+        model: provider.chatModel("mimo-v2-flash"),
         system: `You extract reusable lessons from agent execution logs. Output a JSON array of objects with:
 - "pattern": what triggered this lesson (2-3 words, e.g. "test file naming")
 - "lesson": the reusable insight (1 sentence, actionable)
@@ -99,10 +98,10 @@ ${existingSummary || "(none)"}`,
             content: `Agent type: ${execution.agent.agentType}\nExecution status: ${execution.status}\n\nAction log:\n${actionSummary}`,
           },
         ],
+        maxTokens: 512,
       });
 
-      const text =
-        response.content[0]?.type === "text" ? response.content[0].text : "";
+      const text = result.text || "";
       const jsonMatch = text.match(/\[[\s\S]*\]/);
       if (!jsonMatch) return;
 
@@ -116,16 +115,14 @@ ${existingSummary || "(none)"}`,
         const existing = existingMemories.find(
           (m) =>
             m.pattern === lesson.pattern ||
-            m.lesson.toLowerCase().includes(lesson.lesson.toLowerCase().slice(0, 30)),
+            m.lesson
+              .toLowerCase()
+              .includes(lesson.lesson.toLowerCase().slice(0, 30)),
         );
 
         if (existing) {
-          // Reinforce existing memory
           existing.reinforceCount += 1;
-          existing.confidence = Math.min(
-            1.0,
-            existing.confidence + 0.1,
-          );
+          existing.confidence = Math.min(1.0, existing.confidence + 0.1);
           existing.lastReinforced = new Date();
           existing.lastAccessed = new Date();
           await this.memoryRepo.save(existing);
@@ -133,7 +130,6 @@ ${existingSummary || "(none)"}`,
             `Reinforced memory "${existing.pattern}" → confidence ${existing.confidence}`,
           );
         } else {
-          // Create new memory
           const memory = this.memoryRepo.create({
             spaceId: execution.agent.spaceId,
             agentId: execution.agentId,
@@ -148,7 +144,10 @@ ${existingSummary || "(none)"}`,
         }
       }
     } catch (err) {
-      this.logger.warn(`Memory extraction failed for execution ${executionId}:`, err);
+      this.logger.warn(
+        `Memory extraction failed for execution ${executionId}:`,
+        err,
+      );
     }
   }
 
@@ -206,7 +205,8 @@ ${existingSummary || "(none)"}`,
       const daysSinceAccess =
         (now - new Date(memory.lastAccessed).getTime()) / (1000 * 60 * 60 * 24);
       const daysSinceReinforced =
-        (now - new Date(memory.lastReinforced).getTime()) / (1000 * 60 * 60 * 24);
+        (now - new Date(memory.lastReinforced).getTime()) /
+        (1000 * 60 * 60 * 24);
 
       // Use the more recent of access/reinforcement for decay calculation
       const daysSinceActivity = Math.min(daysSinceAccess, daysSinceReinforced);

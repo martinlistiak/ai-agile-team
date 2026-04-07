@@ -36,6 +36,47 @@ export class IntegrationsController {
     return { ok: true };
   }
 
+  @Post("github/reviewer-token")
+  @ApiOperation({
+    summary: "Save a separate GitHub PAT for the reviewer agent",
+  })
+  @ApiBody({
+    schema: {
+      type: "object",
+      properties: { token: { type: "string" } },
+      required: ["token"],
+    },
+  })
+  @ApiResponse({ status: 201, description: "Reviewer token saved" })
+  async saveReviewerToken(
+    @Req() req: Request,
+    @Body() body: { token: string },
+  ) {
+    await this.integrationsService.saveReviewerToken(
+      (req.user as any).id,
+      body.token,
+    );
+    return { ok: true };
+  }
+
+  @Delete("github/reviewer-token")
+  @ApiOperation({ summary: "Remove the reviewer GitHub token" })
+  @ApiResponse({ status: 200, description: "Reviewer token removed" })
+  async clearReviewerToken(@Req() req: Request) {
+    await this.integrationsService.clearReviewerToken((req.user as any).id);
+    return { ok: true };
+  }
+
+  @Get("github/reviewer-token/status")
+  @ApiOperation({ summary: "Check if a reviewer token is configured" })
+  @ApiResponse({ status: 200, description: "Reviewer token status" })
+  async reviewerTokenStatus(@Req() req: Request) {
+    const hasToken = await this.integrationsService.hasReviewerToken(
+      (req.user as any).id,
+    );
+    return { configured: hasToken };
+  }
+
   @Post("gitlab/disconnect")
   @ApiOperation({ summary: "Disconnect GitLab account" })
   @ApiResponse({ status: 201, description: "GitLab disconnected" })

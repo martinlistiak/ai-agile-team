@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
+import { PLANS, formatTopUpTokens } from "@/config/pricing";
 import { Reveal } from "./primitives";
 
 function PricingToggle({
@@ -49,63 +50,6 @@ function PricingToggle({
   );
 }
 
-const plans = [
-  {
-    name: "Starter",
-    description: "For solo developers and small side projects",
-    monthlyPrice: 19,
-    annualPrice: 15,
-    features: [
-      "500K tokens / month",
-      "Unlimited agent runs",
-      "Basic kanban board",
-      "Community support",
-      "GitHub integration",
-      "Unlimited team members",
-    ],
-    cta: "Start 7-day free trial",
-    style: "default" as const,
-  },
-  {
-    name: "Team",
-    description: "For growing teams shipping real products",
-    monthlyPrice: 46,
-    annualPrice: 39,
-    features: [
-      "1.5M tokens / month",
-      "Unlimited agent runs",
-      "Full pipeline automation",
-      "Custom agents & rules",
-      "Code review agent",
-      "Priority support",
-      "Audit log & history",
-      "Unlimited team members",
-    ],
-    cta: "Start 7-day free trial",
-    style: "featured" as const,
-  },
-  {
-    name: "Enterprise",
-    description: "For organizations with advanced needs",
-    monthlyPrice: null,
-    annualPrice: null,
-    features: [
-      "Everything in Team",
-      "10M tokens / month",
-      "SSO & SAML",
-      "Custom agent training",
-      "Dedicated support",
-      "SLA guarantee",
-      "On-premise option",
-      "Advanced analytics",
-      "API access",
-      "Unlimited team members",
-    ],
-    cta: "Talk to Sales",
-    style: "default" as const,
-  },
-];
-
 export function PricingSection() {
   const [annual, setAnnual] = useState(true);
   const navigate = useNavigate();
@@ -144,19 +88,39 @@ export function PricingSection() {
               All plans are paid with a 7-day free trial. Card required; cancel
               before the trial ends and you will not be charged.
             </p>
+            <div
+              className="mt-6 inline-flex items-center gap-4 rounded-lg px-5 py-3 text-[13px]"
+              style={{
+                backgroundColor: "var(--surface-secondary, rgba(0,0,0,0.03))",
+                color: "var(--text-secondary)",
+              }}
+            >
+              <span
+                className="font-medium"
+                style={{ color: "var(--text-primary)" }}
+              >
+                Need more tokens?
+              </span>
+              <span>$1 = {formatTopUpTokens(1)} tokens</span>
+              <span className="text-stone-300 dark:text-stone-600">·</span>
+              <span>$5 = {formatTopUpTokens(5)} tokens</span>
+              <span className="text-stone-300 dark:text-stone-600">·</span>
+              <span>$20 = {formatTopUpTokens(20)} tokens</span>
+            </div>
           </div>
         </Reveal>
 
         <div className="grid md:grid-cols-3 gap-6 items-start">
-          {plans.map((plan, i) => {
+          {PLANS.map((plan, i) => {
             const price = annual ? plan.annualPrice : plan.monthlyPrice;
             const isContactSales = price === null;
+            const isFeatured = plan.popular;
             return (
               <Reveal key={plan.name} delay={i * 0.1}>
                 <div
-                  className={`rounded-xl p-7 transition-transform ${plan.style === "featured" ? "plan-featured" : "plan-default"}`}
+                  className={`rounded-xl p-7 transition-transform ${isFeatured ? "plan-featured" : "plan-default"}`}
                 >
-                  {plan.style === "featured" && (
+                  {isFeatured && (
                     <span
                       className="inline-block text-[10px] font-semibold tracking-wide uppercase px-2.5 py-1 rounded-full mb-4 text-white"
                       style={{ backgroundColor: "var(--accent)" }}
@@ -200,7 +164,7 @@ export function PricingSection() {
                     }
                     className="w-full text-[13px] font-medium py-2.5 rounded-lg transition-all cursor-pointer mb-6"
                     style={
-                      plan.style === "featured"
+                      isFeatured
                         ? { backgroundColor: "var(--accent)", color: "white" }
                         : {
                             border: "1px solid var(--border)",

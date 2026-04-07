@@ -19,6 +19,7 @@ import { RichTextEditor } from "@/components/RichTextEditor";
 import { MentionInput } from "@/components/MentionInput";
 import { ActivityTimeline } from "@/components/ActivityTimeline";
 import { PipelinePrompt } from "@/components/PipelinePrompt";
+import RotatingBorder from "@/components/RotatingBorder";
 import { getAvatarSrc } from "@/lib/avatars";
 import { useAuth } from "@/contexts/AuthContext";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
@@ -244,9 +245,19 @@ export function TicketDetailPanel({
     onDelete?.(ticket!.id);
   };
 
-  const PLAY_ENABLED: Set<TicketStatus> = new Set(["development", "testing"]);
+  const PLAY_ENABLED: Set<TicketStatus> = new Set([
+    "development",
+    "review",
+    "testing",
+  ]);
   const canTrigger =
     !isCreateMode && PLAY_ENABLED.has(ticket!.status as TicketStatus);
+  const isAgentRunning =
+    !isCreateMode &&
+    !!ticket!.assigneeAgentId &&
+    agents.some(
+      (a) => a.id === ticket!.assigneeAgentId && a.status === "active",
+    );
 
   const currentStatus = ticket?.status ?? defaultStatus ?? "backlog";
   const currentPriority = ticket?.priority ?? createPriority;
@@ -512,46 +523,70 @@ export function TicketDetailPanel({
               )}
 
               {!isCreateMode && (
-                <button
-                  onClick={handleTriggerAgent}
-                  disabled={!canTrigger}
-                  title={
-                    canTrigger ? "Trigger agent" : "No agent for this status"
-                  }
-                  className={cn(
-                    "cursor-pointer p-1.5 rounded-md transition-colors",
-                    canTrigger
-                      ? "text-stone-400 hover:text-emerald-600 dark:text-stone-500 dark:hover:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-900/20"
-                      : "text-stone-300 dark:text-stone-700 cursor-not-allowed",
-                  )}
-                  aria-label="Trigger agent"
+                <RotatingBorder
+                  active={isAgentRunning}
+                  color="#10b981"
+                  borderRadius={6}
+                  duration={2}
                 >
-                  {triggerAgent.isPending ? (
-                    <svg
-                      className="animate-spin h-[18px] w-[18px]"
-                      viewBox="0 0 16 16"
-                      fill="none"
-                    >
-                      <circle
-                        cx="8"
-                        cy="8"
-                        r="6"
-                        stroke="currentColor"
-                        strokeWidth="2"
-                        opacity="0.25"
-                      />
-                      <path
-                        d="M8 2a6 6 0 0 1 6 6"
-                        stroke="currentColor"
-                        strokeWidth="2"
-                        strokeLinecap="round"
-                        opacity="0.75"
-                      />
-                    </svg>
-                  ) : (
-                    <FiPlay size={18} />
-                  )}
-                </button>
+                  <button
+                    onClick={handleTriggerAgent}
+                    disabled={!canTrigger && !isAgentRunning}
+                    title={
+                      isAgentRunning
+                        ? "Agent is running"
+                        : canTrigger
+                          ? "Trigger agent"
+                          : "No agent for this status"
+                    }
+                    className={cn(
+                      "cursor-pointer p-1.5 rounded-md transition-colors",
+                      isAgentRunning
+                        ? "text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-900/20"
+                        : canTrigger
+                          ? "text-stone-400 hover:text-emerald-600 dark:text-stone-500 dark:hover:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-900/20"
+                          : "text-stone-300 dark:text-stone-700 cursor-not-allowed",
+                    )}
+                    aria-label={
+                      isAgentRunning ? "Agent is running" : "Trigger agent"
+                    }
+                  >
+                    {triggerAgent.isPending ? (
+                      <svg
+                        className="animate-spin h-[18px] w-[18px]"
+                        viewBox="0 0 16 16"
+                        fill="none"
+                      >
+                        <circle
+                          cx="8"
+                          cy="8"
+                          r="6"
+                          stroke="currentColor"
+                          strokeWidth="2"
+                          opacity="0.25"
+                        />
+                        <path
+                          d="M8 2a6 6 0 0 1 6 6"
+                          stroke="currentColor"
+                          strokeWidth="2"
+                          strokeLinecap="round"
+                          opacity="0.75"
+                        />
+                      </svg>
+                    ) : isAgentRunning ? (
+                      <svg
+                        className="h-[18px] w-[18px]"
+                        viewBox="0 0 24 24"
+                        fill="currentColor"
+                      >
+                        <rect x="6" y="5" width="4" height="14" rx="1" />
+                        <rect x="14" y="5" width="4" height="14" rx="1" />
+                      </svg>
+                    ) : (
+                      <FiPlay size={18} />
+                    )}
+                  </button>
+                </RotatingBorder>
               )}
               {!isCreateMode && onDelete && (
                 <button
@@ -695,6 +730,7 @@ export function TicketDetailPanel({
               <ActivityTimeline
                 statusHistory={ticket!.statusHistory ?? []}
                 comments={ticket!.comments ?? []}
+                agents={agents}
                 currentUserId={user?.id}
                 currentUserName={user?.name}
                 currentUserAvatar={user?.avatarUrl ?? undefined}

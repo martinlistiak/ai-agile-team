@@ -54,3 +54,43 @@ export function useDisconnectProvider() {
     },
   });
 }
+
+export function useReviewerTokenStatus() {
+  return useQuery<{ configured: boolean }>({
+    queryKey: ["integrations", "reviewer-token"],
+    queryFn: async () => {
+      const { data } = await api.get(
+        "/integrations/github/reviewer-token/status",
+      );
+      return data;
+    },
+  });
+}
+
+export function useSaveReviewerToken() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (token: string) => {
+      await api.post("/integrations/github/reviewer-token", { token });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: ["integrations", "reviewer-token"],
+      });
+    },
+  });
+}
+
+export function useClearReviewerToken() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async () => {
+      await api.delete("/integrations/github/reviewer-token");
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: ["integrations", "reviewer-token"],
+      });
+    },
+  });
+}

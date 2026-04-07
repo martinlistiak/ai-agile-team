@@ -15,61 +15,12 @@ import {
   useSubscriptionInfo,
 } from "@/api/hooks/useBilling";
 import { useSpaces } from "@/api/hooks/useSpaces";
-import type { PlanTier } from "@/types";
-
-const PLANS = [
-  {
-    tier: "starter" as PlanTier,
-    name: "Starter",
-    description: "For solo developers and small side projects",
-    monthlyPrice: 19,
-    annualPrice: 15,
-    features: [
-      "500K tokens / month",
-      "Unlimited agent runs",
-      "Basic kanban board",
-      "Community support",
-      "GitHub integration",
-      "Unlimited team members",
-    ],
-  },
-  {
-    tier: "team" as PlanTier,
-    name: "Team",
-    description: "For growing teams shipping real products",
-    monthlyPrice: 46,
-    annualPrice: 39,
-    features: [
-      "1.5M tokens / month",
-      "Unlimited agent runs",
-      "Full pipeline automation",
-      "Custom agent rules",
-      "Priority support",
-      "Audit log & history",
-      "Unlimited team members",
-    ],
-    popular: true,
-  },
-  {
-    tier: "enterprise" as PlanTier,
-    name: "Enterprise",
-    description: "For organizations with advanced needs",
-    monthlyPrice: null,
-    annualPrice: null,
-    features: [
-      "Everything in Team",
-      "10M tokens / month",
-      "SSO & SAML",
-      "Custom agent training",
-      "Dedicated support",
-      "SLA guarantee",
-      "On-premise option",
-      "Advanced analytics",
-      "API access",
-      "Unlimited team members",
-    ],
-  },
-];
+import {
+  PLANS,
+  TOKENS_PER_CENT,
+  TOPUP_TOKENS_PER_DOLLAR,
+  formatTopUpTokens,
+} from "@/config/pricing";
 
 function formatInvoiceAmount(cents: number, currency: string) {
   try {
@@ -459,8 +410,8 @@ export function BillingPage({ onboarding = false }: { onboarding?: boolean }) {
           {(() => {
             const creditsInCents =
               creditsData?.creditsBalance ?? user?.creditsBalance ?? 0;
-            const tokensFromCredits = creditsInCents * 30; // 30 tokens per cent
-            const maxDisplayTokens = 150000; // $5 worth = 150K tokens as reference
+            const tokensFromCredits = creditsInCents * TOKENS_PER_CENT;
+            const maxDisplayTokens = TOPUP_TOKENS_PER_DOLLAR * 5; // $5 worth as reference
             const percentage = Math.min(
               (tokensFromCredits / maxDisplayTokens) * 100,
               100,
@@ -488,7 +439,8 @@ export function BillingPage({ onboarding = false }: { onboarding?: boolean }) {
                   />
                 </div>
                 <p className="text-xs text-amber-600/70 dark:text-amber-500/70 mt-1">
-                  Used when monthly plan quota is exceeded • $1 = 30K tokens
+                  Used when monthly plan quota is exceeded • $1 ={" "}
+                  {formatTopUpTokens(1)} tokens
                 </p>
               </div>
             );

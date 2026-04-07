@@ -3,6 +3,7 @@ import { RouterProvider } from "react-router-dom";
 import { AuthProvider } from "@/contexts/AuthContext";
 import { ThemeProvider } from "@/contexts/ThemeContext";
 import { SpaceProvider } from "@/contexts/SpaceContext";
+import { TokenTopUpProvider } from "@/contexts/TokenTopUpContext";
 import { ToastProvider } from "@/components/Toast";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { router } from "@/routes";
@@ -24,7 +25,9 @@ export default function App() {
           <ToastProvider>
             <AuthProvider>
               <SpaceProvider>
-                <RouterProvider router={router} />
+                <TokenTopUpProvider>
+                  <RouterProvider router={router} />
+                </TokenTopUpProvider>
               </SpaceProvider>
             </AuthProvider>
           </ToastProvider>

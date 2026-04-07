@@ -2,7 +2,8 @@ import { Injectable, Logger, Inject, forwardRef } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { InjectRepository } from "@nestjs/typeorm";
 import { Repository } from "typeorm";
-import Anthropic from "@anthropic-ai/sdk";
+import { generateText } from "ai";
+import { createMimoProvider } from "./mimo-provider";
 import { Agent } from "../entities/agent.entity";
 import { Execution } from "../entities/execution.entity";
 import { RulesService } from "../rules/rules.service";
@@ -16,7 +17,6 @@ import { AgentMemoryService } from "./agent-memory.service";
 @Injectable()
 export class CustomAgentService {
   private readonly logger = new Logger(CustomAgentService.name);
-  private client: Anthropic;
 
   constructor(
     private configService: ConfigService,
@@ -29,11 +29,7 @@ export class CustomAgentService {
     private agentRunQuota: AgentRunQuotaService,
     private modelRouter: ModelRouterService,
     private agentMemory: AgentMemoryService,
-  ) {
-    this.client = new Anthropic({
-      apiKey: this.configService.get("ANTHROPIC_API_KEY", ""),
-    });
-  }
+  ) {}
 
   async run(
     spaceId: string,
@@ -75,43 +71,34 @@ export class CustomAgentService {
         systemPrompt += `\n\n# Learned Patterns\nApply these lessons from past executions:\n${compiledMemories}`;
       }
 
-      const { model } = this.modelRouter.routeModel("custom", userMessage, {
-        envModel: this.configService.get("ANTHROPIC_MODEL"),
-      });
+      const { model: modelName } = this.modelRouter.routeModel(
+        "custom",
+        userMessage,
+        { envModel: this.configService.get("MIMO_MODEL") },
+      );
 
-      const response = await this.client.messages.create({
-        model,
-        max_tokens: 4096,
-        system: [
-          {
-            type: "text",
-            text: systemPrompt,
-            cache_control: { type: "ephemeral" },
-          },
-        ],
+      const provider = createMimoProvider(
+        this.configService.get("MIMO_API_KEY", ""),
+      );
+
+      const result = await generateText({
+        model: provider.chatModel(modelName),
+        system: systemPrompt,
         messages: [{ role: "user", content: userMessage }],
       });
 
-      let finalText = "";
-      for (const block of response.content) {
-        if (block.type === "text") {
-          finalText += block.text;
-        }
-      }
+      const finalText = result.text || "";
 
-      // Store token usage on execution
-      execution.inputTokens = response.usage?.input_tokens ?? 0;
-      execution.outputTokens = response.usage?.output_tokens ?? 0;
-      execution.cacheReadTokens =
-        (response.usage as any)?.cache_read_input_tokens ?? 0;
-      execution.cacheCreationTokens =
-        (response.usage as any)?.cache_creation_input_tokens ?? 0;
+      // Store token usage
+      execution.inputTokens = result.usage?.promptTokens ?? 0;
+      execution.outputTokens = result.usage?.completionTokens ?? 0;
+      execution.cacheReadTokens = 0;
+      execution.cacheCreationTokens = 0;
       execution.tokensUsed =
-        (response.usage?.input_tokens ?? 0) +
-        (response.usage?.output_tokens ?? 0);
-      execution.modelUsed = model;
+        (result.usage?.promptTokens ?? 0) +
+        (result.usage?.completionTokens ?? 0);
+      execution.modelUsed = modelName;
 
-      // Compute cost-weighted tokens for accurate billing
       execution.costWeightedTokens = computeCostWeightedTokens({
         inputTokens: execution.inputTokens,
         outputTokens: execution.outputTokens,
@@ -127,7 +114,6 @@ export class CustomAgentService {
       await this.agentRepo.update(agent.id, { status: "idle" });
       this.eventsGateway.emitAgentStatus(spaceId, agent.id, "idle");
 
-      // Deduct credits if over monthly quota
       if (execution.costWeightedTokens > 0) {
         this.agentRunQuota
           .deductCreditsForExecution(spaceId, execution.costWeightedTokens)

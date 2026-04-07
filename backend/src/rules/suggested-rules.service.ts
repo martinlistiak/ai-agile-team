@@ -1,12 +1,13 @@
-import { Injectable, Logger, NotFoundException } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
-import { ConfigService } from '@nestjs/config';
-import { EventEmitter2 } from '@nestjs/event-emitter';
-import Anthropic from '@anthropic-ai/sdk';
-import { SuggestedRule } from '../entities/suggested-rule.entity';
-import { Execution } from '../entities/execution.entity';
-import { RulesService } from './rules.service';
+import { Injectable, Logger, NotFoundException } from "@nestjs/common";
+import { InjectRepository } from "@nestjs/typeorm";
+import { Repository } from "typeorm";
+import { ConfigService } from "@nestjs/config";
+import { EventEmitter2 } from "@nestjs/event-emitter";
+import { generateText } from "ai";
+import { createMimoProvider } from "../agents/mimo-provider";
+import { SuggestedRule } from "../entities/suggested-rule.entity";
+import { Execution } from "../entities/execution.entity";
+import { RulesService } from "./rules.service";
 
 const SUGGESTION_PROMPT = `You are analyzing an AI agent's execution log to identify patterns that could be turned into reusable rules.
 
@@ -33,31 +34,27 @@ IMPORTANT: Only suggest rules that represent genuine patterns, not one-off decis
 @Injectable()
 export class SuggestedRulesService {
   private readonly logger = new Logger(SuggestedRulesService.name);
-  private client: Anthropic;
 
   constructor(
     private configService: ConfigService,
     private rulesService: RulesService,
     private eventEmitter: EventEmitter2,
-    @InjectRepository(SuggestedRule) private suggestedRuleRepo: Repository<SuggestedRule>,
+    @InjectRepository(SuggestedRule)
+    private suggestedRuleRepo: Repository<SuggestedRule>,
     @InjectRepository(Execution) private executionRepo: Repository<Execution>,
-  ) {
-    this.client = new Anthropic({
-      apiKey: this.configService.get('ANTHROPIC_API_KEY', ''),
-    });
-  }
+  ) {}
 
   async findBySpace(spaceId: string): Promise<SuggestedRule[]> {
     return this.suggestedRuleRepo.find({
       where: { spaceId },
-      order: { createdAt: 'DESC' },
+      order: { createdAt: "DESC" },
     });
   }
 
   async findPending(spaceId: string): Promise<SuggestedRule[]> {
     return this.suggestedRuleRepo.find({
-      where: { spaceId, status: 'pending' },
-      order: { createdAt: 'DESC' },
+      where: { spaceId, status: "pending" },
+      order: { createdAt: "DESC" },
     });
   }
 
@@ -65,8 +62,10 @@ export class SuggestedRulesService {
    * Accept a suggested rule — creates a real Rule from it.
    */
   async accept(suggestedRuleId: string): Promise<SuggestedRule> {
-    const suggestion = await this.suggestedRuleRepo.findOneBy({ id: suggestedRuleId });
-    if (!suggestion) throw new NotFoundException('Suggested rule not found');
+    const suggestion = await this.suggestedRuleRepo.findOneBy({
+      id: suggestedRuleId,
+    });
+    if (!suggestion) throw new NotFoundException("Suggested rule not found");
 
     // Create actual rule
     await this.rulesService.create({
@@ -76,7 +75,7 @@ export class SuggestedRulesService {
       content: suggestion.content,
     });
 
-    suggestion.status = 'accepted';
+    suggestion.status = "accepted";
     return this.suggestedRuleRepo.save(suggestion);
   }
 
@@ -84,10 +83,41 @@ export class SuggestedRulesService {
    * Reject a suggested rule.
    */
   async reject(suggestedRuleId: string): Promise<SuggestedRule> {
-    const suggestion = await this.suggestedRuleRepo.findOneBy({ id: suggestedRuleId });
-    if (!suggestion) throw new NotFoundException('Suggested rule not found');
-    suggestion.status = 'rejected';
+    const suggestion = await this.suggestedRuleRepo.findOneBy({
+      id: suggestedRuleId,
+    });
+    if (!suggestion) throw new NotFoundException("Suggested rule not found");
+    suggestion.status = "rejected";
     return this.suggestedRuleRepo.save(suggestion);
+  }
+
+  /**
+   * Create a rule suggestion directly from a code review finding.
+   */
+  async createFromReview(
+    spaceId: string,
+    agentId: string,
+    executionId: string,
+    content: string,
+    reasoning: string,
+  ): Promise<SuggestedRule> {
+    const suggestion = this.suggestedRuleRepo.create({
+      spaceId,
+      agentId,
+      executionId,
+      content,
+      reasoning,
+      suggestedScope: "space",
+      status: "pending",
+    });
+    const saved = await this.suggestedRuleRepo.save(suggestion);
+
+    this.eventEmitter.emit("suggested_rule.created", {
+      spaceId,
+      suggestion: saved,
+    });
+
+    return saved;
   }
 
   /**
@@ -102,7 +132,8 @@ export class SuggestedRulesService {
     if (!execution || !execution.agent) return [];
 
     // Only analyze completed executions with meaningful action logs
-    if (execution.status !== 'completed' || execution.actionLog.length < 2) return [];
+    if (execution.status !== "completed" || execution.actionLog.length < 2)
+      return [];
 
     try {
       // Get existing rules to avoid duplicates
@@ -110,17 +141,23 @@ export class SuggestedRulesService {
         execution.agent.spaceId,
         execution.agentId,
       );
-      const existingRulesText = existingRules.length > 0
-        ? existingRules.map(r => `[${r.scope}] ${r.content}`).join('\n')
-        : 'No existing rules';
+      const existingRulesText =
+        existingRules.length > 0
+          ? existingRules.map((r) => `[${r.scope}] ${r.content}`).join("\n")
+          : "No existing rules";
 
-      const response = await this.client.messages.create({
-        model: this.configService.get('ANTHROPIC_MODEL', 'claude-sonnet-4-20250514'),
-        max_tokens: 1024,
+      const provider = createMimoProvider(
+        this.configService.get("MIMO_API_KEY", ""),
+      );
+
+      const response = await generateText({
+        model: provider.chatModel(
+          this.configService.get("MIMO_MODEL", "mimo-v2-pro"),
+        ),
         system: SUGGESTION_PROMPT,
         messages: [
           {
-            role: 'user',
+            role: "user",
             content: `Agent type: ${execution.agent.agentType}
 Execution action log (${execution.actionLog.length} actions):
 ${JSON.stringify(execution.actionLog.slice(-20), null, 2)}
@@ -129,16 +166,18 @@ Current rules:
 ${existingRulesText}`,
           },
         ],
+        maxTokens: 1024,
       });
 
-      const text = response.content.find(b => b.type === 'text')?.text ?? '';
+      const text = response.text ?? "";
 
       // Extract JSON from the response
       const jsonMatch = text.match(/\{[\s\S]*"suggestions"[\s\S]*\}/);
       if (!jsonMatch) return [];
 
       const parsed = JSON.parse(jsonMatch[0]);
-      if (!Array.isArray(parsed.suggestions) || parsed.suggestions.length === 0) return [];
+      if (!Array.isArray(parsed.suggestions) || parsed.suggestions.length === 0)
+        return [];
 
       const suggestions: SuggestedRule[] = [];
       for (const s of parsed.suggestions) {
@@ -148,17 +187,19 @@ ${existingRulesText}`,
           executionId: execution.id,
           content: s.content,
           reasoning: s.reasoning,
-          suggestedScope: s.scope || 'agent',
-          status: 'pending',
+          suggestedScope: s.scope || "agent",
+          status: "pending",
         });
         suggestions.push(await this.suggestedRuleRepo.save(suggestion));
       }
 
-      this.logger.log(`Generated ${suggestions.length} rule suggestions from execution ${executionId}`);
+      this.logger.log(
+        `Generated ${suggestions.length} rule suggestions from execution ${executionId}`,
+      );
 
       // Emit event so the WS gateway can notify the frontend
       for (const suggestion of suggestions) {
-        this.eventEmitter.emit('suggested_rule.created', {
+        this.eventEmitter.emit("suggested_rule.created", {
           spaceId: execution.agent.spaceId,
           suggestion,
         });
@@ -180,29 +221,39 @@ ${existingRulesText}`,
    * Auto-accept a suggested rule if similar rules have been suggested 3+ times.
    * This creates the actual rule and marks all similar suggestions as accepted.
    */
-  private async autoAcceptIfHighConfidence(suggestion: SuggestedRule): Promise<void> {
+  private async autoAcceptIfHighConfidence(
+    suggestion: SuggestedRule,
+  ): Promise<void> {
     try {
       // Find similar pending suggestions for the same agent/space
       const allPending = await this.suggestedRuleRepo.find({
         where: {
           spaceId: suggestion.spaceId,
           agentId: suggestion.agentId ?? undefined,
-          status: 'pending',
+          status: "pending",
         },
       });
 
       // Simple similarity: count suggestions whose content shares significant overlap
       const contentLower = suggestion.content.toLowerCase();
-      const contentWords = new Set(contentLower.split(/\s+/).filter(w => w.length > 3));
+      const contentWords = new Set(
+        contentLower.split(/\s+/).filter((w) => w.length > 3),
+      );
 
       const similar = allPending.filter((s) => {
         if (s.id === suggestion.id) return true; // Include self
         const otherWords = new Set(
-          s.content.toLowerCase().split(/\s+/).filter(w => w.length > 3),
+          s.content
+            .toLowerCase()
+            .split(/\s+/)
+            .filter((w) => w.length > 3),
         );
         const intersection = [...contentWords].filter((w) => otherWords.has(w));
         // At least 50% word overlap
-        return intersection.length >= Math.min(contentWords.size, otherWords.size) * 0.5;
+        return (
+          intersection.length >=
+          Math.min(contentWords.size, otherWords.size) * 0.5
+        );
       });
 
       if (similar.length >= 3) {
@@ -215,21 +266,24 @@ ${existingRulesText}`,
 
         // Mark all similar suggestions as accepted too
         for (const s of similar) {
-          if (s.id !== suggestion.id && s.status === 'pending') {
-            s.status = 'accepted';
+          if (s.id !== suggestion.id && s.status === "pending") {
+            s.status = "accepted";
             await this.suggestedRuleRepo.save(s);
           }
         }
 
         // Emit auto-accept event
-        this.eventEmitter.emit('suggested_rule.auto_accepted', {
+        this.eventEmitter.emit("suggested_rule.auto_accepted", {
           spaceId: suggestion.spaceId,
           suggestion,
           similarCount: similar.length,
         });
       }
     } catch (err) {
-      this.logger.warn(`Auto-accept check failed for suggestion ${suggestion.id}:`, err);
+      this.logger.warn(
+        `Auto-accept check failed for suggestion ${suggestion.id}:`,
+        err,
+      );
     }
   }
 }

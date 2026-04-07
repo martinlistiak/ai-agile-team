@@ -752,7 +752,8 @@ export class BillingService {
       ])
       .getRawOne();
 
-    const monthlyTokenLimit = getMonthlyTokenLimit(user.planTier);
+    const spaceCount = await this.spaceRepo.count({ where: { userId } });
+    const monthlyTokenLimit = getMonthlyTokenLimit(user.planTier, spaceCount);
     const totalTokens = stats?.totalTokens ?? 0;
 
     return {

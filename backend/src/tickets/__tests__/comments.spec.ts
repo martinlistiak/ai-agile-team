@@ -14,7 +14,12 @@ describe("TicketsService.addComment", () => {
     mockEventEmitter = {
       emit: jest.fn(),
     };
-    service = new TicketsService(mockRepo, {} as any, mockEventEmitter);
+    service = new TicketsService(
+      mockRepo,
+      {} as any,
+      {} as any,
+      mockEventEmitter,
+    );
   });
 
   it("should append a comment with correct shape to the ticket", async () => {

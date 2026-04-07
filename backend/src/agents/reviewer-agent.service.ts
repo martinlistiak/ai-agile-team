@@ -1,7 +1,10 @@
 import { Injectable, Logger, Inject, forwardRef } from "@nestjs/common";
+import { ConfigService } from "@nestjs/config";
 import { InjectRepository } from "@nestjs/typeorm";
 import { Repository } from "typeorm";
-import { query } from "@anthropic-ai/claude-agent-sdk";
+import { generateText, tool } from "ai";
+import { z } from "zod";
+import { createMimoProvider } from "./mimo-provider";
 import { Agent } from "../entities/agent.entity";
 import { Execution } from "../entities/execution.entity";
 import { Space } from "../entities/space.entity";
@@ -19,6 +22,8 @@ import { ModelRouterService } from "./model-router.service";
 import { AgentMemoryService } from "./agent-memory.service";
 import { AgentBoosterService } from "./agent-booster.service";
 import { execSync } from "child_process";
+import { readFileSync } from "fs";
+import { join } from "path";
 
 const REVIEWER_SYSTEM_PROMPT = `You are a Code Reviewer AI agent in an agile software development team.
 Your role is to review pull requests, identify issues, and provide constructive feedback.
@@ -67,6 +72,7 @@ export class ReviewerAgentService {
   private readonly logger = new Logger(ReviewerAgentService.name);
 
   constructor(
+    private configService: ConfigService,
     private ticketsService: TicketsService,
     private githubService: GithubService,
     private gitlabService: GitlabService,
@@ -84,10 +90,6 @@ export class ReviewerAgentService {
     private agentBooster: AgentBoosterService,
   ) {}
 
-  /**
-   * Run the reviewer agent on a ticket's PR.
-   * Reviews the code diff, posts comments on the GitHub PR, and adds a summary to the ticket.
-   */
   async run(
     spaceId: string,
     userMessage: string,
@@ -100,7 +102,6 @@ export class ReviewerAgentService {
       agentType: "reviewer",
     });
     if (!agent) {
-      // Auto-create the reviewer agent if missing (handles spaces created before agent seeding or partial failures)
       this.logger.warn(
         `Reviewer agent missing for space ${spaceId}, auto-creating`,
       );
@@ -114,9 +115,8 @@ export class ReviewerAgentService {
     }
 
     await this.agentRepo.update(agent.id, { status: "active" });
-    this.eventsGateway.emitAgentStatus(spaceId, agent.id, "active");
+    this.eventsGateway.emitAgentStatus(spaceId, agent.id, "active", ticketId);
 
-    // Assign agent to ticket so the frontend can show the electric border
     if (ticketId) {
       await this.ticketsService.update(ticketId, {
         assigneeAgentId: agent.id,
@@ -130,7 +130,7 @@ export class ReviewerAgentService {
       actionLog: [],
     });
     await this.executionRepo.save(execution);
-    const abortController = this.executionRegistry.register(execution.id);
+    this.executionRegistry.register(execution.id);
 
     const startTime = Date.now();
     this.logger.log(
@@ -149,7 +149,7 @@ export class ReviewerAgentService {
         ? await this.gitlabService.getRepoPath(spaceId)
         : await this.githubService.getRepoPath(spaceId);
 
-      // Check for booster fast path (no LLM needed)
+      // Check for booster fast path
       const fastPath = this.agentBooster.classify("reviewer", userMessage);
       if (fastPath && !ticketId) {
         const boosterResult = this.executeFastPath(fastPath, repoPath);
@@ -169,7 +169,12 @@ export class ReviewerAgentService {
           ];
           await this.executionRepo.save(execution);
           await this.agentRepo.update(agent.id, { status: "idle" });
-          this.eventsGateway.emitAgentStatus(spaceId, agent.id, "idle");
+          this.eventsGateway.emitAgentStatus(
+            spaceId,
+            agent.id,
+            "idle",
+            ticketId,
+          );
           return boosterResult;
         }
       }
@@ -210,7 +215,6 @@ Use \`git diff main...runa/${ticketId}\` to see the changes.
 
 ${userMessage ? `**Additional instructions from the user:** ${userMessage}` : "Review this PR according to the ticket requirements and code quality standards."}`;
 
-        // Move ticket to review status
         await this.ticketsService.moveTicket(ticketId, "review", "agent", {
           id: agent.id,
           name: "Reviewer",
@@ -218,7 +222,7 @@ ${userMessage ? `**Additional instructions from the user:** ${userMessage}` : "R
         });
       }
 
-      // Compile rules and episodic memories
+      // Compile rules and memories
       const [compiledRules, compiledMemories] = await Promise.all([
         this.rulesService.compileRulesForAgent(spaceId, agent.id),
         this.agentMemory.compileMemoriesForAgent(spaceId, agent.id),
@@ -230,79 +234,59 @@ ${userMessage ? `**Additional instructions from the user:** ${userMessage}` : "R
       if (compiledMemories) {
         systemSuffix += `\n\n# Learned Patterns\nApply these lessons from past executions:\n${compiledMemories}`;
       }
-      const fullPrompt = `${REVIEWER_SYSTEM_PROMPT}${systemSuffix}\n\n---\n\n${prompt}`;
+      const fullSystem = `${REVIEWER_SYSTEM_PROMPT}${systemSuffix}`;
 
-      // Run the Claude Agent SDK
-      let finalResult = "";
-      const actionLog: any[] = [];
-      let sdkUsage: any = null;
-      const { model } = this.modelRouter.routeModel("reviewer", userMessage, {
-        ticketId,
-        ticketPriority: ticket?.priority,
+      const { model: modelName } = this.modelRouter.routeModel(
+        "reviewer",
+        userMessage,
+        { ticketId, ticketPriority: ticket?.priority },
+      );
+
+      const provider = createMimoProvider(
+        this.configService.get("MIMO_API_KEY", ""),
+      );
+
+      const reviewerTools = this.buildTools(repoPath);
+
+      const result = await generateText({
+        model: provider.chatModel(modelName),
+        system: fullSystem,
+        messages: [{ role: "user", content: prompt }],
+        tools: reviewerTools,
+        maxSteps: 30,
       });
 
-      for await (const message of query({
-        prompt: fullPrompt,
-        options: {
-          model,
-          allowedTools: ["Read", "Bash", "Glob", "Grep"],
-          cwd: repoPath,
-          permissionMode: "bypassPermissions",
-          allowDangerouslySkipPermissions: true,
-          maxTurns: 30,
-          executable: "bun",
-          abortController,
-          stderr: (data: string) => {
-            this.logger.debug(`Claude SDK stderr: ${data}`);
-          },
-        },
-      })) {
-        if ("type" in message && message.type === "assistant") {
-          const content = (message as any).message?.content;
-          if (Array.isArray(content)) {
-            for (const block of content) {
-              if (block.type === "text" && block.text) {
-                finalResult = block.text;
-              }
-              if (block.type === "tool_use") {
-                actionLog.push({
-                  tool: block.name,
-                  input: block.input,
-                  timestamp: new Date().toISOString(),
-                });
-                this.eventsGateway.emitExecutionAction(spaceId, {
-                  executionId: execution.id,
-                  agentId: agent.id,
-                  tool: block.name,
-                  inputSummary:
-                    typeof block.input === "string"
-                      ? block.input.substring(0, 200)
-                      : JSON.stringify(block.input).substring(0, 200),
-                  timestamp: new Date().toISOString(),
-                });
-              }
-            }
-          }
-        }
-        if ("result" in message) {
-          finalResult = (message as any).result;
-          sdkUsage = (message as any).usage;
+      const finalResult = result.text || "";
+
+      // Build action log
+      const actionLog: any[] = [];
+      for (const step of result.steps ?? []) {
+        for (const tc of step.toolCalls ?? []) {
+          actionLog.push({
+            tool: tc.toolName,
+            input: tc.args,
+            timestamp: new Date().toISOString(),
+          });
+          this.eventsGateway.emitExecutionAction(spaceId, {
+            executionId: execution.id,
+            agentId: agent.id,
+            tool: tc.toolName,
+            inputSummary: JSON.stringify(tc.args).substring(0, 200),
+            timestamp: new Date().toISOString(),
+          });
         }
       }
 
-      // Store token usage from SDK result
-      if (sdkUsage) {
-        execution.inputTokens = sdkUsage.input_tokens ?? 0;
-        execution.outputTokens = sdkUsage.output_tokens ?? 0;
-        execution.cacheReadTokens = sdkUsage.cache_read_input_tokens ?? 0;
-        execution.cacheCreationTokens =
-          sdkUsage.cache_creation_input_tokens ?? 0;
-        execution.tokensUsed =
-          (sdkUsage.input_tokens ?? 0) + (sdkUsage.output_tokens ?? 0);
-      }
-      execution.modelUsed = model;
+      // Store token usage
+      execution.inputTokens = result.usage?.promptTokens ?? 0;
+      execution.outputTokens = result.usage?.completionTokens ?? 0;
+      execution.cacheReadTokens = 0;
+      execution.cacheCreationTokens = 0;
+      execution.tokensUsed =
+        (result.usage?.promptTokens ?? 0) +
+        (result.usage?.completionTokens ?? 0);
+      execution.modelUsed = modelName;
 
-      // Compute cost-weighted tokens for accurate billing
       execution.costWeightedTokens = computeCostWeightedTokens({
         inputTokens: execution.inputTokens,
         outputTokens: execution.outputTokens,
@@ -311,9 +295,8 @@ ${userMessage ? `**Additional instructions from the user:** ${userMessage}` : "R
         modelUsed: execution.modelUsed,
       });
 
-      // Post review comments on GitHub PR and summary on ticket
+      // Post review comments on GitHub/GitLab PR and summary on ticket
       if (ticketId && ticket) {
-        // Post PR review comment on GitHub/GitLab
         try {
           if (!useGitlab && space?.githubRepoUrl && ticket.prUrl) {
             await this.githubService.createPrReviewComment(
@@ -322,60 +305,87 @@ ${userMessage ? `**Additional instructions from the user:** ${userMessage}` : "R
               finalResult,
             );
             this.logger.log(`Posted PR review comment for ticket ${ticketId}`);
+          } else if (useGitlab && space?.gitlabRepoUrl && ticket.prUrl) {
+            await this.gitlabService.createMrReviewComment(
+              spaceId,
+              ticket.prUrl,
+              finalResult,
+            );
+            this.logger.log(`Posted MR review comment for ticket ${ticketId}`);
           }
         } catch (prError) {
           this.logger.error(
-            `Failed to post PR review comment for ticket ${ticketId}:`,
+            `Failed to post PR/MR review comment for ticket ${ticketId}:`,
             prError,
           );
         }
 
-        // Post summary comment on the ticket
-        const summaryComment = `## 🔍 Code Review Complete\n\n${finalResult}`;
+        // Extract verdict line and move it to the top of the comment
+        const verdictMatch = finalResult.match(/^#+\s*Verdict[:\s]*(.+)$/im);
+        let formattedResult = finalResult;
+        if (verdictMatch) {
+          // Remove the verdict section from its original position
+          formattedResult = finalResult
+            .replace(/^#+\s*Verdict[:\s]*(.+)$/im, "")
+            .replace(/\n{3,}/g, "\n\n")
+            .trim();
+          const verdictValue = verdictMatch[1].trim();
+          formattedResult = `**Verdict: ${verdictValue}**\n\n---\n\n${formattedResult}`;
+        }
+
+        const summaryComment = `## 🔍 Code Review Complete\n\n${formattedResult}`;
         await this.ticketsService.addComment(
           ticketId,
           summaryComment,
           "agent",
           agent.id,
           "Reviewer",
+          "reviewer",
         );
 
-        // If approved, advance to testing; if changes requested, move back to development
         const lowerResult = finalResult.toLowerCase();
-        if (
+        const isApproved =
           lowerResult.includes("verdict: approve") ||
-          lowerResult.includes("verdict:**approve")
-        ) {
+          lowerResult.includes("verdict:**approve");
+        const isRequestChanges =
+          lowerResult.includes("verdict: request_changes") ||
+          lowerResult.includes("verdict:**request_changes");
+
+        if (isApproved) {
           await this.ticketsService.moveTicket(ticketId, "testing", "agent", {
             id: agent.id,
             name: "Reviewer",
             type: "agent",
           });
-        } else if (
-          lowerResult.includes("verdict: request_changes") ||
-          lowerResult.includes("verdict:**request_changes")
-        ) {
-          await this.ticketsService.moveTicket(
+        } else if (isRequestChanges) {
+          // Don't auto-move back to development — emit event so user can decide
+          this.eventsGateway.emitReviewVerdict(spaceId, {
             ticketId,
-            "development",
-            "agent",
-            {
-              id: agent.id,
-              name: "Reviewer",
-              type: "agent",
-            },
+            verdict: "request_changes",
+            summary:
+              verdictMatch?.[1]?.trim() ?? "Changes requested by reviewer",
+          });
+
+          // Generate rule suggestions from the review shortcomings
+          this.generateRuleSuggestionsFromReview(
+            spaceId,
+            agent.id,
+            execution.id,
+            finalResult,
+          ).catch((err) =>
+            this.logger.warn(
+              `Failed to generate rule suggestions from review: ${err}`,
+            ),
           );
         }
       }
 
-      // Update execution
       this.executionRegistry.remove(execution.id);
       execution.status = "completed";
       execution.endTime = new Date();
       execution.actionLog = actionLog;
       await this.executionRepo.save(execution);
 
-      // Deduct credits if over monthly quota
       if (execution.costWeightedTokens > 0) {
         this.agentRunQuota
           .deductCreditsForExecution(spaceId, execution.costWeightedTokens)
@@ -387,7 +397,7 @@ ${userMessage ? `**Additional instructions from the user:** ${userMessage}` : "R
           );
       }
 
-      // Trigger learning loops — rule suggestions + episodic memory extraction
+      // Trigger learning loops
       this.agentMemory
         .analyzeExecution(execution.id)
         .catch((err) =>
@@ -406,7 +416,12 @@ ${userMessage ? `**Additional instructions from the user:** ${userMessage}` : "R
         )
         .finally(() => {
           this.agentRepo.update(agent.id, { status: "idle" });
-          this.eventsGateway.emitAgentStatus(spaceId, agent.id, "idle");
+          this.eventsGateway.emitAgentStatus(
+            spaceId,
+            agent.id,
+            "idle",
+            ticketId,
+          );
         });
 
       this.logger.log(
@@ -440,14 +455,138 @@ ${userMessage ? `**Additional instructions from the user:** ${userMessage}` : "R
       execution.endTime = new Date();
       await this.executionRepo.save(execution);
       await this.agentRepo.update(agent.id, { status: "error" });
-      this.eventsGateway.emitAgentStatus(spaceId, agent.id, "error");
+      this.eventsGateway.emitAgentStatus(spaceId, agent.id, "error", ticketId);
       throw error;
     }
   }
 
   /**
-   * Execute a reviewer fast-path operation without LLM.
+   * Generate rule suggestions directly from review shortcomings.
+   * Called when the reviewer requests changes — extracts blocking issues
+   * and suggests rules to prevent them in the future.
    */
+  private async generateRuleSuggestionsFromReview(
+    spaceId: string,
+    agentId: string,
+    executionId: string,
+    reviewText: string,
+  ): Promise<void> {
+    // Extract blocking issues from the review
+    const blockingPattern =
+      /\*\*Severity:\*\*\s*blocking[\s\S]*?\*\*Comment:\*\*\s*(.+?)(?=\n-\s*\*\*File|\n##|$)/gi;
+    const blockingIssues: string[] = [];
+    let match: RegExpExecArray | null;
+    while ((match = blockingPattern.exec(reviewText)) !== null) {
+      blockingIssues.push(match[1].trim());
+    }
+
+    if (blockingIssues.length === 0) return;
+
+    // Create rule suggestions from blocking issues
+    for (const issue of blockingIssues.slice(0, 3)) {
+      await this.suggestedRulesService.createFromReview(
+        spaceId,
+        agentId,
+        executionId,
+        `Avoid: ${issue}`,
+        `Code reviewer flagged this as a blocking issue during review.`,
+      );
+    }
+  }
+
+  private buildTools(repoPath: string) {
+    return {
+      read_file: tool({
+        description: "Read the contents of a file in the repository",
+        parameters: z.object({
+          file_path: z.string().describe("Relative file path"),
+        }),
+        execute: async (input) => {
+          try {
+            const target = join(repoPath, input.file_path);
+            if (!target.startsWith(repoPath))
+              return { error: "Path outside repository" };
+            const content = readFileSync(target, "utf-8");
+            return {
+              content:
+                content.length > 50_000
+                  ? content.slice(0, 50_000) + "\n... (truncated)"
+                  : content,
+            };
+          } catch (err: any) {
+            return { error: err.message };
+          }
+        },
+      }),
+      bash: tool({
+        description:
+          "Execute a shell command in the repository (for git diff, grep, etc.)",
+        parameters: z.object({
+          command: z.string().describe("Shell command to execute"),
+        }),
+        execute: async (input) => {
+          try {
+            const output = execSync(input.command, {
+              cwd: repoPath,
+              timeout: 60_000,
+              encoding: "utf-8",
+              maxBuffer: 1024 * 1024 * 5,
+            });
+            return {
+              output:
+                output.length > 10_000
+                  ? output.slice(0, 10_000) + "\n... (truncated)"
+                  : output,
+            };
+          } catch (err: any) {
+            return {
+              error: err.message,
+              stdout: err.stdout?.slice(0, 5000),
+              stderr: err.stderr?.slice(0, 5000),
+            };
+          }
+        },
+      }),
+      glob: tool({
+        description: "List files matching a glob pattern",
+        parameters: z.object({
+          pattern: z.string().describe("Glob pattern"),
+        }),
+        execute: async (input) => {
+          try {
+            const output = execSync(
+              `find . -path './.git' -prune -o -path '${input.pattern}' -print 2>/dev/null | head -200`,
+              { cwd: repoPath, encoding: "utf-8", timeout: 10_000 },
+            );
+            return { files: output.trim().split("\n").filter(Boolean) };
+          } catch (err: any) {
+            return { error: err.message };
+          }
+        },
+      }),
+      grep: tool({
+        description: "Search for a pattern in files",
+        parameters: z.object({
+          pattern: z.string().describe("Search pattern (regex)"),
+          path: z.string().optional().describe("Optional path to search in"),
+        }),
+        execute: async (input) => {
+          try {
+            const searchPath = input.path || ".";
+            const output = execSync(
+              `grep -rn --include='*' '${input.pattern.replace(/'/g, "\\'")}' ${searchPath} 2>/dev/null | head -100`,
+              { cwd: repoPath, encoding: "utf-8", timeout: 10_000 },
+            );
+            return { matches: output.trim() };
+          } catch (err: any) {
+            if (err.status === 1) return { matches: "" };
+            return { error: err.message };
+          }
+        },
+      }),
+    };
+  }
+
   private executeFastPath(fastPath: string, repoPath: string): string | null {
     try {
       const opts = {

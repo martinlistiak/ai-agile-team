@@ -4,7 +4,9 @@ import { InjectRepository } from "@nestjs/typeorm";
 import { Repository } from "typeorm";
 import { readFileSync, readdirSync } from "fs";
 import { join } from "path";
-import Anthropic from "@anthropic-ai/sdk";
+import { generateText, tool } from "ai";
+import { z } from "zod";
+import { createMimoProvider } from "./mimo-provider";
 import { Agent } from "../entities/agent.entity";
 import { Ticket } from "../entities/ticket.entity";
 import { Execution } from "../entities/execution.entity";
@@ -21,117 +23,6 @@ import { AgentRunQuotaService } from "../common/agent-run-quota.service";
 import { computeCostWeightedTokens } from "../common/subscription.constants";
 import { AgentMemoryService } from "./agent-memory.service";
 import { AgentBoosterService } from "./agent-booster.service";
-
-const TOOLS: Anthropic.Tool[] = [
-  {
-    name: "create_ticket",
-    description:
-      "Create a new ticket on the kanban board with title, description (markdown with acceptance criteria), and priority",
-    input_schema: {
-      type: "object" as const,
-      properties: {
-        title: {
-          type: "string",
-          description: "Short, descriptive ticket title",
-        },
-        description: {
-          type: "string",
-          description:
-            "Detailed markdown description including acceptance criteria",
-        },
-        priority: {
-          type: "string",
-          enum: ["low", "medium", "high", "critical"],
-          description: "Ticket priority",
-        },
-        status: {
-          type: "string",
-          enum: ["backlog"],
-          description: "Initial status",
-        },
-      },
-      required: ["title", "description", "priority"],
-    },
-  },
-  {
-    name: "update_ticket",
-    description: "Update an existing ticket",
-    input_schema: {
-      type: "object" as const,
-      properties: {
-        ticket_id: { type: "string", description: "The ticket ID to update" },
-        title: { type: "string" },
-        description: { type: "string" },
-        priority: {
-          type: "string",
-          enum: ["low", "medium", "high", "critical"],
-        },
-      },
-      required: ["ticket_id"],
-    },
-  },
-  {
-    name: "delete_ticket",
-    description:
-      "Delete an existing ticket from the kanban board. Use this when the user asks to remove, delete, or discard a ticket/task.",
-    input_schema: {
-      type: "object" as const,
-      properties: {
-        ticket_id: {
-          type: "string",
-          description: "The ID of the ticket to delete",
-        },
-      },
-      required: ["ticket_id"],
-    },
-  },
-  {
-    name: "list_tickets",
-    description:
-      "List all tickets in the current space. Returns ticket id, title, status, and priority for each ticket. Use this to look up ticket IDs before updating or deleting tickets.",
-    input_schema: {
-      type: "object" as const,
-      properties: {
-        status: {
-          type: "string",
-          enum: ["backlog", "in_progress", "review", "done"],
-          description: "Optional: filter tickets by status column",
-        },
-      },
-      required: [],
-    },
-  },
-  {
-    name: "list_files",
-    description:
-      "List files and directories at a given path in the connected repository. Returns names with a trailing / for directories.",
-    input_schema: {
-      type: "object" as const,
-      properties: {
-        path: {
-          type: "string",
-          description: 'Relative path inside the repo (use "" or "." for root)',
-        },
-      },
-      required: ["path"],
-    },
-  },
-  {
-    name: "read_file",
-    description:
-      "Read the contents of a file in the connected repository (truncated to 10 000 chars for large files).",
-    input_schema: {
-      type: "object" as const,
-      properties: {
-        path: {
-          type: "string",
-          description: "Relative file path inside the repo",
-        },
-      },
-      required: ["path"],
-    },
-  },
-];
 
 const SYSTEM_PROMPT = `You are a Product Manager AI agent in an agile software development team. Your role is to:
 
@@ -159,7 +50,7 @@ CRITICAL: If list_files or read_file return an error (e.g. no repository connect
 
 Always use the create_ticket tool to create tickets. After creating all tickets, provide a brief summary of what you created.`;
 
-function inferAnthropicMediaType(data: Buffer, fallback: string) {
+function inferMediaType(data: Buffer, fallback: string): string {
   if (
     data.length >= 8 &&
     data
@@ -168,7 +59,6 @@ function inferAnthropicMediaType(data: Buffer, fallback: string) {
   ) {
     return "image/png";
   }
-
   if (
     data.length >= 3 &&
     data[0] === 0xff &&
@@ -177,14 +67,10 @@ function inferAnthropicMediaType(data: Buffer, fallback: string) {
   ) {
     return "image/jpeg";
   }
-
   if (data.length >= 6) {
     const header = data.subarray(0, 6).toString("ascii");
-    if (header === "GIF87a" || header === "GIF89a") {
-      return "image/gif";
-    }
+    if (header === "GIF87a" || header === "GIF89a") return "image/gif";
   }
-
   if (
     data.length >= 12 &&
     data.subarray(0, 4).toString("ascii") === "RIFF" &&
@@ -192,14 +78,12 @@ function inferAnthropicMediaType(data: Buffer, fallback: string) {
   ) {
     return "image/webp";
   }
-
   return fallback;
 }
 
 @Injectable()
 export class PmAgentService {
   private readonly logger = new Logger(PmAgentService.name);
-  private client: Anthropic;
 
   constructor(
     private configService: ConfigService,
@@ -218,11 +102,7 @@ export class PmAgentService {
     private modelRouter: ModelRouterService,
     private agentMemory: AgentMemoryService,
     private agentBooster: AgentBoosterService,
-  ) {
-    this.client = new Anthropic({
-      apiKey: this.configService.get("ANTHROPIC_API_KEY", ""),
-    });
-  }
+  ) {}
 
   async run(
     spaceId: string,
@@ -250,7 +130,6 @@ export class PmAgentService {
     await this.agentRepo.update(agent.id, { status: "active" });
     this.eventsGateway.emitAgentStatus(spaceId, agent.id, "active");
 
-    // Create execution record
     const execution = this.executionRepo.create({
       agentId: agent.id,
       status: "running",
@@ -289,40 +168,27 @@ export class PmAgentService {
         }
       }
 
-      const userContent: any[] = [];
+      // Build user content parts
+      const userParts: any[] = [];
       if (userMessage.trim()) {
-        userContent.push({ type: "text", text: userMessage.trim() });
+        userParts.push({ type: "text" as const, text: userMessage.trim() });
       }
-
       for (const attachment of attachments) {
         if (!attachment.mimeType.startsWith("image/")) continue;
-        userContent.push({
-          type: "image",
-          source: {
-            type: "base64",
-            media_type: inferAnthropicMediaType(
-              attachment.data,
-              attachment.mimeType,
-            ),
-            data: attachment.data.toString("base64"),
-          },
+        userParts.push({
+          type: "image" as const,
+          image: attachment.data,
+          mimeType: inferMediaType(attachment.data, attachment.mimeType),
         });
       }
-
-      if (userContent.length === 0) {
-        userContent.push({
-          type: "text",
+      if (userParts.length === 0) {
+        userParts.push({
+          type: "text" as const,
           text: "Analyze the provided input and create the appropriate tickets.",
         });
       }
 
-      const messages: Anthropic.MessageParam[] = [
-        { role: "user", content: userContent as any },
-      ];
-
-      let finalText = "";
-
-      // Compile 3-tier rules for this agent
+      // Compile rules and memories
       const [compiledRules, compiledMemories] = await Promise.all([
         this.rulesService.compileRulesForAgent(spaceId, agent.id),
         this.agentMemory.compileMemoriesForAgent(spaceId, agent.id),
@@ -335,89 +201,56 @@ export class PmAgentService {
         systemPrompt += `\n\n# Learned Patterns\nApply these lessons from past executions:\n${compiledMemories}`;
       }
 
-      // Token tracking accumulators
-      let totalInputTokens = 0;
-      let totalOutputTokens = 0;
-      let totalCacheReadTokens = 0;
-      let totalCacheCreationTokens = 0;
-      const { model } = this.modelRouter.routeModel("pm", userMessage, {
-        envModel: this.configService.get("ANTHROPIC_MODEL"),
+      const { model: modelName } = this.modelRouter.routeModel(
+        "pm",
+        userMessage,
+        { envModel: this.configService.get("MIMO_MODEL") },
+      );
+
+      const provider = createMimoProvider(
+        this.configService.get("MIMO_API_KEY", ""),
+      );
+
+      // Define tools for the PM agent
+      const pmTools = this.buildTools(spaceId);
+
+      const result = await generateText({
+        model: provider.chatModel(modelName),
+        system: systemPrompt,
+        messages: [{ role: "user", content: userParts }],
+        tools: pmTools,
+        maxSteps: 15,
       });
 
-      // Agent tool-use loop
-      while (true) {
-        const response = await this.client.messages.create({
-          model,
-          max_tokens: 4096,
-          system: [
-            {
-              type: "text",
-              text: systemPrompt,
-              cache_control: { type: "ephemeral" },
-            },
-          ],
-          tools: TOOLS,
-          messages,
-        });
+      const finalText = result.text || "";
 
-        // Accumulate token usage
-        totalInputTokens += response.usage?.input_tokens ?? 0;
-        totalOutputTokens += response.usage?.output_tokens ?? 0;
-        totalCacheReadTokens +=
-          (response.usage as any)?.cache_read_input_tokens ?? 0;
-        totalCacheCreationTokens +=
-          (response.usage as any)?.cache_creation_input_tokens ?? 0;
-
-        if (response.stop_reason === "tool_use") {
-          // Execute tools
-          const toolResults: Anthropic.ToolResultBlockParam[] = [];
-
-          for (const block of response.content) {
-            if (block.type === "tool_use") {
-              this.logger.log(`Executing tool: ${block.name}`);
-              const result = await this.executeTool(
-                block.name,
-                block.input as any,
-                spaceId,
-              );
-              toolResults.push({
-                type: "tool_result",
-                tool_use_id: block.id,
-                content: JSON.stringify(result),
-              });
-
-              // Log to execution
-              execution.actionLog.push({
-                tool: block.name,
-                input: block.input,
-                result,
-                timestamp: new Date().toISOString(),
-              });
-            }
-          }
-
-          messages.push({ role: "assistant", content: response.content });
-          messages.push({ role: "user", content: toolResults });
-        } else {
-          // Extract text response
-          for (const block of response.content) {
-            if (block.type === "text") {
-              finalText += block.text;
-            }
-          }
-          break;
+      // Build action log from tool calls
+      for (const step of result.steps ?? []) {
+        for (const tc of step.toolCalls ?? []) {
+          execution.actionLog.push({
+            tool: tc.toolName,
+            input: tc.args,
+            timestamp: new Date().toISOString(),
+          });
+        }
+        for (const tr of step.toolResults ?? []) {
+          const existing = execution.actionLog.find(
+            (a: any) => a.tool === tr.toolName && !a.result,
+          );
+          if (existing) existing.result = tr.result;
         }
       }
 
-      // Store token usage on execution
-      execution.inputTokens = totalInputTokens;
-      execution.outputTokens = totalOutputTokens;
-      execution.cacheReadTokens = totalCacheReadTokens;
-      execution.cacheCreationTokens = totalCacheCreationTokens;
-      execution.tokensUsed = totalInputTokens + totalOutputTokens;
-      execution.modelUsed = model;
+      // Store token usage
+      execution.inputTokens = result.usage?.promptTokens ?? 0;
+      execution.outputTokens = result.usage?.completionTokens ?? 0;
+      execution.cacheReadTokens = 0;
+      execution.cacheCreationTokens = 0;
+      execution.tokensUsed =
+        (result.usage?.promptTokens ?? 0) +
+        (result.usage?.completionTokens ?? 0);
+      execution.modelUsed = modelName;
 
-      // Compute cost-weighted tokens for accurate billing
       execution.costWeightedTokens = computeCostWeightedTokens({
         inputTokens: execution.inputTokens,
         outputTokens: execution.outputTokens,
@@ -426,7 +259,6 @@ export class PmAgentService {
         modelUsed: execution.modelUsed,
       });
 
-      // Update execution and agent status
       this.executionRegistry.remove(execution.id);
       execution.status = "completed";
       execution.endTime = new Date();
@@ -434,7 +266,6 @@ export class PmAgentService {
       await this.agentRepo.update(agent.id, { status: "idle" });
       this.eventsGateway.emitAgentStatus(spaceId, agent.id, "idle");
 
-      // Deduct credits if over monthly quota
       if (execution.costWeightedTokens > 0) {
         this.agentRunQuota
           .deductCreditsForExecution(spaceId, execution.costWeightedTokens)
@@ -446,7 +277,7 @@ export class PmAgentService {
           );
       }
 
-      // Trigger learning loops — rule suggestions + episodic memory extraction
+      // Trigger learning loops
       this.suggestedRulesService
         .analyzeExecution(execution.id)
         .catch((err) =>
@@ -477,6 +308,135 @@ export class PmAgentService {
     }
   }
 
+  private buildTools(spaceId: string) {
+    return {
+      create_ticket: tool({
+        description:
+          "Create a new ticket on the kanban board with title, description (markdown with acceptance criteria), and priority",
+        parameters: z.object({
+          title: z.string().describe("Short, descriptive ticket title"),
+          description: z
+            .string()
+            .describe(
+              "Detailed markdown description including acceptance criteria",
+            ),
+          priority: z
+            .enum(["low", "medium", "high", "critical"])
+            .describe("Ticket priority"),
+          status: z.enum(["backlog"]).optional().describe("Initial status"),
+        }),
+        execute: async (input) => {
+          const ticket = await this.ticketsService.create({
+            spaceId,
+            title: input.title,
+            description: input.description,
+            priority: input.priority,
+            status: input.status || "backlog",
+          });
+          return { success: true, ticketId: ticket.id, title: ticket.title };
+        },
+      }),
+      update_ticket: tool({
+        description: "Update an existing ticket",
+        parameters: z.object({
+          ticket_id: z.string().describe("The ticket ID to update"),
+          title: z.string().optional(),
+          description: z.string().optional(),
+          priority: z.enum(["low", "medium", "high", "critical"]).optional(),
+        }),
+        execute: async (input) => {
+          const { ticket_id, ...updates } = input;
+          const ticket = await this.ticketsService.update(ticket_id, updates);
+          return { success: true, ticketId: ticket.id };
+        },
+      }),
+      delete_ticket: tool({
+        description:
+          "Delete an existing ticket from the kanban board. Use this when the user asks to remove, delete, or discard a ticket/task.",
+        parameters: z.object({
+          ticket_id: z.string().describe("The ID of the ticket to delete"),
+        }),
+        execute: async (input) => {
+          await this.ticketsService.delete(input.ticket_id);
+          return { success: true, ticketId: input.ticket_id };
+        },
+      }),
+      list_tickets: tool({
+        description:
+          "List all tickets in the current space. Returns ticket id, title, status, and priority for each ticket.",
+        parameters: z.object({
+          status: z
+            .enum(["backlog", "in_progress", "review", "done"])
+            .optional()
+            .describe("Optional: filter tickets by status column"),
+        }),
+        execute: async (input) => {
+          const tickets = await this.ticketsService.findBySpace(spaceId);
+          const filtered = input.status
+            ? tickets.filter((t) => t.status === input.status)
+            : tickets;
+          return {
+            tickets: filtered.map((t) => ({
+              id: t.id,
+              title: t.title,
+              status: t.status,
+              priority: t.priority,
+            })),
+          };
+        },
+      }),
+      list_files: tool({
+        description:
+          "List files and directories at a given path in the connected repository.",
+        parameters: z.object({
+          path: z
+            .string()
+            .describe('Relative path inside the repo (use "" or "." for root)'),
+        }),
+        execute: async (input) => {
+          try {
+            const repoPath = await this.getRepoPathForSpace(spaceId);
+            const target = join(repoPath, input.path || ".");
+            if (!target.startsWith(repoPath)) {
+              return { error: "Path is outside the repository" };
+            }
+            const entries = readdirSync(target, { withFileTypes: true })
+              .filter((e) => e.name !== ".git")
+              .map((e) => (e.isDirectory() ? `${e.name}/` : e.name));
+            return { files: entries };
+          } catch (err: any) {
+            return { error: err.message ?? String(err) };
+          }
+        },
+      }),
+      read_file: tool({
+        description:
+          "Read the contents of a file in the connected repository (truncated to 10 000 chars for large files).",
+        parameters: z.object({
+          path: z.string().describe("Relative file path inside the repo"),
+        }),
+        execute: async (input) => {
+          try {
+            const repoPath = await this.getRepoPathForSpace(spaceId);
+            const target = join(repoPath, input.path);
+            if (!target.startsWith(repoPath)) {
+              return { error: "Path is outside the repository" };
+            }
+            const MAX_CHARS = 10_000;
+            const content = readFileSync(target, "utf-8");
+            const truncated = content.length > MAX_CHARS;
+            return {
+              content: truncated ? content.slice(0, MAX_CHARS) : content,
+              truncated,
+            };
+          } catch (err: any) {
+            return { error: err.message ?? String(err) };
+          }
+        },
+      }),
+    };
+  }
+
   private async getRepoPathForSpace(spaceId: string): Promise<string> {
     const space = await this.spaceRepo.findOneBy({ id: spaceId });
     if (!space?.githubRepoUrl && space?.gitlabRepoUrl) {
@@ -485,88 +445,6 @@ export class PmAgentService {
     return this.githubService.getRepoPath(spaceId);
   }
 
-  private async executeTool(
-    name: string,
-    input: any,
-    spaceId: string,
-  ): Promise<any> {
-    switch (name) {
-      case "create_ticket": {
-        const ticket = await this.ticketsService.create({
-          spaceId,
-          title: input.title,
-          description: input.description,
-          priority: input.priority,
-          status: input.status || "backlog",
-        });
-        return { success: true, ticketId: ticket.id, title: ticket.title };
-      }
-      case "update_ticket": {
-        const { ticket_id, ...updates } = input;
-        const ticket = await this.ticketsService.update(ticket_id, updates);
-        return { success: true, ticketId: ticket.id };
-      }
-      case "delete_ticket": {
-        await this.ticketsService.delete(input.ticket_id);
-        return { success: true, ticketId: input.ticket_id };
-      }
-      case "list_tickets": {
-        const tickets = await this.ticketsService.findBySpace(spaceId);
-        const filtered = input.status
-          ? tickets.filter((t) => t.status === input.status)
-          : tickets;
-        return {
-          tickets: filtered.map((t) => ({
-            id: t.id,
-            title: t.title,
-            status: t.status,
-            priority: t.priority,
-          })),
-        };
-      }
-      case "list_files": {
-        try {
-          const repoPath = await this.getRepoPathForSpace(spaceId);
-          const target = join(repoPath, input.path || ".");
-          // Prevent path traversal outside the repo
-          if (!target.startsWith(repoPath)) {
-            return { error: "Path is outside the repository" };
-          }
-          const entries = readdirSync(target, { withFileTypes: true })
-            .filter((e) => e.name !== ".git")
-            .map((e) => (e.isDirectory() ? `${e.name}/` : e.name));
-          return { files: entries };
-        } catch (err: any) {
-          return { error: err.message ?? String(err) };
-        }
-      }
-      case "read_file": {
-        try {
-          const repoPath = await this.getRepoPathForSpace(spaceId);
-          const target = join(repoPath, input.path);
-          if (!target.startsWith(repoPath)) {
-            return { error: "Path is outside the repository" };
-          }
-          const MAX_CHARS = 10_000;
-          const content = readFileSync(target, "utf-8");
-          const truncated = content.length > MAX_CHARS;
-          return {
-            content: truncated ? content.slice(0, MAX_CHARS) : content,
-            truncated,
-          };
-        } catch (err: any) {
-          return { error: err.message ?? String(err) };
-        }
-      }
-      default:
-        return { error: `Unknown tool: ${name}` };
-    }
-  }
-
-  /**
-   * Execute a fast-path operation without LLM.
-   * Returns the response string, or null if the fast path couldn't be executed.
-   */
   private async executeFastPath(
     fastPath: string,
     userMessage: string,
@@ -585,7 +463,6 @@ export class PmAgentService {
           );
           return `Found ${tickets.length} ticket(s):\n\n${lines.join("\n")}`;
         }
-
         case "pm:move_ticket": {
           const match = userMessage.match(
             /(?:move|set|change)\s+(?:ticket\s+)?([\w-]+)\s+(?:to|status)\s+(\w+)/i,
@@ -599,7 +476,6 @@ export class PmAgentService {
           });
           return `Moved ticket \`${ticketId}\` to **${status}**.`;
         }
-
         case "pm:delete_ticket": {
           const match = userMessage.match(
             /(?:delete|remove)\s+(?:ticket\s+)?([\w-]{36})/i,
@@ -608,13 +484,12 @@ export class PmAgentService {
           await this.ticketsService.delete(match[1]);
           return `Deleted ticket \`${match[1]}\`.`;
         }
-
         default:
           return null;
       }
     } catch (err: any) {
       this.logger.warn(`Booster fast path ${fastPath} failed:`, err);
-      return null; // Fall through to normal LLM flow
+      return null;
     }
   }
 }

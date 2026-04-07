@@ -7,7 +7,8 @@ import {
 import { InjectRepository } from "@nestjs/typeorm";
 import { Repository } from "typeorm";
 import { ConfigService } from "@nestjs/config";
-import Anthropic from "@anthropic-ai/sdk";
+import { generateText } from "ai";
+import { createMimoProvider } from "../agents/mimo-provider";
 import {
   AgentTraining,
   TrainingStatus,
@@ -17,18 +18,13 @@ import { Agent } from "../entities/agent.entity";
 @Injectable()
 export class AgentTrainingService {
   private readonly logger = new Logger(AgentTrainingService.name);
-  private client: Anthropic;
 
   constructor(
     @InjectRepository(AgentTraining)
     private trainingRepo: Repository<AgentTraining>,
     @InjectRepository(Agent) private agentRepo: Repository<Agent>,
     private configService: ConfigService,
-  ) {
-    this.client = new Anthropic({
-      apiKey: this.configService.get("ANTHROPIC_API_KEY", ""),
-    });
-  }
+  ) {}
 
   async createTraining(
     agentId: string,
@@ -126,19 +122,22 @@ export class AgentTrainingService {
         )
         .join("\n\n---\n\n");
 
-      const response = await this.client.messages.create({
-        model: "claude-sonnet-4-20250514",
-        max_tokens: 4096,
+      const provider = createMimoProvider(
+        this.configService.get("MIMO_API_KEY", ""),
+      );
+
+      const response = await generateText({
+        model: provider.chatModel("mimo-v2-pro"),
         messages: [
           {
             role: "user",
             content: `You are compiling training context for an AI agent. Analyze these documents and create a concise, structured knowledge base that the agent can reference. Focus on key facts, procedures, terminology, and domain-specific knowledge.\n\nDocuments:\n${documentSummaries}\n\nCreate a structured knowledge summary:`,
           },
         ],
+        maxTokens: 4096,
       });
 
-      const compiledContext =
-        response.content[0].type === "text" ? response.content[0].text : "";
+      const compiledContext = response.text || "";
 
       await this.trainingRepo.update(trainingId, {
         status: "completed",

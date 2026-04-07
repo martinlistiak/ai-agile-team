@@ -56,7 +56,8 @@ services:
       REDIS_URL: redis://redis:6379
       JWT_SECRET: ${JWT_SECRET}
       ENCRYPTION_KEY: ${ENCRYPTION_KEY}
-      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      MIMO_API_KEY: ${MIMO_API_KEY:-}
+      MIMO_MODEL: ${MIMO_MODEL:-mimo-v2-pro}
       AIRGAPPED: ${AIRGAPPED:-false}
       LOCAL_STORAGE_PATH: /data/runa
       APP_URL: ${APP_URL:-http://localhost:3001}

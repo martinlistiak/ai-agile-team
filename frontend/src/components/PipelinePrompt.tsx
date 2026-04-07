@@ -109,7 +109,13 @@ export function PipelinePrompt({ ticketId, spaceId }: PipelinePromptProps) {
  * Toast notification for the board view when pipeline_completed fires.
  * Renders a floating toast in the bottom-right corner.
  */
-export function PipelineToast({ spaceId }: { spaceId: string }) {
+export function PipelineToast({
+  spaceId,
+  onFullPipelineUpsell,
+}: {
+  spaceId: string;
+  onFullPipelineUpsell?: () => void;
+}) {
   const [toasts, setToasts] = useState<PipelineCompletedPayload[]>([]);
   const advanceTicket = useAdvanceTicket();
   const runPipeline = useRunPipeline();
@@ -176,10 +182,15 @@ export function PipelineToast({ spaceId }: { spaceId: string }) {
               </button>
               <button
                 onClick={() => {
-                  runPipeline.mutate(
-                    { ticketId: toast.ticketId, spaceId },
-                    { onSuccess: () => dismissToast(toast.ticketId) },
-                  );
+                  if (onFullPipelineUpsell) {
+                    onFullPipelineUpsell();
+                    dismissToast(toast.ticketId);
+                  } else {
+                    runPipeline.mutate(
+                      { ticketId: toast.ticketId, spaceId },
+                      { onSuccess: () => dismissToast(toast.ticketId) },
+                    );
+                  }
                 }}
                 disabled={runPipeline.isPending}
                 className="cursor-pointer flex items-center gap-1 px-2 py-1 text-xs font-medium text-blue-700 dark:text-blue-200 bg-blue-100 dark:bg-blue-800 hover:bg-blue-200 dark:hover:bg-blue-700 disabled:opacity-50 rounded-md transition-colors"
