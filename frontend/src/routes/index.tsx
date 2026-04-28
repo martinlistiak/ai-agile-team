@@ -11,6 +11,7 @@ import { ForgotPasswordPage } from "@/features/auth/ForgotPasswordPage";
 import { ResetPasswordPage } from "@/features/auth/ResetPasswordPage";
 import { VerifyEmailPage } from "@/features/auth/VerifyEmailPage";
 import { GithubCallbackPage } from "@/features/auth/GithubCallbackPage";
+import { GithubReviewerCallbackPage } from "@/features/auth/GithubReviewerCallbackPage";
 import { GitlabCallbackPage } from "@/features/auth/GitlabCallbackPage";
 import { SpaceListPage } from "@/features/spaces/SpaceListPage";
 import { BoardPage } from "@/features/board/BoardPage";
@@ -30,6 +31,7 @@ import { SettingsPage } from "@/pages/SettingsPage";
 import { NotificationSettingsPage } from "@/pages/NotificationSettingsPage";
 import { AdminPage } from "@/pages/AdminPage";
 import { NotFoundPage } from "@/pages/NotFoundPage";
+import { ToastProvider } from "@/components/Toast";
 
 function RootLayout() {
   const { pathname } = useLocation();
@@ -41,7 +43,9 @@ function RootLayout() {
   return (
     <ErrorBoundary>
       <ScrollToTop />
-      <Outlet />
+      <ToastProvider>
+        <Outlet />
+      </ToastProvider>
     </ErrorBoundary>
   );
 }
@@ -83,6 +87,10 @@ export const router = createBrowserRouter([
           { path: "reset-password", element: <ResetPasswordPage /> },
           { path: "verify-email", element: <VerifyEmailPage /> },
           { path: "callback", element: <GithubCallbackPage /> },
+          {
+            path: "reviewer-callback",
+            element: <GithubReviewerCallbackPage />,
+          },
           { path: "gitlab/callback", element: <GitlabCallbackPage /> },
         ],
       },
@@ -118,11 +126,7 @@ export const router = createBrowserRouter([
       },
       {
         path: "/invitations/:token",
-        element: (
-          <ProtectedRoute>
-            <AcceptInvitationPage />
-          </ProtectedRoute>
-        ),
+        element: <AcceptInvitationPage />,
       },
       {
         path: "*",

@@ -27,6 +27,7 @@ import { CountlyService } from "../common/countly.service";
 import { AgentsService } from "./agents.service";
 import { DeveloperAgentService } from "./developer-agent.service";
 import { TesterAgentService } from "./tester-agent.service";
+import { AccessControlService } from "../common/access-control.service";
 
 @ApiTags("Agents")
 @ApiBearerAuth("bearer")
@@ -38,13 +39,15 @@ export class AgentsController {
     private developerAgentService: DeveloperAgentService,
     private testerAgentService: TesterAgentService,
     private countly: CountlyService,
+    private accessControl: AccessControlService,
   ) {}
 
   @Get("spaces/:spaceId/agents")
   @ApiOperation({ summary: "List all agents in a space" })
   @ApiParam({ name: "spaceId", format: "uuid" })
   @ApiResponse({ status: 200, description: "Array of agents" })
-  async findBySpace(@Param("spaceId") spaceId: string) {
+  async findBySpace(@Req() req: Request, @Param("spaceId") spaceId: string) {
+    await this.accessControl.getAccessibleSpaceOrThrow(spaceId, (req.user as any).id);
     return this.agentsService.findBySpace(spaceId);
   }
 
@@ -52,8 +55,8 @@ export class AgentsController {
   @ApiOperation({ summary: "Get agent details" })
   @ApiParam({ name: "id", format: "uuid" })
   @ApiResponse({ status: 200, description: "Agent object" })
-  async findOne(@Param("id") id: string) {
-    return this.agentsService.findById(id);
+  async findOne(@Req() req: Request, @Param("id") id: string) {
+    return this.accessControl.getAccessibleAgentOrThrow(id, (req.user as any).id);
   }
 
   @Get("agents/:agentId/executions")
@@ -63,10 +66,12 @@ export class AgentsController {
   @ApiQuery({ name: "limit", required: false, type: Number, example: 20 })
   @ApiResponse({ status: 200, description: "Paginated execution list" })
   async getExecutions(
+    @Req() req: Request,
     @Param("agentId") agentId: string,
     @Query("page") page?: string,
     @Query("limit") limit?: string,
   ) {
+    await this.accessControl.getAccessibleAgentOrThrow(agentId, (req.user as any).id);
     const pageNum = Math.max(1, parseInt(page ?? "1", 10) || 1);
     const limitNum = Math.max(
       1,
@@ -86,7 +91,12 @@ export class AgentsController {
     },
   })
   @ApiResponse({ status: 200, description: "Updated agent" })
-  async updateRules(@Param("id") id: string, @Body() body: { rules: string }) {
+  async updateRules(
+    @Req() req: Request,
+    @Param("id") id: string,
+    @Body() body: { rules: string },
+  ) {
+    await this.accessControl.getAccessibleAgentOrThrow(id, (req.user as any).id);
     return this.agentsService.updateRules(id, body.rules);
   }
 
@@ -102,9 +112,11 @@ export class AgentsController {
   })
   @ApiResponse({ status: 200, description: "Updated agent" })
   async updateSystemPrompt(
+    @Req() req: Request,
     @Param("id") id: string,
     @Body() body: { systemPrompt: string },
   ) {
+    await this.accessControl.getAccessibleAgentOrThrow(id, (req.user as any).id);
     return this.agentsService.updateSystemPrompt(id, body.systemPrompt);
   }
 
@@ -112,7 +124,8 @@ export class AgentsController {
   @ApiOperation({ summary: "Stop a running agent execution" })
   @ApiParam({ name: "id", format: "uuid" })
   @ApiResponse({ status: 201, description: "Stop result" })
-  async stopAgent(@Param("id") id: string) {
+  async stopAgent(@Req() req: Request, @Param("id") id: string) {
+    await this.accessControl.getAccessibleAgentOrThrow(id, (req.user as any).id);
     return this.agentsService.stopExecution(id);
   }
 
@@ -131,9 +144,12 @@ export class AgentsController {
   })
   @ApiResponse({ status: 201, description: "Agent execution result" })
   async runDeveloper(
+    @Req() req: Request,
     @Param("spaceId") spaceId: string,
     @Body() body: { ticketId: string; instructions?: string },
   ) {
+    await this.accessControl.getAccessibleSpaceOrThrow(spaceId, (req.user as any).id);
+    await this.accessControl.assertTicketInSpace(body.ticketId, spaceId);
     const result = await this.developerAgentService.run(
       spaceId,
       body.instructions ?? "",
@@ -157,9 +173,12 @@ export class AgentsController {
   })
   @ApiResponse({ status: 201, description: "Agent execution result" })
   async runTester(
+    @Req() req: Request,
     @Param("spaceId") spaceId: string,
     @Body() body: { ticketId: string; instructions?: string },
   ) {
+    await this.accessControl.getAccessibleSpaceOrThrow(spaceId, (req.user as any).id);
+    await this.accessControl.assertTicketInSpace(body.ticketId, spaceId);
     const result = await this.testerAgentService.run(
       spaceId,
       body.instructions ?? "",
@@ -191,6 +210,7 @@ export class AgentsController {
     @Param("spaceId") spaceId: string,
     @Body() body: { name: string; description?: string; systemPrompt?: string },
   ) {
+    await this.accessControl.getAccessibleSpaceOrThrow(spaceId, (req.user as any).id);
     const agent = await this.agentsService.createCustomAgent(spaceId, body);
     const userId = (req.user as { id?: string })?.id;
     if (userId) {
@@ -217,10 +237,12 @@ export class AgentsController {
   @ApiResponse({ status: 200, description: "Updated custom agent" })
   @ApiResponse({ status: 403, description: "Plan upgrade required" })
   async updateCustomAgent(
+    @Req() req: Request,
     @Param("id") id: string,
     @Body()
     body: { name?: string; description?: string; systemPrompt?: string },
   ) {
+    await this.accessControl.getAccessibleAgentOrThrow(id, (req.user as any).id);
     return this.agentsService.updateCustomAgent(id, body);
   }
 
@@ -231,7 +253,8 @@ export class AgentsController {
   @ApiParam({ name: "id", format: "uuid" })
   @ApiResponse({ status: 200, description: "Deletion result" })
   @ApiResponse({ status: 403, description: "Plan upgrade required" })
-  async deleteCustomAgent(@Param("id") id: string) {
+  async deleteCustomAgent(@Req() req: Request, @Param("id") id: string) {
+    await this.accessControl.getAccessibleAgentOrThrow(id, (req.user as any).id);
     const deleted = await this.agentsService.deleteCustomAgent(id);
     return { deleted };
   }

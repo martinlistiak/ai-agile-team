@@ -3,6 +3,7 @@ import { InjectRepository } from "@nestjs/typeorm";
 import { Repository } from "typeorm";
 import { SlaConfig } from "../entities/sla-config.entity";
 import { Execution } from "../entities/execution.entity";
+import { Team } from "../entities/team.entity";
 
 @Injectable()
 export class SlaService {
@@ -11,6 +12,7 @@ export class SlaService {
   constructor(
     @InjectRepository(SlaConfig) private slaRepo: Repository<SlaConfig>,
     @InjectRepository(Execution) private executionRepo: Repository<Execution>,
+    @InjectRepository(Team) private teamRepo: Repository<Team>,
   ) {}
 
   async configureSla(
@@ -21,6 +23,7 @@ export class SlaService {
       resolutionTimeHoursTarget?: number;
     },
   ): Promise<SlaConfig> {
+    await this.getTeamOrThrow(teamId);
     let sla = await this.slaRepo.findOneBy({ teamId });
     if (sla) {
       Object.assign(sla, config);
@@ -39,12 +42,13 @@ export class SlaService {
       overallCompliant: boolean;
     };
   }> {
+    const team = await this.getTeamOrThrow(teamId);
     const config = await this.slaRepo.findOneBy({ teamId });
     if (!config)
       throw new NotFoundException("SLA not configured for this team");
 
     // Refresh metrics
-    await this.refreshMetrics(teamId);
+    await this.refreshMetrics(teamId, team.ownerId);
     const refreshed = await this.slaRepo.findOneBy({ teamId });
 
     const uptimeCompliant =
@@ -75,6 +79,7 @@ export class SlaService {
   ): Promise<
     { date: string; uptime: number; avgResponseMs: number; incidents: number }[]
   > {
+    const team = await this.getTeamOrThrow(teamId);
     const config = await this.slaRepo.findOneBy({ teamId });
     if (!config) throw new NotFoundException("SLA not configured");
 
@@ -84,6 +89,8 @@ export class SlaService {
 
     const results = await this.executionRepo
       .createQueryBuilder("e")
+      .innerJoin("e.agent", "a")
+      .innerJoin("a.space", "s")
       .select("DATE(e.startTime)", "date")
       .addSelect("COUNT(*)", "total")
       .addSelect(
@@ -95,7 +102,8 @@ export class SlaService {
         "AVG(EXTRACT(EPOCH FROM (e.endTime - e.startTime)) * 1000)",
         "avgMs",
       )
-      .where("e.startTime >= :since", { since })
+      .where("s.userId = :ownerId", { ownerId: team.ownerId })
+      .andWhere("e.startTime >= :since", { since })
       .groupBy("DATE(e.startTime)")
       .orderBy("date", "ASC")
       .getRawMany();
@@ -108,12 +116,14 @@ export class SlaService {
     }));
   }
 
-  private async refreshMetrics(teamId: string): Promise<void> {
+  private async refreshMetrics(teamId: string, ownerId: string): Promise<void> {
     const thirtyDaysAgo = new Date();
     thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
 
     const stats = await this.executionRepo
       .createQueryBuilder("e")
+      .innerJoin("e.agent", "a")
+      .innerJoin("a.space", "s")
       .select("COUNT(*)", "total")
       .addSelect(
         "COUNT(CASE WHEN e.status = 'completed' THEN 1 END)",
@@ -124,7 +134,8 @@ export class SlaService {
         "AVG(EXTRACT(EPOCH FROM (e.endTime - e.startTime)) * 1000)",
         "avgMs",
       )
-      .where("e.startTime >= :since", { since: thirtyDaysAgo })
+      .where("s.userId = :ownerId", { ownerId })
+      .andWhere("e.startTime >= :since", { since: thirtyDaysAgo })
       .getRawOne();
 
     const total = Number(stats?.total) || 0;
@@ -142,5 +153,13 @@ export class SlaService {
         lastCheckedAt: new Date(),
       },
     );
+  }
+
+  private async getTeamOrThrow(teamId: string): Promise<Team> {
+    const team = await this.teamRepo.findOneBy({ id: teamId });
+    if (!team) {
+      throw new NotFoundException("Team not found");
+    }
+    return team;
   }
 }

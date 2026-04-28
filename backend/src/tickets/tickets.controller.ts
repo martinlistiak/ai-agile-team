@@ -38,6 +38,7 @@ import { CreateTicketDto } from "./dto/create-ticket.dto";
 import { UpdateTicketDto } from "./dto/update-ticket.dto";
 import { MoveTicketDto } from "./dto/move-ticket.dto";
 import { BulkDeleteTicketsDto } from "./dto/bulk-delete-tickets.dto";
+import { AccessControlService } from "../common/access-control.service";
 
 @ApiTags("Tickets")
 @ApiBearerAuth("bearer")
@@ -52,13 +53,15 @@ export class TicketsController {
     @Inject(forwardRef(() => PipelineService))
     private pipelineService: PipelineService,
     private countly: CountlyService,
+    private accessControl: AccessControlService,
   ) {}
 
   @Get("spaces/:spaceId/tickets")
   @ApiOperation({ summary: "List all tickets in a space" })
   @ApiParam({ name: "spaceId", format: "uuid" })
   @ApiResponse({ status: 200, description: "Array of tickets" })
-  async findBySpace(@Param("spaceId") spaceId: string) {
+  async findBySpace(@Req() req: Request, @Param("spaceId") spaceId: string) {
+    await this.accessControl.getAccessibleSpaceOrThrow(spaceId, (req.user as any).id);
     return this.ticketsService.findBySpace(spaceId);
   }
 
@@ -71,6 +74,7 @@ export class TicketsController {
     @Param("spaceId") spaceId: string,
     @Body() body: CreateTicketDto,
   ) {
+    await this.accessControl.getAccessibleSpaceOrThrow(spaceId, (req.user as any).id);
     const ticket = await this.ticketsService.create({ spaceId, ...body });
     const userId = (req.user as { id?: string })?.id;
     if (userId) {
@@ -83,8 +87,8 @@ export class TicketsController {
   @ApiOperation({ summary: "Get a single ticket with comments" })
   @ApiParam({ name: "id", format: "uuid" })
   @ApiResponse({ status: 200, description: "Ticket object with comments" })
-  async findOne(@Param("id") id: string) {
-    return this.ticketsService.findById(id);
+  async findOne(@Req() req: Request, @Param("id") id: string) {
+    return this.accessControl.getAccessibleTicketOrThrow(id, (req.user as any).id);
   }
 
   @Patch("tickets/:id")
@@ -96,6 +100,21 @@ export class TicketsController {
     @Body() body: UpdateTicketDto,
     @Req() req: any,
   ) {
+    const ticket = await this.accessControl.getAccessibleTicketOrThrow(id, req.user.id);
+    if (body.assigneeAgentId) {
+      await this.accessControl.assertAgentInSpace(body.assigneeAgentId, ticket.spaceId);
+    }
+    if (body.assigneeUserId) {
+      const space = await this.accessControl.getAccessibleSpaceOrThrow(
+        ticket.spaceId,
+        req.user.id,
+      );
+      await this.accessControl.assertUserCanBeAssignedToOwnedSpace(
+        space.userId,
+        body.assigneeUserId,
+      );
+    }
+
     const { startWorking, ...updateData } = body;
     const actor = {
       id: req.user.id,
@@ -132,6 +151,7 @@ export class TicketsController {
     @Body() body: MoveTicketDto,
     @Req() req: any,
   ) {
+    await this.accessControl.getAccessibleTicketOrThrow(id, req.user.id);
     const actor = {
       id: req.user.id,
       name: req.user.name,
@@ -145,9 +165,12 @@ export class TicketsController {
   @ApiParam({ name: "spaceId", format: "uuid" })
   @ApiResponse({ status: 200, description: "Tickets reordered" })
   async reorder(
+    @Req() req: Request,
     @Param("spaceId") spaceId: string,
     @Body() body: { status: string; ticketIds: string[] },
   ) {
+    await this.accessControl.getAccessibleSpaceOrThrow(spaceId, (req.user as any).id);
+    await this.accessControl.assertTicketsInSpace(body.ticketIds, spaceId);
     await this.ticketsService.reorderTickets(
       spaceId,
       body.status,
@@ -165,6 +188,7 @@ export class TicketsController {
     @Body() body: CreateCommentDto,
     @Req() req: any,
   ) {
+    await this.accessControl.getAccessibleTicketOrThrow(id, req.user.id);
     return this.ticketsService.addComment(
       id,
       body.content,
@@ -179,7 +203,8 @@ export class TicketsController {
   @ApiOperation({ summary: "Delete a ticket" })
   @ApiParam({ name: "id", format: "uuid" })
   @ApiResponse({ status: 204, description: "Ticket deleted" })
-  async remove(@Param("id") id: string) {
+  async remove(@Req() req: Request, @Param("id") id: string) {
+    await this.accessControl.getAccessibleTicketOrThrow(id, (req.user as any).id);
     await this.ticketsService.delete(id);
   }
 
@@ -189,9 +214,12 @@ export class TicketsController {
   @ApiParam({ name: "spaceId", format: "uuid" })
   @ApiResponse({ status: 200, description: "Number of deleted tickets" })
   async bulkDelete(
+    @Req() req: Request,
     @Param("spaceId") spaceId: string,
     @Body() body: BulkDeleteTicketsDto,
   ) {
+    await this.accessControl.getAccessibleSpaceOrThrow(spaceId, (req.user as any).id);
+    await this.accessControl.assertTicketsInSpace(body.ticketIds, spaceId);
     const deleted = await this.ticketsService.bulkDelete(body.ticketIds);
     return { deleted };
   }
@@ -205,7 +233,12 @@ export class TicketsController {
   @ApiParam({ name: "id", format: "uuid" })
   @ApiResponse({ status: 200, description: "Agent triggered" })
   @ApiResponse({ status: 429, description: "Rate limited (10 req/min)" })
-  async triggerAgent(@Param("id") id: string, @Body() _body: TriggerAgentDto) {
+  async triggerAgent(
+    @Req() req: Request,
+    @Param("id") id: string,
+    @Body() _body: TriggerAgentDto,
+  ) {
+    await this.accessControl.getAccessibleTicketOrThrow(id, (req.user as any).id);
     return this.pipelineService.triggerAgentForTicket(id);
   }
 
@@ -214,8 +247,11 @@ export class TicketsController {
   @ApiOperation({ summary: "Merge the PR/MR associated with a ticket" })
   @ApiParam({ name: "id", format: "uuid" })
   @ApiResponse({ status: 200, description: "PR/MR merged" })
-  async mergePr(@Param("id") id: string) {
-    const ticket = await this.ticketsService.findById(id);
+  async mergePr(@Req() req: Request, @Param("id") id: string) {
+    const ticket = await this.accessControl.getAccessibleTicketOrThrow(
+      id,
+      (req.user as any).id,
+    );
     if (!ticket.prUrl) {
       throw new Error("Ticket has no associated PR/MR");
     }

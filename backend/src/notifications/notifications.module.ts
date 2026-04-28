@@ -9,6 +9,7 @@ import { Notification } from "../entities/notification.entity";
 import { NotificationPreference } from "../entities/notification-preference.entity";
 import { User } from "../entities/user.entity";
 import { Space } from "../entities/space.entity";
+import { Team } from "../entities/team.entity";
 import { TeamMember } from "../entities/team-member.entity";
 import { TeamsModule } from "../teams/teams.module";
 import { ChatModule } from "../chat/chat.module";
@@ -20,6 +21,7 @@ import { ChatModule } from "../chat/chat.module";
       NotificationPreference,
       User,
       Space,
+      Team,
       TeamMember,
     ]),
     TeamsModule,

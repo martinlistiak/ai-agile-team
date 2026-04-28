@@ -22,6 +22,7 @@ import { computeCostWeightedTokens } from "../common/subscription.constants";
 import { ModelRouterService } from "./model-router.service";
 import { AgentMemoryService } from "./agent-memory.service";
 import { AgentBoosterService } from "./agent-booster.service";
+import { appendCompactOutputStyle } from "./compact-output-prompt";
 import { execSync } from "child_process";
 import { readFileSync, writeFileSync, readdirSync, existsSync } from "fs";
 import { join, relative } from "path";
@@ -173,6 +174,26 @@ export class DeveloperAgentService {
       if (ticketId) {
         const ticket = await this.ticketsService.findById(ticketId);
         ticketPriority = ticket.priority;
+
+        let requestedChangesBlock = "";
+        if (ticket.requestedChanges && ticket.requestedChangesFeedback) {
+          const fb = ticket.requestedChangesFeedback;
+          const preview = fb.slice(0, 160);
+          const userHasSameFeedback =
+            userMessage.length > 0 &&
+            preview.length > 20 &&
+            userMessage.includes(preview);
+          if (!userHasSameFeedback) {
+            requestedChangesBlock = `\n\n## Changes requested${
+              ticket.requestedChangesSource === "testing"
+                ? " (from testing)"
+                : ticket.requestedChangesSource === "review"
+                  ? " (from code review)"
+                  : ""
+            }\n\n${fb}\n\nAddress this feedback in your implementation; then push updates to the existing branch \`runa/${ticket.id}\` (or create it if missing).\n`;
+          }
+        }
+
         prompt = `## Ticket to implement
 
 **Title:** ${ticket.title}
@@ -182,7 +203,7 @@ export class DeveloperAgentService {
 
 **Description:**
 ${ticket.description}
-
+${requestedChangesBlock}
 ---
 
 ${userMessage ? `**Additional instructions from the user:** ${userMessage}` : "Implement this ticket according to its description and acceptance criteria."}`;
@@ -229,7 +250,10 @@ ${userMessage ? `**Additional instructions from the user:** ${userMessage}` : "I
         systemSuffix += `\n\n# Learned Patterns\nApply these lessons from past executions:\n${compiledMemories}`;
       }
       systemSuffix += ticketContext;
-      const fullSystem = `${DEVELOPER_SYSTEM_PROMPT}${systemSuffix}`;
+      const fullSystem = appendCompactOutputStyle(
+        `${DEVELOPER_SYSTEM_PROMPT}${systemSuffix}`,
+        this.configService,
+      );
 
       const { model: modelName } = this.modelRouter.routeModel(
         "developer",
@@ -342,6 +366,14 @@ ${userMessage ? `**Additional instructions from the user:** ${userMessage}` : "I
             "Developer",
             "developer",
           );
+        }
+
+        if (!prFailed) {
+          await this.ticketsService.update(ticketId, {
+            requestedChanges: false,
+            requestedChangesFeedback: null,
+            requestedChangesSource: null,
+          });
         }
       }
 

@@ -7,6 +7,7 @@ import { SlackService } from "./slack.service";
 import { Ticket } from "../entities/ticket.entity";
 import { Space } from "../entities/space.entity";
 import { TeamMember } from "../entities/team-member.entity";
+import { Team } from "../entities/team.entity";
 
 @Injectable()
 export class NotificationsListener {
@@ -16,6 +17,7 @@ export class NotificationsListener {
     private notificationsService: NotificationsService,
     private slackService: SlackService,
     @InjectRepository(Space) private spaceRepo: Repository<Space>,
+    @InjectRepository(Team) private teamRepo: Repository<Team>,
     @InjectRepository(TeamMember) private memberRepo: Repository<TeamMember>,
   ) {}
 
@@ -30,11 +32,13 @@ export class NotificationsListener {
     // Space owner is always a recipient
     const userIds = new Set<string>([space.userId]);
 
-    // Also include team members who have access to this space's team
-    const members = await this.memberRepo.find({
-      where: { teamId: space.userId }, // fallback — teams are looked up by owner
-    });
-    for (const m of members) userIds.add(m.userId);
+    const teams = await this.teamRepo.find({ where: { ownerId: space.userId } });
+    if (teams.length > 0) {
+      const members = await this.memberRepo.find({
+        where: teams.map((team) => ({ teamId: team.id })),
+      });
+      for (const m of members) userIds.add(m.userId);
+    }
 
     if (excludeUserId) userIds.delete(excludeUserId);
     return Array.from(userIds);

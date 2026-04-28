@@ -8,6 +8,7 @@ import { AppMockup } from "./homepage/AppMockup";
 import { StatsStrip } from "./homepage/StatsStrip";
 import { LogoCarouselSection } from "./homepage/LogoCarousel";
 import { FeaturesSection } from "./homepage/FeaturesSection";
+import { TokenOptimizationSection } from "./homepage/TokenOptimizationSection";
 import { PipelineSection } from "./homepage/PipelineSection";
 import { CustomAgentsSection } from "./homepage/CustomAgentsSection";
 import { PricingSection } from "./homepage/PricingSection";
@@ -33,6 +34,7 @@ export function HomePage() {
       <StatsStrip />
       <LogoCarouselSection />
       <FeaturesSection />
+      <TokenOptimizationSection />
       <PipelineSection />
       <CustomAgentsSection />
       <PricingSection />

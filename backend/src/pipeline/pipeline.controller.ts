@@ -19,19 +19,26 @@ import { SubscriptionActiveGuard } from "../common/subscription-active.guard";
 import { PlanGuard, RequirePlan } from "../billing/plan.guard";
 import { Throttle } from "@nestjs/throttler";
 import { PipelineService } from "./pipeline.service";
+import { Req } from "@nestjs/common";
+import { Request } from "express";
+import { AccessControlService } from "../common/access-control.service";
 
 @ApiTags("Pipeline")
 @ApiBearerAuth("bearer")
 @Controller()
 @UseGuards(JwtOrApiKeyGuard, SubscriptionActiveGuard)
 export class PipelineController {
-  constructor(private pipelineService: PipelineService) {}
+  constructor(
+    private pipelineService: PipelineService,
+    private accessControl: AccessControlService,
+  ) {}
 
   @Get("spaces/:spaceId/pipeline")
   @ApiOperation({ summary: "Get pipeline configuration for a space" })
   @ApiParam({ name: "spaceId", format: "uuid" })
   @ApiResponse({ status: 200, description: "Pipeline config object" })
-  async getConfig(@Param("spaceId") spaceId: string) {
+  async getConfig(@Req() req: Request, @Param("spaceId") spaceId: string) {
+    await this.accessControl.getAccessibleSpaceOrThrow(spaceId, (req.user as any).id);
     return this.pipelineService.getPipelineConfig(spaceId);
   }
 
@@ -43,9 +50,11 @@ export class PipelineController {
   @ApiResponse({ status: 200, description: "Updated pipeline config" })
   @ApiResponse({ status: 403, description: "Plan upgrade required" })
   async updateConfig(
+    @Req() req: Request,
     @Param("spaceId") spaceId: string,
     @Body() body: Record<string, boolean>,
   ) {
+    await this.accessControl.getAccessibleSpaceOrThrow(spaceId, (req.user as any).id);
     return this.pipelineService.updatePipelineConfig(spaceId, body);
   }
 
@@ -58,7 +67,8 @@ export class PipelineController {
   @ApiResponse({ status: 201, description: "Ticket advanced" })
   @ApiResponse({ status: 403, description: "Plan upgrade required" })
   @ApiResponse({ status: 429, description: "Rate limited" })
-  async advanceTicket(@Param("id") id: string) {
+  async advanceTicket(@Req() req: Request, @Param("id") id: string) {
+    await this.accessControl.getAccessibleTicketOrThrow(id, (req.user as any).id);
     return this.pipelineService.advanceTicket(id);
   }
 
@@ -71,7 +81,8 @@ export class PipelineController {
   @ApiResponse({ status: 201, description: "Pipeline started" })
   @ApiResponse({ status: 403, description: "Plan upgrade required" })
   @ApiResponse({ status: 429, description: "Rate limited" })
-  async runPipeline(@Param("id") id: string) {
+  async runPipeline(@Req() req: Request, @Param("id") id: string) {
+    await this.accessControl.getAccessibleTicketOrThrow(id, (req.user as any).id);
     return this.pipelineService.runPipeline(id);
   }
 }

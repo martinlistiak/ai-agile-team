@@ -8,6 +8,8 @@ import {
 import { createPortal } from "react-dom";
 import { FiCheck, FiX, FiAlertTriangle, FiInfo } from "react-icons/fi";
 import { cn } from "@/lib/cn";
+import { isPlanUpgradeRequiredMessage } from "@/lib/api-errors";
+import { PlanRequiredUpsellModal } from "@/components/PlanRequiredUpsellModal";
 
 type ToastType = "success" | "error" | "warning" | "info";
 
@@ -123,6 +125,7 @@ function ToastItem({
 
 export function ToastProvider({ children }: { children: React.ReactNode }) {
   const [toasts, setToasts] = useState<Toast[]>([]);
+  const [planUpsellOpen, setPlanUpsellOpen] = useState(false);
 
   const dismiss = useCallback((id: string) => {
     setToasts((prev) => prev.filter((t) => t.id !== id));
@@ -135,6 +138,10 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
       duration?: number,
       action?: { label: string; href: string },
     ) => {
+      if (type === "error" && isPlanUpgradeRequiredMessage(message)) {
+        setPlanUpsellOpen(true);
+        return;
+      }
       const id = `toast-${++globalId}`;
       setToasts((prev) => [
         ...prev.slice(-4),
@@ -169,6 +176,9 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
   return (
     <ToastContext.Provider value={value}>
       {children}
+      {planUpsellOpen && (
+        <PlanRequiredUpsellModal onClose={() => setPlanUpsellOpen(false)} />
+      )}
       {toasts.length > 0 &&
         createPortal(
           <div

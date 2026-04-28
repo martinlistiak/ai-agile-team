@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useSearchParams, Link } from "react-router-dom";
+import { useSearchParams, Link, useNavigate } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/Button";
@@ -21,6 +21,7 @@ import {
   TOPUP_TOKENS_PER_DOLLAR,
   formatTopUpTokens,
 } from "@/config/pricing";
+import { getCurrentInternalPath, isSafeInternalPath } from "@/lib/auth-redirect";
 
 function formatInvoiceAmount(cents: number, currency: string) {
   try {
@@ -36,8 +37,13 @@ function formatInvoiceAmount(cents: number, currency: string) {
 export function BillingPage({ onboarding = false }: { onboarding?: boolean }) {
   const { user, refreshUser, logout } = useAuth();
   const [searchParams] = useSearchParams();
+  const navigate = useNavigate();
   const [annual, setAnnual] = useState(true);
   const queryClient = useQueryClient();
+  const next = searchParams.get("next");
+  const checkoutReturnTo = isSafeInternalPath(next)
+    ? next
+    : getCurrentInternalPath();
 
   const { data: usage } = useBillingUsage();
   const { data: spaces } = useSpaces();
@@ -57,29 +63,53 @@ export function BillingPage({ onboarding = false }: { onboarding?: boolean }) {
   useEffect(() => {
     const sessionId = searchParams.get("session_id");
     const topupSessionId = searchParams.get("topup_session_id");
+    const returnTo = searchParams.get("next");
 
-    if (sessionId) {
-      verifySessionMutation
-        .mutateAsync(sessionId)
-        .then(() => {
-          void refreshUser();
-        })
-        .catch(console.error);
+    if (!sessionId && !topupSessionId) {
+      return;
     }
 
-    if (topupSessionId) {
-      verifyTopUpMutation
-        .mutateAsync(topupSessionId)
-        .then(() => {
-          void refreshUser();
-          void queryClient.invalidateQueries({
+    let cancelled = false;
+
+    const finishBillingRedirect = async () => {
+      try {
+        if (sessionId) {
+          await verifySessionMutation.mutateAsync(sessionId);
+          await refreshUser();
+        } else if (topupSessionId) {
+          await verifyTopUpMutation.mutateAsync(topupSessionId);
+          await refreshUser();
+          await queryClient.invalidateQueries({
             queryKey: ["billing", "credits"],
           });
-        })
-        .catch(console.error);
-    }
+        }
+
+        if (
+          !cancelled &&
+          isSafeInternalPath(returnTo) &&
+          !returnTo.startsWith("/billing")
+        ) {
+          navigate(returnTo, { replace: true });
+        }
+      } catch (err) {
+        console.error(err);
+      }
+    };
+
+    void finishBillingRedirect();
+
+    return () => {
+      cancelled = true;
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [searchParams, refreshUser, queryClient]);
+  }, [
+    navigate,
+    queryClient,
+    refreshUser,
+    searchParams,
+    verifySessionMutation,
+    verifyTopUpMutation,
+  ]);
 
   const currentPlan = user?.planTier ?? "starter";
   const isActive =
@@ -88,7 +118,7 @@ export function BillingPage({ onboarding = false }: { onboarding?: boolean }) {
 
   const handleTopUp = async () => {
     try {
-      const data = await topUpMutation.mutateAsync(topUpAmount);
+      const data = await topUpMutation.mutateAsync({ amount: topUpAmount });
       window.location.href = data.url;
     } catch (err) {
       console.error("Top-up error:", err);
@@ -98,7 +128,11 @@ export function BillingPage({ onboarding = false }: { onboarding?: boolean }) {
   const handleSubscribe = async (plan: "starter" | "team" | "enterprise") => {
     try {
       const interval = annual ? "annual" : "monthly";
-      const data = await checkoutMutation.mutateAsync({ plan, interval });
+      const data = await checkoutMutation.mutateAsync({
+        plan,
+        interval,
+        returnTo: checkoutReturnTo,
+      });
       window.location.href = data.url;
     } catch (err) {
       console.error("Checkout error:", err);
@@ -107,7 +141,9 @@ export function BillingPage({ onboarding = false }: { onboarding?: boolean }) {
 
   const handleManageBilling = async () => {
     try {
-      const data = await portalMutation.mutateAsync();
+      const data = await portalMutation.mutateAsync({
+        returnTo: checkoutReturnTo,
+      });
       window.location.href = data.url;
     } catch (err) {
       console.error("Portal error:", err);

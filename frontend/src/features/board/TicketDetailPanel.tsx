@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import {
   FiX,
   FiSend,
@@ -14,6 +14,7 @@ import {
 } from "@/api/hooks/useTickets";
 import { useTriggerAgent } from "@/api/hooks/useTriggerAgent";
 import { useAgents } from "@/api/hooks/useAgents";
+import { useSpace } from "@/api/hooks/useSpaces";
 import { useAssignableUsers } from "@/api/hooks/useAssignableUsers";
 import { RichTextEditor } from "@/components/RichTextEditor";
 import { MentionInput } from "@/components/MentionInput";
@@ -22,7 +23,9 @@ import { PipelinePrompt } from "@/components/PipelinePrompt";
 import RotatingBorder from "@/components/RotatingBorder";
 import { getAvatarSrc } from "@/lib/avatars";
 import { useAuth } from "@/contexts/AuthContext";
+import { getSocket } from "@/lib/socket";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
+import { GithubReviewerConnectDialog } from "@/components/GithubReviewerConnectDialog";
 import {
   overlayBackdropClass,
   overlayBorderClass,
@@ -105,7 +108,40 @@ export function TicketDetailPanel({
   const createTicket = useCreateTicket();
   const addComment = useAddComment();
   const triggerAgent = useTriggerAgent();
-  const { user } = useAuth();
+  const { user, refreshUser } = useAuth();
+  const { data: space } = useSpace(spaceId);
+  const pendingAfterReviewerRef = useRef<(() => void) | null>(null);
+  const [reviewerGateOpen, setReviewerGateOpen] = useState(false);
+
+  const needsReviewerGate = useMemo(() => {
+    if (!space?.githubRepoUrl) return false;
+    if (space.pipelineConfig?.review === false) return false;
+    if (user?.hasGithubReviewer) return false;
+    return true;
+  }, [space, user?.hasGithubReviewer]);
+
+  const runWithReviewerGate = useCallback(
+    (action: () => void) => {
+      if (!needsReviewerGate) {
+        action();
+        return;
+      }
+      pendingAfterReviewerRef.current = action;
+      setReviewerGateOpen(true);
+    },
+    [needsReviewerGate],
+  );
+
+  const handleReviewerConnectDone = useCallback(() => {
+    void refreshUser();
+    pendingAfterReviewerRef.current?.();
+    pendingAfterReviewerRef.current = null;
+  }, [refreshUser]);
+
+  const handleReviewerGateSkip = useCallback(() => {
+    pendingAfterReviewerRef.current?.();
+    pendingAfterReviewerRef.current = null;
+  }, []);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [showPriorityMenu, setShowPriorityMenu] = useState(false);
   const [showAssignMenu, setShowAssignMenu] = useState(false);
@@ -113,6 +149,8 @@ export function TicketDetailPanel({
     agentId: string;
     agentType: AgentType;
   } | null>(null);
+  const [agentActiveOnThisTicket, setAgentActiveOnThisTicket] =
+    useState(false);
   const { data: agents = [] } = useAgents(spaceId);
   const { data: assignableUsers = [] } = useAssignableUsers(spaceId);
   const assignedAgent = ticket?.assigneeAgentId
@@ -171,6 +209,23 @@ export function TicketDetailPanel({
       clearTimeout(savedTimerRef.current);
     };
   }, []);
+
+  useEffect(() => {
+    if (!ticket) return;
+    const socket = getSocket();
+    const handleAgentStatus = (payload: {
+      agentId: string;
+      status: string;
+      ticketId?: string;
+    }) => {
+      if (payload.ticketId !== ticket.id) return;
+      setAgentActiveOnThisTicket(payload.status === "active");
+    };
+    socket.on("agent_status", handleAgentStatus);
+    return () => {
+      socket.off("agent_status", handleAgentStatus);
+    };
+  }, [ticket?.id]);
 
   // entrance animation
   useEffect(() => {
@@ -235,7 +290,9 @@ export function TicketDetailPanel({
 
   const handleTriggerAgent = () => {
     if (isCreateMode || triggerAgent.isPending) return;
-    triggerAgent.mutate({ ticketId: ticket!.id, spaceId });
+    runWithReviewerGate(() => {
+      triggerAgent.mutate({ ticketId: ticket!.id, spaceId });
+    });
   };
 
   const handleDelete = () => {
@@ -252,12 +309,13 @@ export function TicketDetailPanel({
   ]);
   const canTrigger =
     !isCreateMode && PLAY_ENABLED.has(ticket!.status as TicketStatus);
+  const isTriggeringThisTicket =
+    !isCreateMode &&
+    triggerAgent.isPending &&
+    triggerAgent.variables?.ticketId === ticket!.id;
   const isAgentRunning =
     !isCreateMode &&
-    !!ticket!.assigneeAgentId &&
-    agents.some(
-      (a) => a.id === ticket!.assigneeAgentId && a.status === "active",
-    );
+    (agentActiveOnThisTicket || isTriggeringThisTicket);
 
   const currentStatus = ticket?.status ?? defaultStatus ?? "backlog";
   const currentPriority = ticket?.priority ?? createPriority;
@@ -366,6 +424,22 @@ export function TicketDetailPanel({
                 </>
               )}
             </div>
+
+            {!isCreateMode && ticket?.requestedChanges && (
+              <span
+                className="text-xs font-medium tracking-wide uppercase rounded-md px-2 py-0.5 bg-amber-100 text-amber-900 dark:bg-amber-900/25 dark:text-amber-100"
+                title={
+                  ticket.requestedChangesFeedback?.slice(0, 200) ?? undefined
+                }
+              >
+                Requested changes
+                {ticket.requestedChangesSource === "testing"
+                  ? " · Testing"
+                  : ticket.requestedChangesSource === "review"
+                    ? " · Review"
+                    : ""}
+              </span>
+            )}
 
             {/* right side: assignee + actions */}
             <div className="ml-auto flex items-center gap-1.5">
@@ -831,13 +905,16 @@ export function TicketDetailPanel({
         cancelLabel="No, just assign"
         onConfirm={() => {
           if (!pendingAgentStart || !ticket) return;
-          updateTicket.mutate({
-            ticketId: ticket.id,
-            spaceId,
-            assigneeAgentId: pendingAgentStart.agentId,
-            startWorking: true,
-          });
+          const start = pendingAgentStart;
           setPendingAgentStart(null);
+          runWithReviewerGate(() => {
+            updateTicket.mutate({
+              ticketId: ticket.id,
+              spaceId,
+              assigneeAgentId: start.agentId,
+              startWorking: true,
+            });
+          });
         }}
         onCancel={() => {
           if (!pendingAgentStart || !ticket) return;
@@ -848,6 +925,13 @@ export function TicketDetailPanel({
           });
           setPendingAgentStart(null);
         }}
+      />
+
+      <GithubReviewerConnectDialog
+        open={reviewerGateOpen}
+        onOpenChange={setReviewerGateOpen}
+        onConnected={handleReviewerConnectDone}
+        onSkip={handleReviewerGateSkip}
       />
     </>
   );

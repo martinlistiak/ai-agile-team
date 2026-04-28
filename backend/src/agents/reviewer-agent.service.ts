@@ -8,6 +8,7 @@ import { createMimoProvider } from "./mimo-provider";
 import { Agent } from "../entities/agent.entity";
 import { Execution } from "../entities/execution.entity";
 import { Space } from "../entities/space.entity";
+import { User } from "../entities/user.entity";
 import { TicketsService } from "../tickets/tickets.service";
 import { GithubService } from "./github.service";
 import { GitlabService } from "./gitlab.service";
@@ -21,6 +22,11 @@ import { computeCostWeightedTokens } from "../common/subscription.constants";
 import { ModelRouterService } from "./model-router.service";
 import { AgentMemoryService } from "./agent-memory.service";
 import { AgentBoosterService } from "./agent-booster.service";
+import { appendCompactOutputStyle } from "./compact-output-prompt";
+import {
+  isReviewerApproveVerdict,
+  isReviewerRequestChangesVerdict,
+} from "../common/review-verdict";
 import { execSync } from "child_process";
 import { readFileSync } from "fs";
 import { join } from "path";
@@ -83,6 +89,7 @@ export class ReviewerAgentService {
     @InjectRepository(Agent) private agentRepo: Repository<Agent>,
     @InjectRepository(Execution) private executionRepo: Repository<Execution>,
     @InjectRepository(Space) private spaceRepo: Repository<Space>,
+    @InjectRepository(User) private userRepo: Repository<User>,
     private executionRegistry: ExecutionRegistry,
     private agentRunQuota: AgentRunQuotaService,
     private modelRouter: ModelRouterService,
@@ -234,7 +241,10 @@ ${userMessage ? `**Additional instructions from the user:** ${userMessage}` : "R
       if (compiledMemories) {
         systemSuffix += `\n\n# Learned Patterns\nApply these lessons from past executions:\n${compiledMemories}`;
       }
-      const fullSystem = `${REVIEWER_SYSTEM_PROMPT}${systemSuffix}`;
+      const fullSystem = appendCompactOutputStyle(
+        `${REVIEWER_SYSTEM_PROMPT}${systemSuffix}`,
+        this.configService,
+      );
 
       const { model: modelName } = this.modelRouter.routeModel(
         "reviewer",
@@ -299,6 +309,20 @@ ${userMessage ? `**Additional instructions from the user:** ${userMessage}` : "R
       if (ticketId && ticket) {
         try {
           if (!useGitlab && space?.githubRepoUrl && ticket.prUrl) {
+            // Check if the user has a dedicated reviewer token; if not, prompt OAuth
+            const spaceOwner = await this.userRepo.findOneBy({
+              id: space.userId,
+            });
+            if (spaceOwner && !spaceOwner.githubReviewerTokenEncrypted) {
+              this.logger.warn(
+                `No dedicated GitHub reviewer token for user ${space.userId}. Emitting auth prompt.`,
+              );
+              this.eventsGateway.emitReviewerAuthRequired(spaceId, {
+                ticketId,
+                userId: space.userId,
+              });
+            }
+
             await this.githubService.createPrReviewComment(
               spaceId,
               ticket.prUrl,
@@ -343,13 +367,9 @@ ${userMessage ? `**Additional instructions from the user:** ${userMessage}` : "R
           "reviewer",
         );
 
-        const lowerResult = finalResult.toLowerCase();
-        const isApproved =
-          lowerResult.includes("verdict: approve") ||
-          lowerResult.includes("verdict:**approve");
+        const isApproved = isReviewerApproveVerdict(finalResult);
         const isRequestChanges =
-          lowerResult.includes("verdict: request_changes") ||
-          lowerResult.includes("verdict:**request_changes");
+          isReviewerRequestChangesVerdict(finalResult);
 
         if (isApproved) {
           await this.ticketsService.moveTicket(ticketId, "testing", "agent", {
@@ -397,7 +417,11 @@ ${userMessage ? `**Additional instructions from the user:** ${userMessage}` : "R
           );
       }
 
-      // Trigger learning loops
+      // Mark idle immediately so the UI and /agents match the completed run (do not wait for background analysis).
+      await this.agentRepo.update(agent.id, { status: "idle" });
+      this.eventsGateway.emitAgentStatus(spaceId, agent.id, "idle", ticketId);
+
+      // Trigger learning loops (fire-and-forget; must not gate agent status)
       this.agentMemory
         .analyzeExecution(execution.id)
         .catch((err) =>
@@ -413,16 +437,7 @@ ${userMessage ? `**Additional instructions from the user:** ${userMessage}` : "R
             `Rule suggestion analysis failed for execution ${execution.id}:`,
             err,
           ),
-        )
-        .finally(() => {
-          this.agentRepo.update(agent.id, { status: "idle" });
-          this.eventsGateway.emitAgentStatus(
-            spaceId,
-            agent.id,
-            "idle",
-            ticketId,
-          );
-        });
+        );
 
       this.logger.log(
         formatAgentExecutionLog({

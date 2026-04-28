@@ -5,7 +5,11 @@ import { useAuth } from "@/contexts/AuthContext";
 import { FaGithub } from "react-icons/fa";
 import { GitlabIcon } from "@/components/GitlabIcon";
 import api from "@/api/client";
-import { isSafeInternalPath, stashOAuthRedirect } from "@/lib/auth-redirect";
+import {
+  getForgotPasswordPath,
+  isSafeInternalPath,
+  stashOAuthRedirect,
+} from "@/lib/auth-redirect";
 import {
   getApiErrorPayload,
   isRegisterEmailInUseError,
@@ -57,6 +61,9 @@ export function LoginPage() {
   const { login } = useAuth();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
+  const next = searchParams.get("next");
+  const forgotPasswordPath = getForgotPasswordPath(next);
+  const headsToBilling = next?.startsWith("/billing") ?? false;
 
   useEffect(() => {
     const wantsRegister =
@@ -136,12 +143,12 @@ export function LoginPage() {
             name,
             acceptTerms,
             acceptPrivacy,
+            ...(isSafeInternalPath(next) ? { next } : {}),
             ...(turnstileToken ? { turnstileToken } : {}),
           }
         : { email, password };
       const { data } = await api.post(endpoint, payload);
       login(data.accessToken, data.user);
-      const next = searchParams.get("next");
       const hasSubscription =
         data.user.subscriptionStatus === "active" ||
         data.user.subscriptionStatus === "trialing" ||
@@ -185,10 +192,10 @@ export function LoginPage() {
           style={{ color: "var(--text-secondary)" }}
         >
           {isRegister
-            ? searchParams.get("next") === "/billing"
+            ? headsToBilling
               ? "Create your account, then start your trial on the next step."
               : "Create your account to get started."
-            : searchParams.get("next") === "/billing"
+            : headsToBilling
               ? "Sign in to continue to billing and start your trial."
               : "Sign in to your workspace."}
         </p>
@@ -307,7 +314,7 @@ export function LoginPage() {
             </label>
             {!isRegister ? (
               <Link
-                to="/login/forgot-password"
+                to={forgotPasswordPath}
                 className="text-[12px] font-medium shrink-0 transition-opacity hover:opacity-70"
                 style={{ color: "var(--accent)" }}
               >
@@ -418,7 +425,7 @@ export function LoginPage() {
                 </button>
                 <span aria-hidden="true"> · </span>
                 <Link
-                  to="/login/forgot-password"
+                  to={forgotPasswordPath}
                   className="font-medium underline-offset-2 hover:underline"
                   style={{ color: "var(--accent)" }}
                 >

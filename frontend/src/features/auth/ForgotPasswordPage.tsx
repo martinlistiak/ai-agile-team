@@ -1,7 +1,8 @@
 import { useState, useLayoutEffect, useRef } from "react";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { RunaLogo } from "@/components/RunaLogo";
 import api from "@/api/client";
+import { getLoginPath, isSafeInternalPath } from "@/lib/auth-redirect";
 
 const TURNSTILE_SCRIPT =
   "https://challenges.cloudflare.com/turnstile/v0/api.js";
@@ -42,6 +43,8 @@ export function ForgotPasswordPage() {
   const turnstileHostRef = useRef<HTMLDivElement>(null);
   const turnstileWidgetId = useRef<string | null>(null);
   const turnstileSiteKey = import.meta.env.VITE_TURNSTILE_SITE_KEY ?? "";
+  const [searchParams] = useSearchParams();
+  const next = searchParams.get("next");
 
   useLayoutEffect(() => {
     if (!turnstileSiteKey) {
@@ -98,6 +101,7 @@ export function ForgotPasswordPage() {
     try {
       await api.post("/auth/forgot-password", {
         email,
+        ...(isSafeInternalPath(next) ? { next } : {}),
         ...(turnstileToken ? { turnstileToken } : {}),
       });
       setDone(true);
@@ -181,7 +185,7 @@ export function ForgotPasswordPage() {
         style={{ color: "var(--text-tertiary)" }}
       >
         <Link
-          to="/login"
+          to={getLoginPath(next)}
           className="font-medium transition-opacity hover:opacity-70"
           style={{ color: "var(--accent)" }}
         >

@@ -20,6 +20,8 @@ import {
   useMergePr,
 } from "@/api/hooks/useTickets";
 import { useAgents } from "@/api/hooks/useAgents";
+import { GithubReviewerConnectDialog } from "@/components/GithubReviewerConnectDialog";
+import { useAuth } from "@/contexts/AuthContext";
 import { BoardColumn } from "./BoardColumn";
 import { TicketCard } from "./TicketCard";
 import { TicketDetailPanel } from "./TicketDetailPanel";
@@ -39,6 +41,7 @@ const COLUMNS: { id: TicketStatus; label: string; color: string }[] = [
 ];
 
 export function KanbanBoard({ spaceId }: { spaceId: string }) {
+  const { refreshUser } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
   const { data: tickets = [], isLoading: ticketsLoading } = useTickets(spaceId);
   const { data: agents = [] } = useAgents(spaceId);
@@ -56,6 +59,9 @@ export function KanbanBoard({ spaceId }: { spaceId: string }) {
     ticketId: string;
     summary: string;
   } | null>(null);
+
+  // Reviewer GitHub auth prompt state
+  const [reviewerAuthPrompt, setReviewerAuthPrompt] = useState(false);
 
   // Merge PR prompt state (shown when moving to staged)
   const [mergePrPrompt, setMergePrPrompt] = useState<{
@@ -81,6 +87,18 @@ export function KanbanBoard({ spaceId }: { spaceId: string }) {
     socket.on("review_verdict", handleReviewVerdict);
     return () => {
       socket.off("review_verdict", handleReviewVerdict);
+    };
+  }, []);
+
+  // Listen for reviewer_auth_required WebSocket events
+  useEffect(() => {
+    const socket = getSocket();
+    const handleReviewerAuthRequired = () => {
+      setReviewerAuthPrompt(true);
+    };
+    socket.on("reviewer_auth_required", handleReviewerAuthRequired);
+    return () => {
+      socket.off("reviewer_auth_required", handleReviewerAuthRequired);
     };
   }, []);
 
@@ -338,6 +356,14 @@ export function KanbanBoard({ spaceId }: { spaceId: string }) {
           }
           setMergePrPrompt(null);
         }}
+      />
+
+      {/* Reviewer GitHub auth prompt — reviewer app not yet authorized */}
+      <GithubReviewerConnectDialog
+        open={reviewerAuthPrompt}
+        onOpenChange={setReviewerAuthPrompt}
+        onConnected={() => void refreshUser()}
+        message="The code reviewer needs access to post PR reviews as a separate identity. Connect the Runa Reviewer GitHub app to enable APPROVE and REQUEST_CHANGES on pull requests."
       />
     </>
   );

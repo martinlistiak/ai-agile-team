@@ -169,9 +169,53 @@ export class PipelineService {
             agentType: "developer",
             action: "started",
           });
+          // Feedback is stored on the ticket; pass prior-stage context only (no duplicate body).
+          const remediateCtx = await this.agentCoordinator.buildContextForTicket(
+            ticket.id,
+          );
+          const remediatePrompt =
+            this.agentCoordinator.formatContextForPrompt(remediateCtx);
+          // Always pass full remediation text so the developer sees instructions even if
+          // persisting `requestedChanges` on the ticket failed (e.g. migration pending).
+          const developerMessage = [remediatePrompt, feedbackPrompt]
+            .filter((s) => s && s.trim().length > 0)
+            .join("\n\n");
           await this.developerAgentService.run(
             spaceId,
-            feedbackPrompt,
+            developerMessage,
+            ticket.id,
+          );
+        }
+      }
+
+      // Tester requested fixes → developer remediation (same pattern as review)
+      if (agentType === "tester") {
+        const testerFixPrompt =
+          await this.agentCoordinator.checkTesterFeedbackLoop(
+            ticket.id,
+            result,
+          );
+        if (testerFixPrompt) {
+          this.logger.log(
+            `Tester feedback loop triggered for ticket ${ticket.id} — auto-fixing`,
+          );
+          this.eventsGateway.emitPipelineEvent(spaceId, {
+            ticketId: ticket.id,
+            stage: "development",
+            agentType: "developer",
+            action: "started",
+          });
+          const remediateCtx = await this.agentCoordinator.buildContextForTicket(
+            ticket.id,
+          );
+          const remediatePrompt =
+            this.agentCoordinator.formatContextForPrompt(remediateCtx);
+          const developerMessage = [remediatePrompt, testerFixPrompt]
+            .filter((s) => s && s.trim().length > 0)
+            .join("\n\n");
+          await this.developerAgentService.run(
+            spaceId,
+            developerMessage,
             ticket.id,
           );
         }

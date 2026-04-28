@@ -3,7 +3,11 @@ import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { RunaLogo } from "@/components/RunaLogo";
 import { useAuth } from "@/contexts/AuthContext";
 import api from "@/api/client";
-import { isSafeInternalPath } from "@/lib/auth-redirect";
+import {
+  getForgotPasswordPath,
+  getLoginPath,
+  isSafeInternalPath,
+} from "@/lib/auth-redirect";
 
 export function ResetPasswordPage() {
   const [password, setPassword] = useState("");
@@ -41,7 +45,12 @@ export function ResetPasswordPage() {
       });
       login(data.accessToken, data.user);
       const next = searchParams.get("next");
-      navigate(isSafeInternalPath(next) ? next : "/");
+      const hasSubscription =
+        data.user.subscriptionStatus === "active" ||
+        data.user.subscriptionStatus === "trialing" ||
+        data.user.hasTeamMembership;
+      const fallback = hasSubscription ? "/spaces" : "/billing";
+      navigate(isSafeInternalPath(next) ? next : fallback);
     } catch (err: unknown) {
       const ax = err as { response?: { data?: { message?: string } } };
       setError(ax.response?.data?.message || "Something went wrong");
@@ -140,7 +149,7 @@ export function ResetPasswordPage() {
         style={{ color: "var(--text-tertiary)" }}
       >
         <Link
-          to="/login"
+          to={getLoginPath(searchParams.get("next"))}
           className="font-medium transition-opacity hover:opacity-70"
           style={{ color: "var(--accent)" }}
         >
@@ -148,7 +157,7 @@ export function ResetPasswordPage() {
         </Link>
         {" · "}
         <Link
-          to="/login/forgot-password"
+          to={getForgotPasswordPath(searchParams.get("next"))}
           className="font-medium transition-opacity hover:opacity-70"
           style={{ color: "var(--accent)" }}
         >

@@ -57,6 +57,17 @@ export class Ticket {
   @Column({ type: "integer", default: 0 })
   order: number;
 
+  /** Review or testing asked for fixes; developer should address `requestedChangesFeedback`. */
+  @Column({ default: false })
+  requestedChanges: boolean;
+
+  @Column({ type: "text", nullable: true })
+  requestedChangesFeedback: string | null;
+
+  /** `review` | `testing` — which stage produced the feedback. */
+  @Column({ type: "varchar", nullable: true })
+  requestedChangesSource: "review" | "testing" | null;
+
   @CreateDateColumn()
   createdAt: Date;
 

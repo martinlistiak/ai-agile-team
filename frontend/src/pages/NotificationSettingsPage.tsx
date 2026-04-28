@@ -17,21 +17,17 @@ const DIGEST_OPTIONS: {
     hint: "Send each email as the event happens.",
   },
   {
-    value: "hourly",
-    label: "Hourly digest",
-    hint: "Bundled delivery when digest email is available.",
-  },
-  {
-    value: "daily",
-    label: "Daily digest",
-    hint: "Bundled delivery when digest email is available.",
-  },
-  {
     value: "none",
     label: "No email",
     hint: "Turn off all notification emails (in-app still follows toggles below).",
   },
 ];
+
+function getSupportedEmailTiming(
+  value: EmailDigestFrequency,
+): "instant" | "none" {
+  return value === "instant" ? "instant" : "none";
+}
 
 const ROWS: {
   label: string;
@@ -157,16 +153,17 @@ export function NotificationSettingsPage() {
               Email timing
             </h2>
             <p className="text-xs text-gray-500 dark:text-gray-400 mb-3">
-              Instant sends mail when events occur. Digest options are stored
-              for your account; bundled digests may not be active in every
-              environment yet.
+              Instant sends mail when events occur. Bundled digest delivery is
+              not available yet.
             </p>
             <select
-              value={prefs.emailDigestFrequency}
+              value={getSupportedEmailTiming(prefs.emailDigestFrequency)}
               disabled={patchMutation.isPending}
               onChange={(e) =>
                 patchMutation.mutate({
-                  emailDigestFrequency: e.target.value as EmailDigestFrequency,
+                  emailDigestFrequency: e.target.value as
+                    | "instant"
+                    | "none",
                 })
               }
               className="w-full max-w-md rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 px-3 py-2 text-sm text-gray-900 dark:text-gray-100"

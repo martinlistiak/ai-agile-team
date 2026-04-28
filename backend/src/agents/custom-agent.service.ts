@@ -13,6 +13,7 @@ import { AgentRunQuotaService } from "../common/agent-run-quota.service";
 import { computeCostWeightedTokens } from "../common/subscription.constants";
 import { ModelRouterService } from "./model-router.service";
 import { AgentMemoryService } from "./agent-memory.service";
+import { appendCompactOutputStyle } from "./compact-output-prompt";
 
 @Injectable()
 export class CustomAgentService {
@@ -70,6 +71,8 @@ export class CustomAgentService {
       if (compiledMemories) {
         systemPrompt += `\n\n# Learned Patterns\nApply these lessons from past executions:\n${compiledMemories}`;
       }
+
+      systemPrompt = appendCompactOutputStyle(systemPrompt, this.configService);
 
       const { model: modelName } = this.modelRouter.routeModel(
         "custom",

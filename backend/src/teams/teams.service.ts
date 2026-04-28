@@ -78,17 +78,18 @@ export class TeamsService {
   }
 
   /**
-   * Returns users that can be assigned to tickets in a space: the given user (space owner) plus all members of every team they belong to.
+   * Returns users that can be assigned to tickets in a space: the space owner plus
+   * members of teams owned by that user.
    */
-  async getAssignableUsersForUser(
-    userId: string,
+  async getAssignableUsersForOwner(
+    ownerId: string,
   ): Promise<
     { id: string; name: string; email: string; avatarUrl: string | null }[]
   > {
-    const teams = await this.getTeamsForUser(userId);
+    const teams = await this.teamRepo.find({ where: { ownerId } });
     const teamIds = teams.map((t) => t.id);
     if (teamIds.length === 0) {
-      const user = await this.userRepo.findOneBy({ id: userId });
+      const user = await this.userRepo.findOneBy({ id: ownerId });
       return user
         ? [
             {
@@ -118,8 +119,8 @@ export class TeamsService {
         });
       }
     }
-    if (!byId.has(userId)) {
-      const user = await this.userRepo.findOneBy({ id: userId });
+    if (!byId.has(ownerId)) {
+      const user = await this.userRepo.findOneBy({ id: ownerId });
       if (user) {
         byId.set(user.id, {
           id: user.id,

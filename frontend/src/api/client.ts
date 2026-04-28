@@ -1,4 +1,5 @@
 import axios from "axios";
+import { getCurrentInternalPath, getLoginPath } from "@/lib/auth-redirect";
 
 const api = axios.create({
   baseURL: "/api",
@@ -40,7 +41,7 @@ api.interceptors.response.use(
       !isIntegrationError
     ) {
       localStorage.removeItem("token");
-      window.location.href = "/login";
+      window.location.href = getLoginPath(getCurrentInternalPath());
     }
     return Promise.reject(error);
   },

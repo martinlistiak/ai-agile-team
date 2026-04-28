@@ -82,13 +82,23 @@ describe("TicketsService.addComment", () => {
   });
 
   it("should emit ticket.commented event", async () => {
-    mockRepo.findOneBy.mockResolvedValue({ id: "ticket-1", comments: [] });
+    mockRepo.findOneBy.mockResolvedValue({
+      id: "ticket-1",
+      title: "Ticket 1",
+      spaceId: "space-1",
+      comments: [],
+    });
 
     await service.addComment("ticket-1", "content", "user", "user-1");
 
     expect(mockEventEmitter.emit).toHaveBeenCalledWith(
       "ticket.commented",
-      expect.objectContaining({ id: "ticket-1" }),
+      expect.objectContaining({
+        ticketId: "ticket-1",
+        ticketTitle: "Ticket 1",
+        spaceId: "space-1",
+        commenterId: "user-1",
+      }),
     );
   });
 

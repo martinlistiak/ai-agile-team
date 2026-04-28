@@ -184,4 +184,13 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
   emitNotification(userId: string, notification: unknown) {
     this.server?.to(`user:${userId}`).emit("notification", { notification });
   }
+
+  emitReviewerAuthRequired(
+    spaceId: string,
+    payload: { ticketId?: string; userId: string },
+  ) {
+    this.server
+      ?.to(spaceId)
+      .emit("reviewer_auth_required", { spaceId, ...payload });
+  }
 }

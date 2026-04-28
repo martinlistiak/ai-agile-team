@@ -9,6 +9,7 @@ import { EmailVerificationBanner } from "@/components/EmailVerificationBanner";
 import { ImpersonationBanner } from "@/components/ImpersonationBanner";
 import { useMobile } from "@/hooks/useMobile";
 import { useAuth } from "@/contexts/AuthContext";
+import { PostLoginGithubReviewerPrompt } from "@/components/PostLoginGithubReviewerPrompt";
 
 export function AppLayout() {
   const isMobile = useMobile();
@@ -16,6 +17,7 @@ export function AppLayout() {
 
   return (
     <ChatProvider>
+      <PostLoginGithubReviewerPrompt />
       <div className="h-screen flex flex-col overflow-hidden bg-white dark:bg-gray-950">
         <ImpersonationBanner />
         <EmailVerificationBanner />

@@ -39,7 +39,7 @@ export type ModelTier = 1 | 2 | 3;
 
 export const MODEL_TIERS: Record<ModelTier, string> = {
   1: "mimo-v2-flash",
-  2: "mimo-v2-pro",
+  2: "mimo-v2-flash",
   3: "mimo-v2-pro",
 };
 

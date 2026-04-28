@@ -3,7 +3,12 @@ import { useNavigate, useSearchParams } from "react-router-dom";
 import type { AxiosError } from "axios";
 import { useAuth } from "@/contexts/AuthContext";
 import api from "@/api/client";
-import { consumeAuthRedirect } from "@/lib/auth-redirect";
+import {
+  consumeAuthRedirect,
+  getLoginPath,
+  peekAuthRedirect,
+} from "@/lib/auth-redirect";
+import { stashGithubReviewerLoginPrompt } from "@/lib/github-reviewer-login-prompt";
 
 const getProcessedCodeKey = (code: string) => `github-oauth-code:${code}`;
 
@@ -12,6 +17,7 @@ export function GithubCallbackPage() {
   const { login } = useAuth();
   const navigate = useNavigate();
   const [error, setError] = useState("");
+  const loginHref = getLoginPath(peekAuthRedirect());
 
   useEffect(() => {
     const code = searchParams.get("code");
@@ -31,6 +37,9 @@ export function GithubCallbackPage() {
       .post("/auth/github/callback", { code })
       .then(({ data }) => {
         login(data.accessToken, data.user);
+        if (data.user.hasGithub && !data.user.hasGithubReviewer) {
+          stashGithubReviewerLoginPrompt();
+        }
         const stashed = consumeAuthRedirect();
         const hasSubscription =
           data.user.subscriptionStatus === "active" ||
@@ -52,7 +61,7 @@ export function GithubCallbackPage() {
       <div className="text-center">
         <p className="text-red-500 mb-4">{error}</p>
         <a
-          href="/login"
+          href={loginHref}
           className="cursor-pointer text-primary-500 hover:underline"
         >
           Back to login

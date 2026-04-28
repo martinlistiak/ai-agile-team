@@ -27,6 +27,7 @@ import { UpdateSpaceDto } from "./dto/update-space.dto";
 import { Request } from "express";
 import { CountlyService } from "../common/countly.service";
 import { BillingService } from "../billing/billing.service";
+import { AccessControlService } from "../common/access-control.service";
 
 @ApiTags("Spaces")
 @ApiBearerAuth("bearer")
@@ -38,6 +39,7 @@ export class SpacesController {
     private teamsService: TeamsService,
     private countly: CountlyService,
     private billingService: BillingService,
+    private accessControl: AccessControlService,
   ) {}
 
   @Get()
@@ -51,17 +53,20 @@ export class SpacesController {
   @ApiOperation({ summary: "Get a single space by ID" })
   @ApiParam({ name: "id", format: "uuid" })
   @ApiResponse({ status: 200, description: "Space object" })
-  async findOne(@Param("id") id: string) {
-    return this.spacesService.findById(id);
+  async findOne(@Req() req: Request, @Param("id") id: string) {
+    return this.accessControl.getAccessibleSpaceOrThrow(id, (req.user as any).id);
   }
 
   @Get(":id/assignable-users")
   @ApiOperation({ summary: "List users who can be assigned to tickets" })
   @ApiParam({ name: "id", format: "uuid" })
   @ApiResponse({ status: 200, description: "Array of assignable users" })
-  async getAssignableUsers(@Param("id") id: string) {
-    const space = await this.spacesService.findById(id);
-    return this.teamsService.getAssignableUsersForUser(space.userId);
+  async getAssignableUsers(@Req() req: Request, @Param("id") id: string) {
+    const space = await this.accessControl.getAccessibleSpaceOrThrow(
+      id,
+      (req.user as any).id,
+    );
+    return this.teamsService.getAssignableUsersForOwner(space.userId);
   }
 
   @Post()
@@ -118,7 +123,12 @@ export class SpacesController {
   @ApiOperation({ summary: "Update space settings" })
   @ApiParam({ name: "id", format: "uuid" })
   @ApiResponse({ status: 200, description: "Updated space" })
-  async update(@Param("id") id: string, @Body() body: UpdateSpaceDto) {
+  async update(
+    @Req() req: Request,
+    @Param("id") id: string,
+    @Body() body: UpdateSpaceDto,
+  ) {
+    await this.accessControl.getAccessibleSpaceOrThrow(id, (req.user as any).id);
     return this.spacesService.update(id, body);
   }
 
@@ -127,6 +137,7 @@ export class SpacesController {
   @ApiParam({ name: "id", format: "uuid" })
   @ApiResponse({ status: 200, description: "Space deleted" })
   async remove(@Req() req: Request, @Param("id") id: string) {
+    await this.accessControl.getAccessibleSpaceOrThrow(id, (req.user as any).id);
     await this.spacesService.delete(id);
 
     // Update Stripe subscription quantity based on remaining space count

@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import api from "@/api/client";
+import { getCurrentInternalPath } from "@/lib/auth-redirect";
 
 export function EmailVerificationBanner() {
   const { user, token, refreshUser } = useAuth();
@@ -16,7 +17,9 @@ export function EmailVerificationBanner() {
     setBusy(true);
     setNotice(null);
     try {
-      const { data } = await api.post("/auth/resend-verification", {});
+      const { data } = await api.post("/auth/resend-verification", {
+        next: getCurrentInternalPath(),
+      });
       setNotice(data?.message ?? "Check your inbox.");
       await refreshUser();
     } catch {

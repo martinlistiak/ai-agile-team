@@ -1,5 +1,6 @@
 import { Navigate, useLocation } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
+import { withNext } from "@/lib/auth-redirect";
 
 /** Returns true when the user has an active or trialing subscription, or is a team member. */
 function hasActiveSubscription(
@@ -24,9 +25,8 @@ export function SubscriptionGate({ children }: { children: React.ReactNode }) {
   const location = useLocation();
 
   if (!hasActiveSubscription(user)) {
-    return (
-      <Navigate to="/billing" replace state={{ from: location.pathname }} />
-    );
+    const next = `${location.pathname}${location.search}${location.hash}`;
+    return <Navigate to={withNext("/billing", next)} replace />;
   }
 
   return <>{children}</>;

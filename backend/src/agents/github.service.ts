@@ -5,6 +5,7 @@ import { ConfigService } from "@nestjs/config";
 import { execSync } from "child_process";
 import { existsSync, mkdirSync } from "fs";
 import { join } from "path";
+import { Agent, fetch as undiciFetch, type RequestInit as UndiciRequestInit } from "undici";
 import { Space } from "../entities/space.entity";
 import { User } from "../entities/user.entity";
 import { Ticket } from "../entities/ticket.entity";
@@ -18,6 +19,14 @@ export class GithubService {
   private readonly lastFetchTime = new Map<string, number>();
   /** Minimum interval between fetches for the same space (ms). */
   private static readonly FETCH_COOLDOWN_MS = 60_000;
+
+  /**
+   * Node's global `fetch` uses Undici with a 10s default TCP connect timeout, which fails on slow
+   * networks. Use a shared Agent with a longer connect timeout for api.github.com calls.
+   */
+  private static readonly githubHttpAgent = new Agent({
+    connect: { timeout: 60_000 },
+  });
 
   constructor(
     private configService: ConfigService,
@@ -33,6 +42,58 @@ export class GithubService {
     if (!existsSync(this.workspacesRoot)) {
       mkdirSync(this.workspacesRoot, { recursive: true });
     }
+  }
+
+  /** GitHub REST API with relaxed connect timeout (see `githubHttpAgent`). */
+  private githubRestFetch(
+    url: string,
+    init?: UndiciRequestInit,
+  ): ReturnType<typeof undiciFetch> {
+    return undiciFetch(url, {
+      ...init,
+      dispatcher: GithubService.githubHttpAgent,
+    });
+  }
+
+  private isTransientGithubNetworkError(e: unknown): boolean {
+    if (!(e instanceof Error)) return false;
+    if (e.message === "fetch failed") return true;
+    const cause = (e as Error & { cause?: unknown }).cause;
+    if (!cause || typeof cause !== "object") return false;
+    const code = "code" in cause ? String((cause as { code: unknown }).code) : "";
+    return (
+      code === "UND_ERR_CONNECT_TIMEOUT" ||
+      code === "UND_ERR_HEADERS_TIMEOUT" ||
+      code === "UND_ERR_BODY_TIMEOUT" ||
+      code === "ECONNRESET" ||
+      code === "ETIMEDOUT" ||
+      code === "EHOSTUNREACH" ||
+      code === "ENETUNREACH"
+    );
+  }
+
+  private async fetchGithubWithTransientRetry(
+    op: () => ReturnType<typeof undiciFetch>,
+    context: string,
+  ): Promise<Awaited<ReturnType<typeof undiciFetch>>> {
+    const maxAttempts = 3;
+    let lastError: unknown;
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      try {
+        return await op();
+      } catch (e) {
+        lastError = e;
+        if (!this.isTransientGithubNetworkError(e) || attempt === maxAttempts) {
+          throw e;
+        }
+        const delayMs = 500 * attempt;
+        this.logger.warn(
+          `${context}: transient network error (${e}), retry ${attempt}/${maxAttempts} after ${delayMs}ms`,
+        );
+        await new Promise((r) => setTimeout(r, delayMs));
+      }
+    }
+    throw lastError;
   }
 
   /**
@@ -437,7 +498,7 @@ export class GithubService {
     // Verify the branch has commits ahead of the default branch
     const defaultBranch = await this.getDefaultBranch(owner, repo, token);
 
-    const compareRes = await fetch(
+    const compareRes = await this.githubRestFetch(
       `https://api.github.com/repos/${owner}/${repo}/compare/${defaultBranch}...${branchName}`,
       {
         headers: {
@@ -448,7 +509,7 @@ export class GithubService {
     );
 
     if (compareRes.ok) {
-      const compareData = await compareRes.json();
+      const compareData = (await compareRes.json()) as { ahead_by?: number };
       if (compareData.ahead_by === 0) {
         throw new Error(
           `Branch "${branchName}" has no commits ahead of "${defaultBranch}". The agent may not have made any code changes.`,
@@ -471,7 +532,7 @@ export class GithubService {
     // Get the default branch name
     // (already fetched above for the compare check)
 
-    const response = await fetch(
+    const response = await this.githubRestFetch(
       `https://api.github.com/repos/${owner}/${repo}/pulls`,
       {
         method: "POST",
@@ -496,7 +557,7 @@ export class GithubService {
       );
     }
 
-    const data = await response.json();
+    const data = (await response.json()) as { html_url: string; number: number };
     return { url: data.html_url, number: data.number };
   }
 
@@ -510,7 +571,7 @@ export class GithubService {
     token: string,
   ): Promise<{ url: string; number: number } | null> {
     try {
-      const response = await fetch(
+      const response = await this.githubRestFetch(
         `https://api.github.com/repos/${owner}/${repo}/pulls?head=${owner}:${branchName}&state=open`,
         {
           headers: {
@@ -520,7 +581,10 @@ export class GithubService {
         },
       );
       if (response.ok) {
-        const prs = await response.json();
+        const prs = (await response.json()) as Array<{
+          html_url: string;
+          number: number;
+        }>;
         if (prs.length > 0) {
           return { url: prs[0].html_url, number: prs[0].number };
         }
@@ -540,7 +604,7 @@ export class GithubService {
     token: string,
   ): Promise<string> {
     try {
-      const response = await fetch(
+      const response = await this.githubRestFetch(
         `https://api.github.com/repos/${owner}/${repo}`,
         {
           headers: {
@@ -550,13 +614,165 @@ export class GithubService {
         },
       );
       if (response.ok) {
-        const data = await response.json();
+        const data = (await response.json()) as { default_branch?: string };
         return data.default_branch || "main";
       }
     } catch (e) {
       this.logger.warn(`Failed to get default branch, using 'main': ${e}`);
     }
     return "main";
+  }
+
+  /**
+   * GitHub allows only one pending review per user per PR. Remove ours before submitting a new review.
+   * Lists all pages — pending reviews are easy to miss on busy PRs when only the first page is fetched.
+   */
+  private async deletePendingReviewByTokenUser(
+    owner: string,
+    repo: string,
+    prNumber: string,
+    token: string,
+  ): Promise<void> {
+    const headers: Record<string, string> = {
+      Authorization: `Bearer ${token}`,
+      Accept: "application/vnd.github+json",
+      "X-GitHub-Api-Version": "2022-11-28",
+    };
+    try {
+      const meRes = await this.githubRestFetch("https://api.github.com/user", { headers });
+      if (!meRes.ok) return;
+      const me = (await meRes.json()) as { id: number };
+      const perPage = 100;
+      for (let page = 1; ; page++) {
+        const listRes = await this.githubRestFetch(
+          `https://api.github.com/repos/${owner}/${repo}/pulls/${prNumber}/reviews?per_page=${perPage}&page=${page}`,
+          { headers },
+        );
+        if (!listRes.ok) return;
+        const reviews = (await listRes.json()) as Array<{
+          id: number;
+          state: string;
+          user?: { id: number };
+        }>;
+        if (!Array.isArray(reviews) || reviews.length === 0) break;
+        for (const r of reviews) {
+          if (r.user?.id !== me.id) continue;
+          if (String(r.state).toUpperCase() !== "PENDING") continue;
+          const delRes = await this.githubRestFetch(
+            `https://api.github.com/repos/${owner}/${repo}/pulls/${prNumber}/reviews/${r.id}`,
+            { method: "DELETE", headers },
+          );
+          if (delRes.ok) {
+            this.logger.log(
+              `Removed pending GitHub PR review ${r.id} before submitting a new review`,
+            );
+          } else {
+            const errText = await delRes.text();
+            this.logger.warn(
+              `Could not remove pending review ${r.id}: ${delRes.status} ${errText}`,
+            );
+          }
+        }
+        if (reviews.length < perPage) break;
+      }
+    } catch (e) {
+      this.logger.warn(`deletePendingReviewByTokenUser: ${e}`);
+    }
+  }
+
+  private isGithubPendingReviewConflict(errorBody: string): boolean {
+    return (
+      errorBody.includes("one pending review") ||
+      errorBody.includes("pending review per pull request")
+    );
+  }
+
+  /**
+   * POST /pulls/{id}/reviews with cleanup: delete our pending review(s), submit, and on GitHub's
+   * "only one pending review" error clear again and retry once (covers races and failed first attempts).
+   */
+  private async submitPullRequestReview(
+    owner: string,
+    repo: string,
+    prNumber: string,
+    token: string,
+    payload: Record<string, unknown>,
+  ): Promise<{ ok: boolean; status: number; body: string }> {
+    const url = `https://api.github.com/repos/${owner}/${repo}/pulls/${prNumber}/reviews`;
+    const headers: Record<string, string> = {
+      Authorization: `Bearer ${token}`,
+      Accept: "application/vnd.github+json",
+      "Content-Type": "application/json",
+    };
+
+    for (let attempt = 0; attempt < 2; attempt++) {
+      await this.deletePendingReviewByTokenUser(owner, repo, prNumber, token);
+      const res = await this.fetchGithubWithTransientRetry(
+        () =>
+          this.githubRestFetch(url, {
+            method: "POST",
+            headers,
+            body: JSON.stringify(payload),
+          }),
+        "submitPullRequestReview",
+      );
+      const body = await res.text();
+      if (res.ok) return { ok: true, status: res.status, body };
+      if (
+        res.status === 422 &&
+        attempt === 0 &&
+        this.isGithubPendingReviewConflict(body)
+      ) {
+        this.logger.warn(
+          "GitHub reported an existing pending review; cleared and retrying submit once",
+        );
+        continue;
+      }
+      return { ok: false, status: res.status, body };
+    }
+    return { ok: false, status: 422, body: "exhausted pending-review retries" };
+  }
+
+  private async getGithubUserId(token: string): Promise<number | null> {
+    const headers: Record<string, string> = {
+      Authorization: `Bearer ${token}`,
+      Accept: "application/vnd.github+json",
+      "X-GitHub-Api-Version": "2022-11-28",
+    };
+    try {
+      const res = await this.githubRestFetch("https://api.github.com/user", {
+        headers,
+      });
+      if (!res.ok) return null;
+      const data = (await res.json()) as { id?: number };
+      return typeof data.id === "number" ? data.id : null;
+    } catch {
+      return null;
+    }
+  }
+
+  private async getPullRequestAuthorUserId(
+    owner: string,
+    repo: string,
+    prNumber: string,
+    token: string,
+  ): Promise<number | null> {
+    const headers: Record<string, string> = {
+      Authorization: `Bearer ${token}`,
+      Accept: "application/vnd.github+json",
+      "X-GitHub-Api-Version": "2022-11-28",
+    };
+    try {
+      const res = await this.githubRestFetch(
+        `https://api.github.com/repos/${owner}/${repo}/pulls/${prNumber}`,
+        { headers },
+      );
+      if (!res.ok) return null;
+      const data = (await res.json()) as { user?: { id?: number } };
+      return typeof data.user?.id === "number" ? data.user.id : null;
+    } catch {
+      return null;
+    }
   }
 
   /**
@@ -605,107 +821,82 @@ export class GithubService {
       event = "REQUEST_CHANGES";
     }
 
-    const response = await fetch(
-      `https://api.github.com/repos/${owner}/${repo}/pulls/${prNumber}/reviews`,
-      {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${token}`,
-          Accept: "application/vnd.github+json",
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
+    if (event !== "COMMENT") {
+      const [reviewerId, authorId] = await Promise.all([
+        this.getGithubUserId(token),
+        this.getPullRequestAuthorUserId(owner, repo, prNumber, token),
+      ]);
+      if (
+        reviewerId != null &&
+        authorId != null &&
+        reviewerId === authorId
+      ) {
+        this.logger.log(
+          "PR author matches the GitHub token user; using COMMENT (GitHub disallows APPROVE/REQUEST_CHANGES on your own PR)",
+        );
+        event = "COMMENT";
+      }
+    }
+
+    let r = await this.submitPullRequestReview(owner, repo, prNumber, token, {
+      body: reviewBody,
+      event,
+      comments: inlineComments,
+    });
+
+    if (r.ok) return;
+
+    if (r.status === 422) {
+      const errorBody = r.body;
+      // 422 can happen for two reasons:
+      // 1. Inline comments reference files/lines not in the diff
+      // 2. APPROVE/REQUEST_CHANGES on your own PR (same token authored it)
+      // Strategy: retry without inline comments first, then fall back to COMMENT event
+      if (inlineComments.length > 0) {
+        this.logger.warn(
+          `Inline comments failed, retrying without them: ${errorBody}`,
+        );
+        r = await this.submitPullRequestReview(owner, repo, prNumber, token, {
           body: reviewBody,
           event,
-          comments: inlineComments,
-        }),
-      },
-    );
+        });
+        if (r.ok) return;
 
-    if (!response.ok) {
-      const errorBody = await response.text();
-
-      if (response.status === 422) {
-        // 422 can happen for two reasons:
-        // 1. Inline comments reference files/lines not in the diff
-        // 2. APPROVE/REQUEST_CHANGES on your own PR (same token authored it)
-        // Strategy: retry without inline comments first, then fall back to COMMENT event
-        if (inlineComments.length > 0) {
+        if (r.status === 422 && event !== "COMMENT") {
           this.logger.warn(
-            `Inline comments failed, retrying without them: ${errorBody}`,
+            `Review event "${event}" rejected, falling back to COMMENT: ${r.body}`,
           );
-          const retryResponse = await fetch(
-            `https://api.github.com/repos/${owner}/${repo}/pulls/${prNumber}/reviews`,
-            {
-              method: "POST",
-              headers: {
-                Authorization: `Bearer ${token}`,
-                Accept: "application/vnd.github+json",
-                "Content-Type": "application/json",
-              },
-              body: JSON.stringify({ body: reviewBody, event }),
-            },
-          );
-          if (retryResponse.ok) return;
-
-          // Still failing — likely an event issue, fall back to COMMENT
-          const retryError = await retryResponse.text();
-          if (retryResponse.status === 422 && event !== "COMMENT") {
-            this.logger.warn(
-              `Review event "${event}" rejected, falling back to COMMENT: ${retryError}`,
-            );
-            const fallbackResponse = await fetch(
-              `https://api.github.com/repos/${owner}/${repo}/pulls/${prNumber}/reviews`,
-              {
-                method: "POST",
-                headers: {
-                  Authorization: `Bearer ${token}`,
-                  Accept: "application/vnd.github+json",
-                  "Content-Type": "application/json",
-                },
-                body: JSON.stringify({ body: reviewBody, event: "COMMENT" }),
-              },
-            );
-            if (fallbackResponse.ok) return;
-            const fallbackError = await fallbackResponse.text();
-            throw new Error(
-              `GitHub PR review fallback failed (${fallbackResponse.status}): ${fallbackError}`,
-            );
-          }
+          r = await this.submitPullRequestReview(owner, repo, prNumber, token, {
+            body: reviewBody,
+            event: "COMMENT",
+          });
+          if (r.ok) return;
           throw new Error(
-            `GitHub PR review retry failed (${retryResponse.status}): ${retryError}`,
+            `GitHub PR review fallback failed (${r.status}): ${r.body}`,
           );
         }
-
-        // No inline comments — the event itself is likely the problem
-        if (event !== "COMMENT") {
-          this.logger.warn(
-            `Review event "${event}" rejected (422), falling back to COMMENT: ${errorBody}`,
-          );
-          const fallbackResponse = await fetch(
-            `https://api.github.com/repos/${owner}/${repo}/pulls/${prNumber}/reviews`,
-            {
-              method: "POST",
-              headers: {
-                Authorization: `Bearer ${token}`,
-                Accept: "application/vnd.github+json",
-                "Content-Type": "application/json",
-              },
-              body: JSON.stringify({ body: reviewBody, event: "COMMENT" }),
-            },
-          );
-          if (fallbackResponse.ok) return;
-          const fallbackError = await fallbackResponse.text();
-          throw new Error(
-            `GitHub PR review fallback failed (${fallbackResponse.status}): ${fallbackError}`,
-          );
-        }
+        throw new Error(
+          `GitHub PR review retry failed (${r.status}): ${r.body}`,
+        );
       }
 
-      throw new Error(
-        `GitHub PR review failed (${response.status}): ${errorBody}`,
-      );
+      // No inline comments — the event itself is likely the problem
+      if (event !== "COMMENT") {
+        this.logger.warn(
+          `Review event "${event}" rejected (422), falling back to COMMENT: ${errorBody}`,
+        );
+        r = await this.submitPullRequestReview(owner, repo, prNumber, token, {
+          body: reviewBody,
+          event: "COMMENT",
+        });
+        if (r.ok) return;
+        throw new Error(
+          `GitHub PR review fallback failed (${r.status}): ${r.body}`,
+        );
+      }
     }
+
+    throw new Error(`GitHub PR review failed (${r.status}): ${r.body}`);
   }
 
   /**
@@ -774,7 +965,7 @@ export class GithubService {
       throw new Error(`Could not extract PR number from URL: ${prUrl}`);
     }
 
-    const response = await fetch(
+    const response = await this.githubRestFetch(
       `https://api.github.com/repos/${owner}/${repo}/pulls/${prNumber}/merge`,
       {
         method: "PUT",

@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
+import { getLoginPath } from "@/lib/auth-redirect";
 import {
   useInvitationInfo,
   useAcceptInvitation,
@@ -71,7 +72,7 @@ export function AcceptInvitationPage() {
             . Please log in or sign up to accept.
           </p>
           <button
-            onClick={() => navigate(`/login?redirect=/invitations/${token}`)}
+            onClick={() => navigate(getLoginPath(`/invitations/${token}`))}
             className="px-4 py-2 rounded-lg bg-indigo-500 text-white text-sm font-medium hover:bg-indigo-600 transition-colors"
           >
             Log in to accept

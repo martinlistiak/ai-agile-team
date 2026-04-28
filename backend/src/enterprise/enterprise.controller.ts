@@ -29,6 +29,7 @@ import { SsoService } from "./sso.service";
 import { AgentTrainingService } from "./agent-training.service";
 import { SlaService } from "./sla.service";
 import { AnalyticsService } from "./analytics.service";
+import { AccessControlService } from "../common/access-control.service";
 
 @ApiTags("Enterprise")
 @Controller("enterprise")
@@ -38,6 +39,7 @@ export class EnterpriseController {
     private trainingService: AgentTrainingService,
     private slaService: SlaService,
     private analyticsService: AnalyticsService,
+    private accessControl: AccessControlService,
   ) {}
 
   // ── SSO / SAML ──
@@ -65,6 +67,7 @@ export class EnterpriseController {
   })
   @ApiResponse({ status: 201, description: "SSO configuration saved" })
   async configureSso(
+    @Req() req: Request,
     @Param("teamId") teamId: string,
     @Body()
     body: {
@@ -77,6 +80,10 @@ export class EnterpriseController {
       enforceSSO?: boolean;
     },
   ) {
+    await this.accessControl.assertTeamAdminOrOwnerOrThrow(
+      teamId,
+      (req.user as any).id,
+    );
     return this.ssoService.configureSso(teamId, body);
   }
 
@@ -87,7 +94,11 @@ export class EnterpriseController {
   @ApiOperation({ summary: "Get SSO configuration for a team" })
   @ApiParam({ name: "teamId", format: "uuid" })
   @ApiResponse({ status: 200, description: "SSO configuration" })
-  async getSsoConfig(@Param("teamId") teamId: string) {
+  async getSsoConfig(@Req() req: Request, @Param("teamId") teamId: string) {
+    await this.accessControl.assertTeamMemberOrThrow(
+      teamId,
+      (req.user as any).id,
+    );
     return this.ssoService.getSsoConfig(teamId);
   }
 
@@ -98,7 +109,11 @@ export class EnterpriseController {
   @ApiOperation({ summary: "Remove SSO configuration" })
   @ApiParam({ name: "teamId", format: "uuid" })
   @ApiResponse({ status: 200, description: "SSO removed" })
-  async deleteSsoConfig(@Param("teamId") teamId: string) {
+  async deleteSsoConfig(@Req() req: Request, @Param("teamId") teamId: string) {
+    await this.accessControl.assertTeamAdminOrOwnerOrThrow(
+      teamId,
+      (req.user as any).id,
+    );
     return { deleted: await this.ssoService.deleteSsoConfig(teamId) };
   }
 
@@ -116,9 +131,14 @@ export class EnterpriseController {
     },
   })
   async toggleSso(
+    @Req() req: Request,
     @Param("teamId") teamId: string,
     @Body() body: { enabled: boolean },
   ) {
+    await this.accessControl.assertTeamAdminOrOwnerOrThrow(
+      teamId,
+      (req.user as any).id,
+    );
     return this.ssoService.toggleSso(teamId, body.enabled);
   }
 
@@ -187,6 +207,7 @@ export class EnterpriseController {
   })
   @ApiResponse({ status: 201, description: "Training created" })
   async createTraining(
+    @Req() req: Request,
     @Param("agentId") agentId: string,
     @Body()
     body: {
@@ -195,6 +216,7 @@ export class EnterpriseController {
       documents: { fileName: string; content: string; mimeType: string }[];
     },
   ) {
+    await this.accessControl.getAccessibleAgentOrThrow(agentId, (req.user as any).id);
     return this.trainingService.createTraining(agentId, body);
   }
 
@@ -205,7 +227,8 @@ export class EnterpriseController {
   @ApiOperation({ summary: "List trainings for an agent" })
   @ApiParam({ name: "agentId", format: "uuid" })
   @ApiResponse({ status: 200, description: "Array of trainings" })
-  async getTrainings(@Param("agentId") agentId: string) {
+  async getTrainings(@Req() req: Request, @Param("agentId") agentId: string) {
+    await this.accessControl.getAccessibleAgentOrThrow(agentId, (req.user as any).id);
     return this.trainingService.getTrainings(agentId);
   }
 
@@ -216,7 +239,8 @@ export class EnterpriseController {
   @ApiOperation({ summary: "Get training details" })
   @ApiParam({ name: "id", format: "uuid" })
   @ApiResponse({ status: 200, description: "Training object" })
-  async getTraining(@Param("id") id: string) {
+  async getTraining(@Req() req: Request, @Param("id") id: string) {
+    await this.accessControl.getAccessibleTrainingOrThrow(id, (req.user as any).id);
     return this.trainingService.getTraining(id);
   }
 
@@ -227,7 +251,8 @@ export class EnterpriseController {
   @ApiOperation({ summary: "Apply completed training to agent" })
   @ApiParam({ name: "id", format: "uuid" })
   @ApiResponse({ status: 201, description: "Updated agent" })
-  async applyTraining(@Param("id") id: string) {
+  async applyTraining(@Req() req: Request, @Param("id") id: string) {
+    await this.accessControl.getAccessibleTrainingOrThrow(id, (req.user as any).id);
     return this.trainingService.applyTraining(id);
   }
 
@@ -238,7 +263,8 @@ export class EnterpriseController {
   @ApiOperation({ summary: "Delete a training" })
   @ApiParam({ name: "id", format: "uuid" })
   @ApiResponse({ status: 200, description: "Deletion result" })
-  async deleteTraining(@Param("id") id: string) {
+  async deleteTraining(@Req() req: Request, @Param("id") id: string) {
+    await this.accessControl.getAccessibleTrainingOrThrow(id, (req.user as any).id);
     return { deleted: await this.trainingService.deleteTraining(id) };
   }
 
@@ -262,6 +288,7 @@ export class EnterpriseController {
   })
   @ApiResponse({ status: 201, description: "SLA configuration saved" })
   async configureSla(
+    @Req() req: Request,
     @Param("teamId") teamId: string,
     @Body()
     body: {
@@ -270,6 +297,10 @@ export class EnterpriseController {
       resolutionTimeHoursTarget?: number;
     },
   ) {
+    await this.accessControl.assertTeamAdminOrOwnerOrThrow(
+      teamId,
+      (req.user as any).id,
+    );
     return this.slaService.configureSla(teamId, body);
   }
 
@@ -280,7 +311,11 @@ export class EnterpriseController {
   @ApiOperation({ summary: "Get SLA status and compliance" })
   @ApiParam({ name: "teamId", format: "uuid" })
   @ApiResponse({ status: 200, description: "SLA status with compliance" })
-  async getSlaStatus(@Param("teamId") teamId: string) {
+  async getSlaStatus(@Req() req: Request, @Param("teamId") teamId: string) {
+    await this.accessControl.assertTeamMemberOrThrow(
+      teamId,
+      (req.user as any).id,
+    );
     return this.slaService.getSlaStatus(teamId);
   }
 
@@ -293,9 +328,14 @@ export class EnterpriseController {
   @ApiQuery({ name: "days", required: false, type: Number })
   @ApiResponse({ status: 200, description: "Daily SLA metrics" })
   async getSlaHistory(
+    @Req() req: Request,
     @Param("teamId") teamId: string,
     @Query("days") days?: string,
   ) {
+    await this.accessControl.assertTeamMemberOrThrow(
+      teamId,
+      (req.user as any).id,
+    );
     return this.slaService.getSlaHistory(
       teamId,
       parseInt(days ?? "30", 10) || 30,
@@ -313,9 +353,14 @@ export class EnterpriseController {
   @ApiQuery({ name: "days", required: false, type: Number })
   @ApiResponse({ status: 200, description: "Analytics dashboard data" })
   async getAnalyticsDashboard(
+    @Req() req: Request,
     @Param("teamId") teamId: string,
     @Query("days") days?: string,
   ) {
+    await this.accessControl.assertTeamMemberOrThrow(
+      teamId,
+      (req.user as any).id,
+    );
     return this.analyticsService.getDashboard(
       teamId,
       parseInt(days ?? "30", 10) || 30,
@@ -332,10 +377,15 @@ export class EnterpriseController {
   @ApiQuery({ name: "limit", required: false, type: Number })
   @ApiResponse({ status: 200, description: "Event timeline" })
   async getEventTimeline(
+    @Req() req: Request,
     @Param("teamId") teamId: string,
     @Query("eventType") eventType?: string,
     @Query("limit") limit?: string,
   ) {
+    await this.accessControl.assertTeamMemberOrThrow(
+      teamId,
+      (req.user as any).id,
+    );
     return this.analyticsService.getEventTimeline(
       teamId,
       eventType,
@@ -371,6 +421,10 @@ export class EnterpriseController {
       spaceId?: string;
     },
   ) {
+    await this.accessControl.assertTeamMemberOrThrow(
+      teamId,
+      (req.user as any).id,
+    );
     const userId = (req.user as any)?.id;
     await this.analyticsService.trackEvent(
       teamId,

@@ -22,6 +22,9 @@ import { RulesService } from "./rules.service";
 import { SuggestedRulesService } from "./suggested-rules.service";
 import { CreateRuleDto } from "./dto/create-rule.dto";
 import { UpdateRuleDto } from "./dto/update-rule.dto";
+import { Request } from "express";
+import { Req } from "@nestjs/common";
+import { AccessControlService } from "../common/access-control.service";
 
 @ApiTags("Rules")
 @ApiBearerAuth("bearer")
@@ -31,13 +34,15 @@ export class RulesController {
   constructor(
     private rulesService: RulesService,
     private suggestedRulesService: SuggestedRulesService,
+    private accessControl: AccessControlService,
   ) {}
 
   @Get("spaces/:spaceId/rules")
   @ApiOperation({ summary: "List all rules in a space" })
   @ApiParam({ name: "spaceId", format: "uuid" })
   @ApiResponse({ status: 200, description: "Array of rules" })
-  async listRules(@Param("spaceId") spaceId: string) {
+  async listRules(@Req() req: Request, @Param("spaceId") spaceId: string) {
+    await this.accessControl.getAccessibleSpaceOrThrow(spaceId, (req.user as any).id);
     return this.rulesService.findBySpace(spaceId);
   }
 
@@ -49,9 +54,14 @@ export class RulesController {
   @ApiResponse({ status: 201, description: "Created rule" })
   @ApiResponse({ status: 403, description: "Plan upgrade required" })
   async createRule(
+    @Req() req: Request,
     @Param("spaceId") spaceId: string,
     @Body() body: CreateRuleDto,
   ) {
+    await this.accessControl.getAccessibleSpaceOrThrow(spaceId, (req.user as any).id);
+    if (body.agentId) {
+      await this.accessControl.assertAgentInSpace(body.agentId, spaceId);
+    }
     return this.rulesService.create({
       spaceId,
       agentId: body.agentId,
@@ -67,7 +77,12 @@ export class RulesController {
   @ApiParam({ name: "id", format: "uuid" })
   @ApiResponse({ status: 200, description: "Updated rule" })
   @ApiResponse({ status: 403, description: "Plan upgrade required" })
-  async updateRule(@Param("id") id: string, @Body() body: UpdateRuleDto) {
+  async updateRule(
+    @Req() req: Request,
+    @Param("id") id: string,
+    @Body() body: UpdateRuleDto,
+  ) {
+    await this.accessControl.getAccessibleRuleOrThrow(id, (req.user as any).id);
     return this.rulesService.update(id, body);
   }
 
@@ -78,7 +93,8 @@ export class RulesController {
   @ApiParam({ name: "id", format: "uuid" })
   @ApiResponse({ status: 200, description: "Rule deleted" })
   @ApiResponse({ status: 403, description: "Plan upgrade required" })
-  async deleteRule(@Param("id") id: string) {
+  async deleteRule(@Req() req: Request, @Param("id") id: string) {
+    await this.accessControl.getAccessibleRuleOrThrow(id, (req.user as any).id);
     await this.rulesService.delete(id);
     return { success: true };
   }
@@ -87,7 +103,8 @@ export class RulesController {
   @ApiOperation({ summary: "List pending rule suggestions" })
   @ApiParam({ name: "spaceId", format: "uuid" })
   @ApiResponse({ status: 200, description: "Array of suggested rules" })
-  async listSuggested(@Param("spaceId") spaceId: string) {
+  async listSuggested(@Req() req: Request, @Param("spaceId") spaceId: string) {
+    await this.accessControl.getAccessibleSpaceOrThrow(spaceId, (req.user as any).id);
     return this.suggestedRulesService.findPending(spaceId);
   }
 
@@ -98,7 +115,8 @@ export class RulesController {
   @ApiParam({ name: "id", format: "uuid" })
   @ApiResponse({ status: 201, description: "Rule accepted and created" })
   @ApiResponse({ status: 403, description: "Plan upgrade required" })
-  async acceptSuggestion(@Param("id") id: string) {
+  async acceptSuggestion(@Req() req: Request, @Param("id") id: string) {
+    await this.accessControl.getAccessibleSuggestedRuleOrThrow(id, (req.user as any).id);
     return this.suggestedRulesService.accept(id);
   }
 
@@ -106,7 +124,8 @@ export class RulesController {
   @ApiOperation({ summary: "Reject a suggested rule" })
   @ApiParam({ name: "id", format: "uuid" })
   @ApiResponse({ status: 201, description: "Rule rejected" })
-  async rejectSuggestion(@Param("id") id: string) {
+  async rejectSuggestion(@Req() req: Request, @Param("id") id: string) {
+    await this.accessControl.getAccessibleSuggestedRuleOrThrow(id, (req.user as any).id);
     return this.suggestedRulesService.reject(id);
   }
 }

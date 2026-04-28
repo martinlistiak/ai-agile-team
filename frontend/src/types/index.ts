@@ -30,6 +30,8 @@ export interface User {
   cancelAtPeriodEnd?: boolean;
   hasGithub?: boolean;
   hasGitlab?: boolean;
+  /** Separate GitHub OAuth app for posting PR reviews (APPROVE / REQUEST_CHANGES). */
+  hasGithubReviewer?: boolean;
   /** True if user is a member of at least one team (access without own subscription). */
   hasTeamMembership?: boolean;
   /** User has opened Stripe billing at least once (can use customer portal). */
@@ -51,6 +53,8 @@ export interface User {
 
 export interface Space {
   id: string;
+  /** Space owner (same as current user when listing own spaces). */
+  userId?: string;
   name: string;
   githubRepoUrl: string | null;
   gitlabRepoUrl: string | null;
@@ -107,6 +111,8 @@ export interface StatusTransition {
   actorType?: "user" | "agent";
 }
 
+export type RequestedChangesSource = "review" | "testing";
+
 export interface Ticket {
   id: string;
   spaceId: string;
@@ -120,6 +126,10 @@ export interface Ticket {
   statusHistory: StatusTransition[];
   prUrl: string | null;
   order: number;
+  /** Code review or testing asked for fixes; developer should address feedback. */
+  requestedChanges?: boolean;
+  requestedChangesFeedback?: string | null;
+  requestedChangesSource?: RequestedChangesSource | null;
   createdAt: string;
   updatedAt: string;
 }

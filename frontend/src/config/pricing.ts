@@ -61,7 +61,7 @@ export const PLANS: PlanConfig[] = [
     annualPrice: null,
     features: [
       "Everything in Team",
-      "100M tokens / month",
+      "10M tokens / month",
       "SSO & SAML",
       "Custom agent training",
       "Dedicated support",

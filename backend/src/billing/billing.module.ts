@@ -5,9 +5,13 @@ import { BillingService } from "./billing.service";
 import { User } from "../entities/user.entity";
 import { Space } from "../entities/space.entity";
 import { Execution } from "../entities/execution.entity";
+import { Team } from "../entities/team.entity";
+import { TeamMember } from "../entities/team-member.entity";
 
 @Module({
-  imports: [TypeOrmModule.forFeature([User, Space, Execution])],
+  imports: [
+    TypeOrmModule.forFeature([User, Space, Execution, Team, TeamMember]),
+  ],
   controllers: [BillingController],
   providers: [BillingService],
   exports: [BillingService],

@@ -4,7 +4,6 @@ import { AuthProvider } from "@/contexts/AuthContext";
 import { ThemeProvider } from "@/contexts/ThemeContext";
 import { SpaceProvider } from "@/contexts/SpaceContext";
 import { TokenTopUpProvider } from "@/contexts/TokenTopUpContext";
-import { ToastProvider } from "@/components/Toast";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { router } from "@/routes";
 
@@ -22,15 +21,13 @@ export default function App() {
     <ErrorBoundary>
       <QueryClientProvider client={queryClient}>
         <ThemeProvider>
-          <ToastProvider>
-            <AuthProvider>
-              <SpaceProvider>
-                <TokenTopUpProvider>
-                  <RouterProvider router={router} />
-                </TokenTopUpProvider>
-              </SpaceProvider>
-            </AuthProvider>
-          </ToastProvider>
+          <AuthProvider>
+            <SpaceProvider>
+              <TokenTopUpProvider>
+                <RouterProvider router={router} />
+              </TokenTopUpProvider>
+            </SpaceProvider>
+          </AuthProvider>
         </ThemeProvider>
       </QueryClientProvider>
     </ErrorBoundary>

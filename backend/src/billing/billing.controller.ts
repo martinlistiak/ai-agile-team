@@ -43,6 +43,10 @@ export class BillingController {
           enum: ["starter", "team", "enterprise"],
         },
         interval: { type: "string", enum: ["monthly", "annual"] },
+        returnTo: {
+          type: "string",
+          description: "Optional internal path to return to after checkout",
+        },
       },
       required: ["plan", "interval"],
     },
@@ -54,12 +58,14 @@ export class BillingController {
     body: {
       plan: "starter" | "team" | "enterprise";
       interval: "monthly" | "annual";
+      returnTo?: string;
     },
   ) {
     return this.billingService.createCheckoutSession(
       (req.user as any).id,
       body.plan,
       body.interval,
+      body.returnTo,
     );
   }
 
@@ -67,9 +73,26 @@ export class BillingController {
   @UseGuards(JwtOrApiKeyGuard)
   @ApiBearerAuth("bearer")
   @ApiOperation({ summary: "Create a Stripe billing portal session" })
+  @ApiBody({
+    schema: {
+      type: "object",
+      properties: {
+        returnTo: {
+          type: "string",
+          description: "Optional internal path to return to after the portal",
+        },
+      },
+    },
+  })
   @ApiResponse({ status: 201, description: "Portal session URL" })
-  async createPortal(@Req() req: Request) {
-    return this.billingService.createPortalSession((req.user as any).id);
+  async createPortal(
+    @Req() req: Request,
+    @Body() body: { returnTo?: string },
+  ) {
+    return this.billingService.createPortalSession(
+      (req.user as any).id,
+      body.returnTo,
+    );
   }
 
   @Post("verify-session")
@@ -157,6 +180,10 @@ export class BillingController {
           description: "Dollar amount in $5 increments (min $5)",
           example: 10,
         },
+        returnTo: {
+          type: "string",
+          description: "Optional internal path to return to after top-up",
+        },
       },
       required: ["amount"],
     },
@@ -165,10 +192,14 @@ export class BillingController {
     status: 201,
     description: "Checkout session URL for one-time payment",
   })
-  async createTopUp(@Req() req: Request, @Body() body: { amount: number }) {
+  async createTopUp(
+    @Req() req: Request,
+    @Body() body: { amount: number; returnTo?: string },
+  ) {
     return this.billingService.createTopUpSession(
       (req.user as any).id,
       body.amount,
+      body.returnTo,
     );
   }
 

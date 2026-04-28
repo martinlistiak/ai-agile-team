@@ -23,6 +23,8 @@ import { AgentRunQuotaService } from "../common/agent-run-quota.service";
 import { computeCostWeightedTokens } from "../common/subscription.constants";
 import { AgentMemoryService } from "./agent-memory.service";
 import { AgentBoosterService } from "./agent-booster.service";
+import { appendCompactOutputStyle } from "./compact-output-prompt";
+import { AccessControlService } from "../common/access-control.service";
 
 const SYSTEM_PROMPT = `You are a Product Manager AI agent in an agile software development team. Your role is to:
 
@@ -102,6 +104,7 @@ export class PmAgentService {
     private modelRouter: ModelRouterService,
     private agentMemory: AgentMemoryService,
     private agentBooster: AgentBoosterService,
+    private accessControl: AccessControlService,
   ) {}
 
   async run(
@@ -200,6 +203,8 @@ export class PmAgentService {
       if (compiledMemories) {
         systemPrompt += `\n\n# Learned Patterns\nApply these lessons from past executions:\n${compiledMemories}`;
       }
+
+      systemPrompt = appendCompactOutputStyle(systemPrompt, this.configService);
 
       const { model: modelName } = this.modelRouter.routeModel(
         "pm",
@@ -345,6 +350,7 @@ export class PmAgentService {
           priority: z.enum(["low", "medium", "high", "critical"]).optional(),
         }),
         execute: async (input) => {
+          await this.accessControl.assertTicketInSpace(input.ticket_id, spaceId);
           const { ticket_id, ...updates } = input;
           const ticket = await this.ticketsService.update(ticket_id, updates);
           return { success: true, ticketId: ticket.id };
@@ -357,6 +363,7 @@ export class PmAgentService {
           ticket_id: z.string().describe("The ID of the ticket to delete"),
         }),
         execute: async (input) => {
+          await this.accessControl.assertTicketInSpace(input.ticket_id, spaceId);
           await this.ticketsService.delete(input.ticket_id);
           return { success: true, ticketId: input.ticket_id };
         },
@@ -469,6 +476,7 @@ export class PmAgentService {
           );
           if (!match) return null;
           const [, ticketId, status] = match;
+          await this.accessControl.assertTicketInSpace(ticketId, spaceId);
           await this.ticketsService.moveTicket(ticketId, status, "agent", {
             id: "pm",
             name: "PM",
@@ -481,6 +489,7 @@ export class PmAgentService {
             /(?:delete|remove)\s+(?:ticket\s+)?([\w-]{36})/i,
           );
           if (!match) return null;
+          await this.accessControl.assertTicketInSpace(match[1], spaceId);
           await this.ticketsService.delete(match[1]);
           return `Deleted ticket \`${match[1]}\`.`;
         }

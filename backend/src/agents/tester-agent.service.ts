@@ -22,6 +22,7 @@ import { computeCostWeightedTokens } from "../common/subscription.constants";
 import { ModelRouterService } from "./model-router.service";
 import { AgentMemoryService } from "./agent-memory.service";
 import { AgentBoosterService } from "./agent-booster.service";
+import { appendCompactOutputStyle } from "./compact-output-prompt";
 import { execSync } from "child_process";
 import { readFileSync, writeFileSync } from "fs";
 import { join } from "path";
@@ -54,7 +55,14 @@ After running tests, provide:
 - Number of tests written
 - Number of tests passing / failing
 - List of any bugs or issues discovered
-- Recommendations for the developer`;
+- Recommendations for the developer
+
+FINAL LINE (required — use exactly one):
+## Verdict: PASS
+or
+## Verdict: REQUEST_FIXES
+Use REQUEST_FIXES when tests fail, bugs remain, or the implementation needs further work before staging.
+When everything passes and the implementation is ready for staging, end with ## Verdict: PASS and include the phrase "all tests pass" in your summary.`;
 
 @Injectable()
 export class TesterAgentService {
@@ -207,7 +215,10 @@ ${userMessage ? `**Additional instructions from the user:** ${userMessage}` : "W
       if (compiledMemories) {
         systemSuffix += `\n\n# Learned Patterns\nApply these lessons from past executions:\n${compiledMemories}`;
       }
-      const fullSystem = `${TESTER_SYSTEM_PROMPT}${systemSuffix}`;
+      const fullSystem = appendCompactOutputStyle(
+        `${TESTER_SYSTEM_PROMPT}${systemSuffix}`,
+        this.configService,
+      );
 
       const { model: modelName } = this.modelRouter.routeModel(
         "tester",

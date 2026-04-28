@@ -72,7 +72,14 @@ export function TicketCard({
   const [showAssigneeDropdown, setShowAssigneeDropdown] = useState(false);
 
   const isDisabled = !PLAY_ENABLED_STATUSES.has(ticket.status);
-  const isLoading = triggerAgent.isPending || agentActive;
+
+  /** True only while this ticket's trigger is in flight (not other tickets). */
+  const isTriggeringThisTicket =
+    triggerAgent.isPending &&
+    triggerAgent.variables?.ticketId === ticket.id;
+
+  /** Busy state is per ticket (WebSocket); do not use agent.status alone — same agent can be assigned to multiple tickets. */
+  const isLoading = isTriggeringThisTicket || agentActive;
 
   // Subscribe to agent_status WebSocket events to track when agent finishes
   useEffect(() => {
@@ -165,8 +172,6 @@ export function TicketCard({
       ? "No agent available for this status"
       : "Trigger agent";
 
-  const isBeingWorkedOn = agentActive;
-
   const card = (
     <div
       ref={setNodeRef}
@@ -199,16 +204,37 @@ export function TicketCard({
       <p className="text-sm font-medium text-gray-900 dark:text-gray-100 line-clamp-2">
         {ticket.title}
       </p>
-      <div className="flex items-center justify-between mt-2">
-        <span
-          className={cn(
-            "text-xs px-2 py-0.5 rounded-full font-medium",
-            PRIORITY_COLORS[ticket.priority],
+      <div className="flex items-center justify-between mt-2 gap-2">
+        <div className="flex items-center gap-1.5 flex-wrap min-w-0">
+          <span
+            className={cn(
+              "text-xs px-2 py-0.5 rounded-full font-medium shrink-0",
+              PRIORITY_COLORS[ticket.priority],
+            )}
+          >
+            {ticket.priority}
+          </span>
+          {ticket.requestedChanges && (
+            <span
+              className="text-[10px] px-2 py-0.5 rounded-full font-medium shrink-0 bg-amber-100 text-amber-900 dark:bg-amber-900/35 dark:text-amber-100"
+              title={
+                ticket.requestedChangesSource === "testing"
+                  ? "Testing requested fixes"
+                  : ticket.requestedChangesSource === "review"
+                    ? "Review requested changes"
+                    : "Changes requested"
+              }
+            >
+              Requested changes
+              {ticket.requestedChangesSource === "testing"
+                ? " · Test"
+                : ticket.requestedChangesSource === "review"
+                  ? " · Review"
+                  : ""}
+            </span>
           )}
-        >
-          {ticket.priority}
-        </span>
-        <div className="flex items-center gap-1.5">
+        </div>
+        <div className="flex items-center gap-1.5 shrink-0">
           {/* Assignee avatar - clickable to reassign */}
           <div className="relative">
             <button
@@ -223,7 +249,7 @@ export function TicketCard({
             >
               {assignedAgent ? (
                 <RotatingBorder
-                  active={agentActive}
+                  active={isLoading}
                   color={
                     AGENT_BORDER_COLORS[assignedAgent.agentType] ?? "#8b5cf6"
                   }
@@ -321,7 +347,7 @@ export function TicketCard({
   const agentColor =
     AGENT_BORDER_COLORS[assignedAgent?.agentType ?? ""] ?? "#8b5cf6";
 
-  if (isBeingWorkedOn || isLoading) {
+  if (isLoading) {
     return (
       <RotatingBorder active color={agentColor} borderRadius={8} duration={3}>
         {card}

@@ -53,6 +53,7 @@ export class BillingService {
     userId: string,
     plan: "starter" | "team" | "enterprise",
     interval: "monthly" | "annual",
+    returnTo?: string,
   ): Promise<{ url: string }> {
     const user = await this.userRepo.findOneBy({ id: userId });
     if (!user) throw new NotFoundException("User not found");
@@ -65,13 +66,17 @@ export class BillingService {
       where: { userId },
     });
     const quantity = Math.max(spaceCount, 1);
+    const next = this.getReturnPath(returnTo);
 
     const session = await this.stripe.checkout.sessions.create({
       customer: customerId,
       mode: "subscription",
       line_items: [{ price: priceId, quantity }],
-      success_url: `${this.getAppUrl()}/billing?session_id={CHECKOUT_SESSION_ID}`,
-      cancel_url: `${this.getAppUrl()}/billing`,
+      success_url: this.buildAppUrl("/billing", {
+        session_id: "{CHECKOUT_SESSION_ID}",
+        next,
+      }),
+      cancel_url: this.buildAppUrl(next),
       subscription_data: {
         trial_period_days: TRIAL_PERIOD_DAYS,
         metadata: { userId: user.id, plan },
@@ -146,14 +151,17 @@ export class BillingService {
     return { success: true };
   }
 
-  async createPortalSession(userId: string): Promise<{ url: string }> {
+  async createPortalSession(
+    userId: string,
+    returnTo?: string,
+  ): Promise<{ url: string }> {
     const user = await this.userRepo.findOneBy({ id: userId });
     if (!user?.stripeCustomerId)
       throw new BadRequestException("No billing account found");
 
     const session = await this.stripe.billingPortal.sessions.create({
       customer: user.stripeCustomerId,
-      return_url: `${this.getAppUrl()}/billing`,
+      return_url: this.buildAppUrl(this.getReturnPath(returnTo)),
     });
 
     return { url: session.url };
@@ -390,6 +398,29 @@ export class BillingService {
     return this.configService.get<string>("APP_URL", "https://runa-app.com");
   }
 
+  private isSafeInternalPath(path: string | null | undefined): path is string {
+    if (!path || !path.startsWith("/") || path.startsWith("//")) return false;
+    if (path.includes("://") || path.includes("..")) return false;
+    return true;
+  }
+
+  private getReturnPath(path: string | null | undefined): string {
+    return this.isSafeInternalPath(path) ? path : "/billing";
+  }
+
+  private buildAppUrl(
+    path: string,
+    params?: Record<string, string | undefined>,
+  ): string {
+    const url = new URL(path, this.getAppUrl());
+    for (const [key, value] of Object.entries(params ?? {})) {
+      if (!value) continue;
+      if (key === "next" && !this.isSafeInternalPath(value)) continue;
+      url.searchParams.set(key, value);
+    }
+    return url.toString();
+  }
+
   private mapStatus(status: Stripe.Subscription.Status): SubscriptionStatus {
     const map: Record<string, SubscriptionStatus> = {
       active: "active",
@@ -502,6 +533,7 @@ export class BillingService {
   async createTopUpSession(
     userId: string,
     amountDollars: number,
+    returnTo?: string,
   ): Promise<{ url: string }> {
     if (
       !Number.isInteger(amountDollars) ||
@@ -518,6 +550,7 @@ export class BillingService {
 
     const customerId = await this.getOrCreateCustomer(user);
     const amountCents = amountDollars * 100;
+    const next = this.getReturnPath(returnTo);
 
     const session = await this.stripe.checkout.sessions.create({
       customer: customerId,
@@ -539,8 +572,11 @@ export class BillingService {
         type: "credit_topup",
         amountCents: String(amountCents),
       },
-      success_url: `${this.getAppUrl()}/billing?topup_session_id={CHECKOUT_SESSION_ID}`,
-      cancel_url: `${this.getAppUrl()}/billing`,
+      success_url: this.buildAppUrl("/billing", {
+        topup_session_id: "{CHECKOUT_SESSION_ID}",
+        next,
+      }),
+      cancel_url: this.buildAppUrl(next),
     });
 
     return { url: session.url! };

@@ -9,6 +9,8 @@ import {
   Body,
   BadRequestException,
   NotFoundException,
+  UseGuards,
+  Req,
 } from "@nestjs/common";
 import {
   ApiTags,
@@ -21,13 +23,21 @@ import { FileInterceptor } from "@nestjs/platform-express";
 import { Response } from "express";
 import "multer";
 import { FileStorageService } from "./file-storage.service";
+import { JwtOrApiKeyGuard } from "../auth/jwt-or-apikey.guard";
+import { SubscriptionActiveGuard } from "./subscription-active.guard";
+import { AccessControlService } from "./access-control.service";
+import { Request } from "express";
 
 @ApiTags("Files")
 @Controller("files")
 export class FilesController {
-  constructor(private readonly fileStorageService: FileStorageService) {}
+  constructor(
+    private readonly fileStorageService: FileStorageService,
+    private readonly accessControl: AccessControlService,
+  ) {}
 
   @Post("upload")
+  @UseGuards(JwtOrApiKeyGuard, SubscriptionActiveGuard)
   @UseInterceptors(FileInterceptor("file"))
   @ApiOperation({ summary: "Upload a file" })
   @ApiConsumes("multipart/form-data")
@@ -48,6 +58,7 @@ export class FilesController {
     description: "File uploaded, returns key and URL",
   })
   async upload(
+    @Req() req: Request,
     @UploadedFile() file: Express.Multer.File,
     @Body("spaceId") spaceId: string,
     @Body("entityType") entityType: string,
@@ -60,6 +71,10 @@ export class FilesController {
     const resolvedSpaceId = spaceId || "general";
     const resolvedEntityType = entityType || "upload";
     const resolvedEntityId = entityId || Date.now().toString();
+
+    if (spaceId) {
+      await this.accessControl.getAccessibleSpaceOrThrow(spaceId, (req.user as any).id);
+    }
 
     const extension =
       file.originalname.split(".").pop()?.toLowerCase() || "bin";

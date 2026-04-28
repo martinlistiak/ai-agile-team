@@ -20,6 +20,9 @@ export type ProfilePatchUser = Pick<
   | "subscriptionStatus"
   | "currentPeriodEnd"
   | "createdAt"
+  | "hasGithub"
+  | "hasGitlab"
+  | "hasGithubReviewer"
 > & {
   emailVerified?: boolean;
   hasPassword?: boolean;

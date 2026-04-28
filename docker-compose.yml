@@ -31,7 +31,8 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile.dev
-    command: bun run start:dev
+    # Named volume shadows image node_modules; run install on start so new deps (e.g. lockfile changes) apply.
+    command: sh -c "bun install && bun run start:dev"
     volumes:
       - ./backend:/app
       - backend_node_modules:/app/node_modules

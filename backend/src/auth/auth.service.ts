@@ -85,6 +85,7 @@ export class AuthService {
     name: string,
     turnstileToken?: string,
     remoteIp?: string,
+    next?: string,
   ) {
     await this.turnstile.assertValidToken(turnstileToken, remoteIp);
 
@@ -116,7 +117,7 @@ export class AuthService {
     });
 
     try {
-      await this.issueEmailVerification(user);
+      await this.issueEmailVerification(user, next);
     } catch (err) {
       this.logger.warn(
         `Failed to send verification email to ${user.email}`,
@@ -149,6 +150,7 @@ export class AuthService {
     email: string,
     turnstileToken?: string,
     remoteIp?: string,
+    next?: string,
   ): Promise<{ message: string }> {
     await this.turnstile.assertValidToken(turnstileToken, remoteIp);
 
@@ -179,10 +181,10 @@ export class AuthService {
       }),
     );
 
-    const appUrl = this.configService
-      .get("APP_URL", "https://runa-app.com")
-      .replace(/\/$/, "");
-    const resetUrl = `${appUrl}/login/reset-password?token=${encodeURIComponent(rawToken)}`;
+    const resetUrl = this.buildAppUrl("/login/reset-password", {
+      token: rawToken,
+      next,
+    });
 
     await this.mailService.sendPasswordResetEmail({
       to: user.email,
@@ -360,6 +362,64 @@ export class AuthService {
       "https://runa-app.com/login/callback",
     );
     return `https://github.com/login/oauth/authorize?client_id=${clientId}&redirect_uri=${encodeURIComponent(redirectUri)}&scope=repo,workflow,user:email`;
+  }
+
+  async getGithubReviewerAuthUrl() {
+    const clientId = this.configService.get("GITHUB_CODE_REVIEWER_CLIENT_ID");
+    if (!clientId) {
+      throw new Error("GITHUB_CODE_REVIEWER_CLIENT_ID is not configured");
+    }
+    const redirectUri = this.configService.get(
+      "GITHUB_CODE_REVIEWER_REDIRECT_URI",
+      "https://runa-app.com/login/reviewer-callback",
+    );
+    return `https://github.com/login/oauth/authorize?client_id=${clientId}&redirect_uri=${encodeURIComponent(redirectUri)}&scope=repo,workflow,user:email`;
+  }
+
+  async githubReviewerCallback(code: string, userId: string) {
+    const clientId = this.configService.get("GITHUB_CODE_REVIEWER_CLIENT_ID");
+    const clientSecret = this.configService.get(
+      "GITHUB_CODE_REVIEWER_CLIENT_SECRET",
+    );
+    const redirectUri = this.configService.get(
+      "GITHUB_CODE_REVIEWER_REDIRECT_URI",
+      "https://runa-app.com/login/reviewer-callback",
+    );
+
+    const tokenRes = await fetch(
+      "https://github.com/login/oauth/access_token",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Accept: "application/json",
+        },
+        body: JSON.stringify({
+          client_id: clientId,
+          client_secret: clientSecret,
+          code,
+          redirect_uri: redirectUri,
+        }),
+      },
+    );
+    const tokenData = await tokenRes.json();
+    if (!tokenRes.ok || !tokenData.access_token) {
+      throw new UnauthorizedException(
+        "GitHub reviewer app authorization failed",
+      );
+    }
+
+    const user = await this.userRepo.findOneBy({ id: userId });
+    if (!user) {
+      throw new UnauthorizedException("User not found");
+    }
+
+    user.githubReviewerTokenEncrypted = this.tokenEncryptionService.encrypt(
+      tokenData.access_token,
+    );
+    await this.userRepo.save(user);
+
+    return { success: true };
   }
 
   async getGitlabAuthUrl() {
@@ -617,7 +677,10 @@ export class AuthService {
     return { accessToken, user: this.sanitizeUser(row.user) };
   }
 
-  async resendVerificationEmail(userId: string): Promise<{ message: string }> {
+  async resendVerificationEmail(
+    userId: string,
+    next?: string,
+  ): Promise<{ message: string }> {
     const user = await this.userRepo.findOneBy({ id: userId });
     if (!user?.hashedPassword) {
       throw new BadRequestException(
@@ -628,7 +691,7 @@ export class AuthService {
       return { message: "Your email is already verified." };
     }
 
-    await this.issueEmailVerification(user);
+    await this.issueEmailVerification(user, next);
     this.countly.record(user.id, "email_verification_resent", {});
 
     return {
@@ -636,7 +699,10 @@ export class AuthService {
     };
   }
 
-  private async issueEmailVerification(user: User): Promise<void> {
+  private async issueEmailVerification(
+    user: User,
+    next?: string,
+  ): Promise<void> {
     await this.emailVerificationTokenRepo.delete({ userId: user.id });
 
     const rawToken = randomBytes(32).toString("hex");
@@ -651,10 +717,10 @@ export class AuthService {
       }),
     );
 
-    const appUrl = this.configService
-      .get("APP_URL", "https://runa-app.com")
-      .replace(/\/$/, "");
-    const verifyUrl = `${appUrl}/login/verify-email?token=${encodeURIComponent(rawToken)}`;
+    const verifyUrl = this.buildAppUrl("/login/verify-email", {
+      token: rawToken,
+      next,
+    });
 
     await this.mailService.sendEmailVerificationEmail({
       to: user.email,
@@ -666,6 +732,28 @@ export class AuthService {
 
   private createToken(user: User): string {
     return this.jwtService.sign({ sub: user.id, email: user.email });
+  }
+
+  private isSafeInternalPath(path: string | null | undefined): path is string {
+    if (!path || !path.startsWith("/") || path.startsWith("//")) return false;
+    if (path.includes("://") || path.includes("..")) return false;
+    return true;
+  }
+
+  private buildAppUrl(
+    path: string,
+    params: Record<string, string | undefined>,
+  ): string {
+    const baseUrl = this.configService
+      .get("APP_URL", "https://runa-app.com")
+      .replace(/\/$/, "");
+    const url = new URL(path, baseUrl);
+    for (const [key, value] of Object.entries(params)) {
+      if (!value) continue;
+      if (key === "next" && !this.isSafeInternalPath(value)) continue;
+      url.searchParams.set(key, value);
+    }
+    return url.toString();
   }
 
   createImpersonationToken(
@@ -719,6 +807,9 @@ export class AuthService {
       createdAt: user.createdAt,
       emailVerified: !!user.emailVerifiedAt,
       hasPassword: !!user.hashedPassword,
+      hasGithub: !!user.githubId,
+      hasGitlab: !!user.gitlabId,
+      hasGithubReviewer: !!user.githubReviewerTokenEncrypted,
     };
   }
 

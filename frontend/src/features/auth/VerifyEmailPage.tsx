@@ -3,7 +3,7 @@ import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { RunaLogo } from "@/components/RunaLogo";
 import { useAuth } from "@/contexts/AuthContext";
 import api from "@/api/client";
-import { isSafeInternalPath } from "@/lib/auth-redirect";
+import { getLoginPath, isSafeInternalPath } from "@/lib/auth-redirect";
 
 export function VerifyEmailPage() {
   const [status, setStatus] = useState<"working" | "ok" | "error">("working");
@@ -31,7 +31,12 @@ export function VerifyEmailPage() {
         setStatus("ok");
         setMessage("Your email is verified.");
         const next = searchParams.get("next");
-        const target = isSafeInternalPath(next) ? next : "/spaces";
+        const hasSubscription =
+          data.user.subscriptionStatus === "active" ||
+          data.user.subscriptionStatus === "trialing" ||
+          data.user.hasTeamMembership;
+        const fallback = hasSubscription ? "/spaces" : "/billing";
+        const target = isSafeInternalPath(next) ? next : fallback;
         setTimeout(() => navigate(target, { replace: true }), 800);
       } catch (err: unknown) {
         setStatus("error");
@@ -82,7 +87,7 @@ export function VerifyEmailPage() {
         style={{ color: "var(--text-tertiary)" }}
       >
         <Link
-          to="/login"
+          to={getLoginPath(searchParams.get("next"))}
           className="font-medium transition-opacity hover:opacity-70"
           style={{ color: "var(--accent)" }}
         >

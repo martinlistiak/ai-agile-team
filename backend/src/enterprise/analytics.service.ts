@@ -1,4 +1,4 @@
-import { Injectable, Logger } from "@nestjs/common";
+import { BadRequestException, Injectable, Logger, NotFoundException } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
 import { Repository } from "typeorm";
 import { AnalyticsEvent } from "../entities/analytics-event.entity";
@@ -6,6 +6,7 @@ import { Execution } from "../entities/execution.entity";
 import { Agent } from "../entities/agent.entity";
 import { Ticket } from "../entities/ticket.entity";
 import { Space } from "../entities/space.entity";
+import { Team } from "../entities/team.entity";
 import { TeamMember } from "../entities/team-member.entity";
 
 @Injectable()
@@ -19,6 +20,7 @@ export class AnalyticsService {
     @InjectRepository(Agent) private agentRepo: Repository<Agent>,
     @InjectRepository(Ticket) private ticketRepo: Repository<Ticket>,
     @InjectRepository(Space) private spaceRepo: Repository<Space>,
+    @InjectRepository(Team) private teamRepo: Repository<Team>,
     @InjectRepository(TeamMember) private memberRepo: Repository<TeamMember>,
   ) {}
 
@@ -29,12 +31,21 @@ export class AnalyticsService {
     userId?: string,
     spaceId?: string,
   ): Promise<void> {
+    const team = await this.getTeamOrThrow(teamId);
+    if (spaceId) {
+      const space = await this.spaceRepo.findOneBy({ id: spaceId });
+      if (!space || space.userId !== team.ownerId) {
+        throw new BadRequestException("Space does not belong to this team");
+      }
+    }
+
     await this.eventRepo.save(
       this.eventRepo.create({ teamId, eventType, metadata, userId, spaceId }),
     );
   }
 
   async getDashboard(teamId: string, days: number = 30) {
+    const team = await this.getTeamOrThrow(teamId);
     const since = new Date();
     since.setDate(since.getDate() - days);
 
@@ -46,11 +57,11 @@ export class AnalyticsService {
       topSpaces,
       teamActivity,
     ] = await Promise.all([
-      this.getOverview(since),
-      this.getExecutionsByDay(since),
-      this.getAgentPerformance(since),
-      this.getTicketVelocity(since),
-      this.getTopSpaces(since),
+      this.getOverview(since, team.ownerId),
+      this.getExecutionsByDay(since, team.ownerId),
+      this.getAgentPerformance(since, team.ownerId),
+      this.getTicketVelocity(since, team.ownerId),
+      this.getTopSpaces(since, team.ownerId),
       this.getTeamActivity(teamId, since),
     ]);
 
@@ -69,6 +80,7 @@ export class AnalyticsService {
     eventType?: string,
     limit: number = 50,
   ): Promise<AnalyticsEvent[]> {
+    await this.getTeamOrThrow(teamId);
     const qb = this.eventRepo
       .createQueryBuilder("e")
       .where("e.teamId = :teamId", { teamId })
@@ -78,9 +90,11 @@ export class AnalyticsService {
     return qb.getMany();
   }
 
-  private async getOverview(since: Date) {
+  private async getOverview(since: Date, ownerId: string) {
     const execStats = await this.executionRepo
       .createQueryBuilder("e")
+      .innerJoin("e.agent", "a")
+      .innerJoin("a.space", "s")
       .select("COUNT(*)", "total")
       .addSelect(
         "COUNT(CASE WHEN e.status = 'completed' THEN 1 END)",
@@ -91,21 +105,26 @@ export class AnalyticsService {
         "AVG(EXTRACT(EPOCH FROM (e.endTime - e.startTime)) * 1000)",
         "avgMs",
       )
-      .where("e.startTime >= :since", { since })
+      .where("s.userId = :ownerId", { ownerId })
+      .andWhere("e.startTime >= :since", { since })
       .getRawOne();
 
     const activeAgents = await this.agentRepo
       .createQueryBuilder("a")
       .select("COUNT(DISTINCT a.id)", "count")
+      .innerJoin("a.space", "s")
       .innerJoin("a.executions", "e")
-      .where("e.startTime >= :since", { since })
+      .where("s.userId = :ownerId", { ownerId })
+      .andWhere("e.startTime >= :since", { since })
       .getRawOne();
 
     const ticketStats = await this.ticketRepo
       .createQueryBuilder("t")
+      .innerJoin("t.space", "s")
       .select("COUNT(*)", "total")
       .addSelect("COUNT(CASE WHEN t.status = 'done' THEN 1 END)", "done")
-      .where("t.createdAt >= :since", { since })
+      .where("s.userId = :ownerId", { ownerId })
+      .andWhere("t.createdAt >= :since", { since })
       .getRawOne();
 
     const total = Number(execStats?.total) || 0;
@@ -121,9 +140,11 @@ export class AnalyticsService {
     };
   }
 
-  private async getExecutionsByDay(since: Date) {
+  private async getExecutionsByDay(since: Date, ownerId: string) {
     const results = await this.executionRepo
       .createQueryBuilder("e")
+      .innerJoin("e.agent", "a")
+      .innerJoin("a.space", "s")
       .select("DATE(e.startTime)", "date")
       .addSelect("COUNT(*)", "count")
       .addSelect(
@@ -131,7 +152,8 @@ export class AnalyticsService {
         "success",
       )
       .addSelect("COUNT(CASE WHEN e.status = 'failed' THEN 1 END)", "failed")
-      .where("e.startTime >= :since", { since })
+      .where("s.userId = :ownerId", { ownerId })
+      .andWhere("e.startTime >= :since", { since })
       .groupBy("DATE(e.startTime)")
       .orderBy("date", "ASC")
       .getRawMany();
@@ -143,10 +165,11 @@ export class AnalyticsService {
     }));
   }
 
-  private async getAgentPerformance(since: Date) {
+  private async getAgentPerformance(since: Date, ownerId: string) {
     const results = await this.executionRepo
       .createQueryBuilder("e")
       .innerJoin("e.agent", "a")
+      .innerJoin("a.space", "s")
       .select("a.agentType", "agentType")
       .addSelect("COUNT(*)", "executions")
       .addSelect(
@@ -157,7 +180,8 @@ export class AnalyticsService {
         "AVG(EXTRACT(EPOCH FROM (e.endTime - e.startTime)) * 1000)",
         "avgMs",
       )
-      .where("e.startTime >= :since", { since })
+      .where("s.userId = :ownerId", { ownerId })
+      .andWhere("e.startTime >= :since", { since })
       .groupBy("a.agentType")
       .getRawMany();
     return results.map((r: any) => ({
@@ -171,13 +195,15 @@ export class AnalyticsService {
     }));
   }
 
-  private async getTicketVelocity(since: Date) {
+  private async getTicketVelocity(since: Date, ownerId: string) {
     const results = await this.ticketRepo
       .createQueryBuilder("t")
+      .innerJoin("t.space", "s")
       .select("DATE(t.createdAt)", "date")
       .addSelect("COUNT(*)", "created")
       .addSelect("COUNT(CASE WHEN t.status = 'done' THEN 1 END)", "completed")
-      .where("t.createdAt >= :since", { since })
+      .where("s.userId = :ownerId", { ownerId })
+      .andWhere("t.createdAt >= :since", { since })
       .groupBy("DATE(t.createdAt)")
       .orderBy("date", "ASC")
       .getRawMany();
@@ -188,7 +214,7 @@ export class AnalyticsService {
     }));
   }
 
-  private async getTopSpaces(since: Date) {
+  private async getTopSpaces(since: Date, ownerId: string) {
     const results = await this.executionRepo
       .createQueryBuilder("e")
       .innerJoin("e.agent", "a")
@@ -196,7 +222,8 @@ export class AnalyticsService {
       .select("s.id", "spaceId")
       .addSelect("s.name", "spaceName")
       .addSelect("COUNT(*)", "executions")
-      .where("e.startTime >= :since", { since })
+      .where("s.userId = :ownerId", { ownerId })
+      .andWhere("e.startTime >= :since", { since })
       .groupBy("s.id")
       .addGroupBy("s.name")
       .orderBy("executions", "DESC")
@@ -224,5 +251,13 @@ export class AnalyticsService {
       userId: r.userId,
       actions: Number(r.actions),
     }));
+  }
+
+  private async getTeamOrThrow(teamId: string): Promise<Team> {
+    const team = await this.teamRepo.findOneBy({ id: teamId });
+    if (!team) {
+      throw new NotFoundException("Team not found");
+    }
+    return team;
   }
 }

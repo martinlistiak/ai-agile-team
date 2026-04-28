@@ -18,7 +18,7 @@ export function TokenTopUpDialog({ onClose, message }: TokenTopUpDialogProps) {
 
   const handleTopUp = async () => {
     try {
-      const data = await topUp.mutateAsync(amount);
+      const data = await topUp.mutateAsync({ amount });
       window.location.href = data.url;
     } catch {
       // error handled by mutation

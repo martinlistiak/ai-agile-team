@@ -1,3 +1,4 @@
+# syntax=docker/dockerfile:1
 FROM oven/bun:latest
 
 # Install system dependencies including Node.js (required for nest CLI)
@@ -10,7 +11,8 @@ WORKDIR /app
 
 # Copy package files first for better caching
 COPY package.json bun.lock ./
-RUN bun install
+RUN --mount=type=cache,target=/root/.bun/install/cache \
+    bun install --frozen-lockfile || bun install
 
 # Ensure workspace dir for git clones and volume mounts
 RUN mkdir -p /tmp/runa-workspaces

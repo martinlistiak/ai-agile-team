@@ -4,6 +4,10 @@ import { Repository } from "typeorm";
 import { Execution } from "../entities/execution.entity";
 import { Ticket } from "../entities/ticket.entity";
 import { TicketsService } from "../tickets/tickets.service";
+import {
+  isReviewerRequestChangesVerdict,
+  isTesterRequestFixesVerdict,
+} from "../common/review-verdict";
 
 /**
  * Execution context passed between agents in a pipeline.
@@ -108,13 +112,7 @@ export class AgentCoordinatorService {
     ticketId: string,
     reviewResult: string,
   ): Promise<string | null> {
-    const lowerResult = reviewResult.toLowerCase();
-
-    // Only trigger auto-fix if the reviewer explicitly requested changes
-    if (
-      !lowerResult.includes("verdict: request_changes") &&
-      !lowerResult.includes("verdict:**request_changes")
-    ) {
+    if (!isReviewerRequestChangesVerdict(reviewResult)) {
       return null;
     }
 
@@ -142,7 +140,69 @@ export class AgentCoordinatorService {
       return null;
     }
 
+    try {
+      await this.ticketsService.update(ticketId, {
+        requestedChanges: true,
+        requestedChangesFeedback: reviewResult,
+        requestedChangesSource: "review",
+      });
+    } catch (err) {
+      this.logger.warn(
+        `Could not persist requestedChanges on ticket ${ticketId} (migration applied?): ${err}`,
+      );
+    }
+
     // Extract the actionable feedback for the developer
     return `The reviewer requested changes on your previous implementation. Here is the review feedback:\n\n${reviewResult}\n\nPlease address the reviewer's comments and push updated changes to the same branch.`;
+  }
+
+  /**
+   * When testing reports REQUEST_FIXES, flag the ticket and optionally trigger
+   * the same developer remediation loop as code review.
+   */
+  async checkTesterFeedbackLoop(
+    ticketId: string,
+    testResult: string,
+  ): Promise<string | null> {
+    if (!isTesterRequestFixesVerdict(testResult)) {
+      return null;
+    }
+
+    const executions = await this.executionRepo.find({
+      where: { ticketId },
+      relations: ["agent"],
+    });
+
+    const testerCount = executions.filter(
+      (e) => e.agent?.agentType === "tester" && e.status === "completed",
+    ).length;
+
+    if (testerCount >= 3) {
+      this.logger.warn(
+        `Ticket ${ticketId} has had ${testerCount} tester cycles — stopping auto-fix loop`,
+      );
+      await this.ticketsService.addComment(
+        ticketId,
+        "Auto-fix loop stopped after 3 testing cycles. Manual intervention required.",
+        "system",
+        "system",
+        "System",
+      );
+      return null;
+    }
+
+    try {
+      await this.ticketsService.update(ticketId, {
+        requestedChanges: true,
+        requestedChangesFeedback: testResult,
+        requestedChangesSource: "testing",
+      });
+    } catch (err) {
+      this.logger.warn(
+        `Could not persist requestedChanges on ticket ${ticketId} (migration applied?): ${err}`,
+      );
+    }
+
+    return `Testing reported that fixes are needed before staging. Here is the tester report:\n\n${testResult}\n\nPlease address the issues and push updated changes to the same branch.`;
   }
 }

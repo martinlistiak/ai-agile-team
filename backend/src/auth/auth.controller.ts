@@ -57,6 +57,10 @@ export class AuthController {
           type: "string",
           description: "Cloudflare Turnstile token",
         },
+        next: {
+          type: "string",
+          description: "Optional internal path to continue after auth flows",
+        },
       },
       required: ["email", "password", "name"],
     },
@@ -78,6 +82,7 @@ export class AuthController {
       password: string;
       name: string;
       turnstileToken?: string;
+      next?: string;
       acceptTerms?: boolean;
       acceptPrivacy?: boolean;
     },
@@ -87,13 +92,21 @@ export class AuthController {
         "You must accept the Terms of Service and Privacy Policy to register.",
       );
     }
-    return this.authService.register(
+    const result = await this.authService.register(
       body.email,
       body.password,
       body.name,
       body.turnstileToken,
       req.ip,
+      body.next,
     );
+    const hasTeamMembership = await this.teamsService.hasTeamMembership(
+      result.user.id,
+    );
+    return {
+      ...result,
+      user: { ...result.user, hasTeamMembership },
+    };
   }
 
   @Post("login")
@@ -109,7 +122,14 @@ export class AuthController {
   @ApiResponse({ status: 201, description: "Returns JWT and user" })
   @ApiResponse({ status: 401, description: "Invalid credentials" })
   async login(@Body() body: { email: string; password: string }) {
-    return this.authService.login(body.email, body.password);
+    const result = await this.authService.login(body.email, body.password);
+    const hasTeamMembership = await this.teamsService.hasTeamMembership(
+      result.user.id,
+    );
+    return {
+      ...result,
+      user: { ...result.user, hasTeamMembership },
+    };
   }
 
   @Post("forgot-password")
@@ -123,6 +143,10 @@ export class AuthController {
         turnstileToken: {
           type: "string",
           description: "Cloudflare Turnstile token",
+        },
+        next: {
+          type: "string",
+          description: "Optional internal path to continue after reset",
         },
       },
       required: ["email"],
@@ -139,12 +163,14 @@ export class AuthController {
     body: {
       email: string;
       turnstileToken?: string;
+      next?: string;
     },
   ) {
     return this.authService.requestPasswordReset(
       body.email,
       body.turnstileToken,
       req.ip,
+      body.next,
     );
   }
 
@@ -169,7 +195,17 @@ export class AuthController {
   })
   @ApiResponse({ status: 401, description: "Invalid or expired token" })
   async resetPassword(@Body() body: { token: string; password: string }) {
-    return this.authService.resetPasswordWithToken(body.token, body.password);
+    const result = await this.authService.resetPasswordWithToken(
+      body.token,
+      body.password,
+    );
+    const hasTeamMembership = await this.teamsService.hasTeamMembership(
+      result.user.id,
+    );
+    return {
+      ...result,
+      user: { ...result.user, hasTeamMembership },
+    };
   }
 
   @Post("verify-email")
@@ -190,7 +226,14 @@ export class AuthController {
   })
   @ApiResponse({ status: 401, description: "Invalid or expired token" })
   async verifyEmail(@Body() body: { token: string }) {
-    return this.authService.verifyEmailWithToken(body.token);
+    const result = await this.authService.verifyEmailWithToken(body.token);
+    const hasTeamMembership = await this.teamsService.hasTeamMembership(
+      result.user.id,
+    );
+    return {
+      ...result,
+      user: { ...result.user, hasTeamMembership },
+    };
   }
 
   @Post("resend-verification")
@@ -200,9 +243,26 @@ export class AuthController {
   @ApiOperation({
     summary: "Resend email verification (email/password accounts only)",
   })
+  @ApiBody({
+    schema: {
+      type: "object",
+      properties: {
+        next: {
+          type: "string",
+          description: "Optional internal path to continue after verification",
+        },
+      },
+    },
+  })
   @ApiResponse({ status: 201, description: "Generic success message" })
-  async resendVerification(@Req() req: Request) {
-    return this.authService.resendVerificationEmail((req.user as any).id);
+  async resendVerification(
+    @Req() req: Request,
+    @Body() body: { next?: string },
+  ) {
+    return this.authService.resendVerificationEmail(
+      (req.user as any).id,
+      body.next,
+    );
   }
 
   @Get("github")
@@ -225,7 +285,14 @@ export class AuthController {
   })
   @ApiResponse({ status: 201, description: "Returns JWT and user" })
   async githubCallback(@Body() body: { code: string }) {
-    return this.authService.githubCallback(body.code);
+    const result = await this.authService.githubCallback(body.code);
+    const hasTeamMembership = await this.teamsService.hasTeamMembership(
+      result.user.id,
+    );
+    return {
+      ...result,
+      user: { ...result.user, hasTeamMembership },
+    };
   }
 
   @Get("github/repos")
@@ -235,6 +302,41 @@ export class AuthController {
   @ApiResponse({ status: 200, description: "Array of repositories" })
   async githubRepos(@Req() req: Request) {
     return this.authService.listGithubRepositories((req.user as any).id);
+  }
+
+  @Get("github/reviewer")
+  @UseGuards(JwtOrApiKeyGuard)
+  @ApiBearerAuth("bearer")
+  @ApiOperation({ summary: "Get GitHub reviewer app OAuth URL" })
+  @ApiResponse({ status: 200, description: "Returns OAuth URL" })
+  async githubReviewerAuthUrl() {
+    const url = await this.authService.getGithubReviewerAuthUrl();
+    return { url };
+  }
+
+  @Post("github/reviewer/callback")
+  @UseGuards(JwtOrApiKeyGuard)
+  @Throttle({ default: { limit: 30, ttl: 60000 } })
+  @ApiBearerAuth("bearer")
+  @ApiOperation({
+    summary: "Exchange GitHub reviewer app OAuth code for token",
+  })
+  @ApiBody({
+    schema: {
+      type: "object",
+      properties: { code: { type: "string" } },
+      required: ["code"],
+    },
+  })
+  @ApiResponse({ status: 201, description: "Reviewer token stored" })
+  async githubReviewerCallback(
+    @Req() req: Request,
+    @Body() body: { code: string },
+  ) {
+    return this.authService.githubReviewerCallback(
+      body.code,
+      (req.user as any).id,
+    );
   }
 
   @Get("gitlab")
@@ -257,7 +359,14 @@ export class AuthController {
   })
   @ApiResponse({ status: 201, description: "Returns JWT and user" })
   async gitlabCallback(@Body() body: { code: string }) {
-    return this.authService.gitlabCallback(body.code);
+    const result = await this.authService.gitlabCallback(body.code);
+    const hasTeamMembership = await this.teamsService.hasTeamMembership(
+      result.user.id,
+    );
+    return {
+      ...result,
+      user: { ...result.user, hasTeamMembership },
+    };
   }
 
   @Get("gitlab/repos")
@@ -293,6 +402,7 @@ export class AuthController {
       createdAt: user.createdAt,
       hasGithub: !!user.githubId,
       hasGitlab: !!user.gitlabId,
+      hasGithubReviewer: !!user.githubReviewerTokenEncrypted,
       hasTeamMembership,
       hasStripeCustomer: !!user.stripeCustomerId,
       creditsBalance: user.creditsBalance,

@@ -28,6 +28,7 @@ import { ChatService } from "./chat.service";
 import { SendChatMessageDto } from "./dto/send-chat-message.dto";
 import { AgentsService } from "../agents/agents.service";
 import { Response } from "express";
+import { AccessControlService } from "../common/access-control.service";
 
 @ApiTags("Chat")
 @ApiBearerAuth("bearer")
@@ -38,6 +39,7 @@ export class ChatController {
     private chatService: ChatService,
     private agentsService: AgentsService,
     private countly: CountlyService,
+    private accessControl: AccessControlService,
   ) {}
 
   @Get(":spaceId/messages")
@@ -47,9 +49,11 @@ export class ChatController {
   @ApiParam({ name: "spaceId", format: "uuid" })
   @ApiResponse({ status: 200, description: "Array of chat messages" })
   async listMessages(
+    @Req() req: Request,
     @Param("spaceId") spaceId: string,
     @Query("agentType") agentType?: string,
   ) {
+    await this.accessControl.getAccessibleSpaceOrThrow(spaceId, (req.user as any).id);
     return this.chatService.listMessages(spaceId, agentType);
   }
 
@@ -58,11 +62,14 @@ export class ChatController {
   @ApiParam({ name: "attachmentId", format: "uuid" })
   @ApiResponse({ status: 200, description: "File content" })
   async attachmentContent(
+    @Req() req: Request,
     @Param("attachmentId") attachmentId: string,
     @Res() res: Response,
   ) {
-    const attachment =
-      await this.chatService.getAttachmentOrThrow(attachmentId);
+    const attachment = await this.accessControl.getAccessibleAttachmentOrThrow(
+      attachmentId,
+      (req.user as any).id,
+    );
     res.setHeader("Content-Type", attachment.mimeType);
     res.setHeader("Content-Length", attachment.byteSize.toString());
     res.setHeader(
@@ -92,6 +99,17 @@ export class ChatController {
       buffer: Buffer;
     }> = [],
   ) {
+    await this.accessControl.getAccessibleSpaceOrThrow(spaceId, (req.user as any).id);
+    if (body.ticketId) {
+      await this.accessControl.assertTicketInSpace(body.ticketId, spaceId);
+    }
+    if (body.agentType?.startsWith("custom:")) {
+      await this.accessControl.assertAgentInSpace(
+        body.agentType.slice(7),
+        spaceId,
+      );
+    }
+
     const assistantMessage = await this.chatService.sendMessage(
       spaceId,
       body.message ?? "",

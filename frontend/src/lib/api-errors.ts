@@ -60,3 +60,16 @@ export function isTokenQuotaError(error: unknown): boolean {
   }
   return false;
 }
+
+/**
+ * Backend `PlanGuard` throws 403 with this shape when the user's plan is too low:
+ * `This feature requires a ${plans} plan. Please upgrade.`
+ */
+export function isPlanUpgradeRequiredMessage(message: string): boolean {
+  const m = message.toLowerCase();
+  return (
+    m.includes("this feature requires") &&
+    m.includes("plan") &&
+    m.includes("please upgrade")
+  );
+}

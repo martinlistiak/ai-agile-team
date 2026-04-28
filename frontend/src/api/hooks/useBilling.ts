@@ -1,6 +1,11 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
 import api from "@/api/client";
 import { trackEvent } from "@/lib/analytics";
+import { getCurrentInternalPath, isSafeInternalPath } from "@/lib/auth-redirect";
+
+function resolveReturnTo(returnTo?: string): string {
+  return isSafeInternalPath(returnTo) ? returnTo : getCurrentInternalPath();
+}
 
 export interface UsageStats {
   periodStart: string;
@@ -51,8 +56,13 @@ export function useCheckout() {
     mutationFn: async (payload: {
       plan: "starter" | "team" | "enterprise";
       interval: "annual" | "monthly";
+      returnTo?: string;
     }) => {
-      const { data } = await api.post("/billing/checkout", payload);
+      const { data } = await api.post("/billing/checkout", {
+        plan: payload.plan,
+        interval: payload.interval,
+        returnTo: resolveReturnTo(payload.returnTo),
+      });
       trackEvent("billing_checkout_started", {
         plan: payload.plan,
         billing_interval: payload.interval,
@@ -64,8 +74,10 @@ export function useCheckout() {
 
 export function useBillingPortal() {
   return useMutation({
-    mutationFn: async () => {
-      const { data } = await api.post("/billing/portal");
+    mutationFn: async (payload?: { returnTo?: string }) => {
+      const { data } = await api.post("/billing/portal", {
+        returnTo: resolveReturnTo(payload?.returnTo),
+      });
       trackEvent("billing_portal_opened", {});
       return data as { url: string };
     },
@@ -86,9 +98,12 @@ export function useCreditsBalance() {
 
 export function useCreditTopUp() {
   return useMutation({
-    mutationFn: async (amount: number) => {
-      const { data } = await api.post("/billing/top-up", { amount });
-      trackEvent("credits_topup_started", { amount: String(amount) });
+    mutationFn: async (payload: { amount: number; returnTo?: string }) => {
+      const { data } = await api.post("/billing/top-up", {
+        amount: payload.amount,
+        returnTo: resolveReturnTo(payload.returnTo),
+      });
+      trackEvent("credits_topup_started", { amount: String(payload.amount) });
       return data as { url: string };
     },
   });
